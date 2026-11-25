@@ -203,14 +203,14 @@ onMounted(refresh);
           :class="{ 'drag-target': dragTo === index }"
         >
           <!-- #ifdef H5 -->
-          <text
+          <span
             class="drag-handle"
             aria-hidden="true"
-            @pointerdown="startDrag($event, index)"
+            @pointerdown.prevent="startDrag($event, index)"
             @pointermove="updateDrag"
             @pointerup="endDrag"
             @pointercancel="resetDrag"
-            >⠿</text
+            >⠿</span
           >
           <!-- #endif -->
           <text class="category-name">{{ item.name }}</text>
@@ -300,6 +300,7 @@ onMounted(refresh);
 .drag-handle {
   padding: 8px 6px;
   cursor: grab;
+  user-select: none;
   touch-action: none;
 }
 .drag-target {
