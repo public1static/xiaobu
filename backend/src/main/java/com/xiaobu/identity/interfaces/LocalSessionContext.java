@@ -22,9 +22,17 @@ public record LocalSessionContext(String actorId, String displayName, String led
     }
   }
 
-  public static LocalSessionContext require(HttpServletRequest request) {
+  public static LocalSessionContext current(HttpServletRequest request) {
     var session = request.getSession(false);
     if (session != null && session.getAttribute(ATTRIBUTE) instanceof LocalSessionContext context) {
+      return context;
+    }
+    return null;
+  }
+
+  public static LocalSessionContext require(HttpServletRequest request) {
+    var context = current(request);
+    if (context != null) {
       return context;
     }
     throw new FoundationException(

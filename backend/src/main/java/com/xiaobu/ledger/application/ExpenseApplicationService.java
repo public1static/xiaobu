@@ -41,7 +41,7 @@ public class ExpenseApplicationService {
 
   @Transactional(readOnly = true)
   public List<ExpenseResult> listExpenses(ListExpensesQuery query) {
-    ledgers.requireOwnership(query.ledgerId(), query.actorId());
+    ledgers.requireReadAccess(query.ledgerId(), query.actorId());
     return repository.findByLedgerAndMonth(query.ledgerId(), query.month()).stream()
         .map(ExpenseResult::from)
         .toList();
