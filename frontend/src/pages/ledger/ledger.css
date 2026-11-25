@@ -618,3 +618,7 @@ button::after {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+.row-amount.refund {
+  color: #336a8b;
+}

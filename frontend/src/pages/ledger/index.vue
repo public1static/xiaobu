@@ -37,6 +37,7 @@ import {
   FIRST_LEDGER_MONTH,
   categoryLabel,
   formatCents,
+  formatSignedCurrency,
   localDay,
   parseCents,
   resolveLedgerMonth,
@@ -617,6 +618,10 @@ async function submit() {
     savedMessage.value = '已记一笔';
     await refresh();
   } catch (error) {
+    if (error instanceof ApiRequestError && error.code === 'XIAOBU_TRANSACTION_HAS_REFUNDS') {
+      saveError.value = '已有退款：只能保留支出，原付不能低于已退，付款日期不能晚于退款。';
+      return;
+    }
     if (error instanceof ApiRequestError && error.status === 409 && editing.value) {
       editStale.value = true;
       saveError.value = '流水已变更，本次没有覆盖。请关闭后重新打开详情核对。';
@@ -759,7 +764,7 @@ onShareAppMessage(() => ({
             >
             <view
               ><text>支出</text
-              ><text>{{ showTotals ? `¥${formatCents(summary.expense)}` : '···' }}</text></view
+              ><text>{{ showTotals ? formatSignedCurrency(summary.expense) : '···' }}</text></view
             >
           </view>
         </view>
@@ -807,7 +812,7 @@ onShareAppMessage(() => ({
             <text>{{ showDay(group.day) }}</text>
             <view class="day-totals">
               <text v-if="group.income">收入 ¥{{ formatCents(group.income) }}</text>
-              <text v-if="group.expense">支出 ¥{{ formatCents(group.expense) }}</text>
+              <text v-if="group.expense">支出 {{ formatSignedCurrency(group.expense) }}</text>
             </view>
           </view>
           <view class="rows">
@@ -817,9 +822,9 @@ onShareAppMessage(() => ({
               class="row"
               role="button"
               tabindex="0"
-              @click="transactionDetailId = row.id"
-              @keydown.enter.prevent="transactionDetailId = row.id"
-              @keydown.space.prevent="transactionDetailId = row.id"
+              @click="transactionDetailId = row.originalTransactionId || row.id"
+              @keydown.enter.prevent="transactionDetailId = row.originalTransactionId || row.id"
+              @keydown.space.prevent="transactionDetailId = row.originalTransactionId || row.id"
             >
               <view class="row-icon" aria-hidden="true">
                 <image
@@ -827,13 +832,21 @@ onShareAppMessage(() => ({
                 />
               </view>
               <view class="row-copy">
-                <text>{{
-                  categoryNames[row.categoryCode] || categoryLabel(row.categoryCode, row.direction)
-                }}</text>
+                <text
+                  >{{
+                    categoryNames[row.categoryCode] ||
+                    categoryLabel(row.categoryCode, row.direction)
+                  }}{{ row.originalTransactionId ? '退款' : '' }}</text
+                >
                 <text v-if="row.note">{{ row.note }}</text>
               </view>
-              <text class="row-amount" :class="{ income: row.direction === 'INCOME' }">
-                {{ row.direction === 'INCOME' ? '+' : '−' }}¥{{ formatCents(row.amountCents) }}
+              <text
+                class="row-amount"
+                :class="{ income: row.direction === 'INCOME', refund: row.originalTransactionId }"
+              >
+                {{ row.direction === 'INCOME' || row.originalTransactionId ? '+' : '−' }}¥{{
+                  formatCents(row.amountCents)
+                }}
               </text>
             </view>
           </view>
@@ -1111,6 +1124,7 @@ onShareAppMessage(() => ({
       @close="transactionDetailId = ''"
       @edit="startEditing"
       @deleted="onTransactionDeleted"
+      @refunded="refresh"
     />
     <LedgerRecycleSheet
       v-if="recycleOpen && ledgerId"

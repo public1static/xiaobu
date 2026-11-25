@@ -35,12 +35,17 @@ export function categoryLabel(code: string, direction: TransactionDirection) {
 }
 
 export function summarizeTransactions(
-  items: readonly { direction: TransactionDirection; amountCents: number }[],
+  items: readonly {
+    direction: TransactionDirection;
+    amountCents: number;
+    originalTransactionId?: string | null;
+  }[],
 ) {
   let income = 0;
   let expense = 0;
   for (const item of items) {
-    if (item.direction === 'INCOME') income += item.amountCents;
+    if (item.originalTransactionId) expense -= item.amountCents;
+    else if (item.direction === 'INCOME') income += item.amountCents;
     else expense += item.amountCents;
   }
   return { income, expense, balance: income - expense };
@@ -65,6 +70,10 @@ export function parseOpeningBalance(input: string): number | null {
 
 export function formatCents(cents: number) {
   return (cents / 100).toFixed(2).replace(/\B(?=(\d{3})+\.)/g, ',');
+}
+
+export function formatSignedCurrency(cents: number) {
+  return `${cents < 0 ? '−' : ''}¥${formatCents(Math.abs(cents))}`;
 }
 
 export function localDay(date = new Date()) {

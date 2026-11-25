@@ -10,4 +10,5 @@ record LedgerTransactionResponse(
     LocalDate bookedOn,
     String categoryCode,
     String note,
-    String accountId) {}
+    String accountId,
+    String originalTransactionId) {}

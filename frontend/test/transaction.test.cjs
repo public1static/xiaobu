@@ -69,3 +69,19 @@ test('account opening balances support signed exact cents and strict precision',
     assert.equal(parseOpeningBalance(input), null, input);
   }
 });
+
+test('refunds offset period expenses and never count as income', async () => {
+  const { formatSignedCurrency, summarizeTransactions } =
+    await import('../src/pages/ledger/transaction.ts');
+  const refund = { direction: 'EXPENSE', amountCents: 3000, originalTransactionId: 'txn-original' };
+  assert.deepEqual(summarizeTransactions([refund]), { income: 0, expense: -3000, balance: 3000 });
+  assert.equal(formatSignedCurrency(-3000), '−¥30.00');
+  assert.deepEqual(
+    summarizeTransactions([
+      refund,
+      { direction: 'EXPENSE', amountCents: 10000 },
+      { direction: 'INCOME', amountCents: 20000 },
+    ]),
+    { income: 20000, expense: 7000, balance: 13000 },
+  );
+});

@@ -1,5 +1,6 @@
 package com.xiaobu.ledger.interfaces;
 
+import com.xiaobu.ledger.application.LedgerRefundResult;
 import com.xiaobu.ledger.application.LedgerTransactionResult;
 import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
 import org.mapstruct.Mapper;
@@ -15,4 +16,6 @@ interface LedgerTransactionWebMapper {
       RecordLedgerTransactionRequest request, String ledgerId, String actorId);
 
   LedgerTransactionResponse toResponse(LedgerTransactionResult result);
+
+  LedgerRefundResponse toResponse(LedgerRefundResult result);
 }

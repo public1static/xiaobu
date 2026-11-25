@@ -5,10 +5,10 @@ import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.application.LedgerAccountRepository;
 import com.xiaobu.ledger.domain.LedgerAccount;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -17,14 +17,17 @@ class LedgerAccountPersistenceAdapter implements LedgerAccountRepository {
   private final LedgerAccountJpaRepository accounts;
   private final LedgerTransactionJpaRepository transactions;
   private final LedgerAccountPersistenceMapper mapper;
+  private final LedgerRefundJpaRepository refunds;
 
   LedgerAccountPersistenceAdapter(
       LedgerAccountJpaRepository accounts,
       LedgerTransactionJpaRepository transactions,
-      LedgerAccountPersistenceMapper mapper) {
+      LedgerAccountPersistenceMapper mapper,
+      LedgerRefundJpaRepository refunds) {
     this.accounts = accounts;
     this.transactions = transactions;
     this.mapper = mapper;
+    this.refunds = refunds;
   }
 
   @Override
@@ -48,10 +51,14 @@ class LedgerAccountPersistenceAdapter implements LedgerAccountRepository {
 
   @Override
   public Map<String, Long> findRecordedBalancesByLedger(String ledgerId) {
-    return transactions.findAccountBalancesByLedger(ledgerId).stream()
-        .collect(
-            Collectors.toUnmodifiableMap(
-                LedgerAccountBalanceRow::getAccountId, LedgerAccountBalanceRow::getBalanceCents));
+    Map<String, Long> balances = new HashMap<>();
+    transactions
+        .findAccountBalancesByLedger(ledgerId)
+        .forEach(row -> balances.put(row.getAccountId(), row.getBalanceCents()));
+    refunds
+        .findAccountCredits(ledgerId)
+        .forEach(row -> balances.merge(row.getAccountId(), row.getBalanceCents(), Long::sum));
+    return Map.copyOf(balances);
   }
 
   @Override

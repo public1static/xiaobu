@@ -10,7 +10,10 @@ export interface LedgerTransactionDraft {
   accountId?: string | null;
 }
 
-export type LedgerTransaction = LedgerTransactionDraft & { id: string };
+export type LedgerTransaction = LedgerTransactionDraft & {
+  id: string;
+  originalTransactionId?: string | null;
+};
 
 function transactionPath(ledgerId: string) {
   return `/ledgers/${encodeURIComponent(ledgerId)}/transactions`;
@@ -28,6 +31,7 @@ export interface LedgerTransactionDetail {
   version: number;
   canModify: boolean;
   accountName: string | null;
+  refunds: LedgerRefund[];
 }
 
 export function listLedgerTransactions(
@@ -90,5 +94,25 @@ export function restoreLedgerTransaction(ledgerId: string, transactionId: string
     `${transactionPath(ledgerId)}/${encodeURIComponent(transactionId)}/restore`,
     'POST',
     { version },
+  );
+}
+
+export interface LedgerRefund {
+  id: string;
+  amountCents: number;
+  receivedOn: string;
+  accountId: string | null;
+  accountName: string | null;
+}
+
+export function recordLedgerRefund(
+  ledgerId: string,
+  transactionId: string,
+  draft: { version: number; amountCents: number; receivedOn: string; accountId: string | null },
+) {
+  return request<LedgerRefund>(
+    `${transactionPath(ledgerId)}/${encodeURIComponent(transactionId)}/refunds`,
+    'POST',
+    draft,
   );
 }

@@ -5,10 +5,16 @@ import com.aegisid.foundation.data.id.IdPrefix;
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
+import com.xiaobu.ledger.domain.LedgerRefund;
 import com.xiaobu.ledger.domain.LedgerTransaction;
 import com.xiaobu.ledger.domain.LedgerTransactionDetails;
+import com.xiaobu.ledger.domain.TransactionDirection;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +25,11 @@ public class LedgerTransactionApplicationService {
 
   private static final IdPrefix TRANSACTION_PREFIX = new IdPrefix("txn");
 
+  private static final IdPrefix REFUND_PREFIX = new IdPrefix("rfnd");
+  private static final ZoneId LEDGER_ZONE = ZoneId.of("Asia/Shanghai");
+
   private final LedgerTransactionRepository repository;
+  private final LedgerRefundRepository refunds;
   private final EntityIdGenerator idGenerator;
   private final PersonalLedgerApplicationService ledgers;
   private final LedgerAccountApplicationService accounts;
@@ -27,11 +37,13 @@ public class LedgerTransactionApplicationService {
 
   public LedgerTransactionApplicationService(
       LedgerTransactionRepository repository,
+      LedgerRefundRepository refunds,
       EntityIdGenerator idGenerator,
       PersonalLedgerApplicationService ledgers,
       LedgerAccountApplicationService accounts,
       LedgerCategoryApplicationService categories) {
     this.repository = repository;
+    this.refunds = refunds;
     this.idGenerator = idGenerator;
     this.ledgers = ledgers;
     this.accounts = accounts;
@@ -62,10 +74,19 @@ public class LedgerTransactionApplicationService {
   @Transactional(readOnly = true)
   public List<LedgerTransactionResult> listLedgerTransactions(ListLedgerTransactionsQuery query) {
     ledgers.requireReadAccess(query.ledgerId(), query.actorId());
-    return repository
-        .findByLedgerAndDateRange(query.ledgerId(), query.from(), query.through(), query.keyword())
-        .stream()
-        .map(LedgerTransactionResult::from)
+    var entries =
+        repository
+            .findByLedgerAndDateRange(
+                query.ledgerId(), query.from(), query.through(), query.keyword())
+            .stream()
+            .map(LedgerTransactionResult::from);
+    var refundEntries =
+        refunds
+            .findActiveByDateRange(query.ledgerId(), query.from(), query.through(), query.keyword())
+            .stream()
+            .map(LedgerTransactionResult::fromRefund);
+    return Stream.concat(entries, refundEntries)
+        .sorted(Comparator.comparing(LedgerTransactionResult::bookedOn).reversed())
         .toList();
   }
 
@@ -82,12 +103,19 @@ public class LedgerTransactionApplicationService {
                     ErrorCategory.NOT_FOUND,
                     "未找到这笔流水",
                     Map.of()));
+    var recordedRefunds =
+        refunds.findByTransaction(ledgerId, transactionId).stream()
+            .map(refund ->
+                LedgerRefundResult.from(
+                    refund, accounts.findAccountName(ledgerId, refund.accountId())))
+            .toList();
     return new LedgerTransactionDetailResult(
         LedgerTransactionResult.from(entry),
         entry.createdBy(),
         accounts.findAccountName(ledgerId, entry.details().accountId()),
         entry.version(),
-        ledgers.canModifyTransaction(ledgerId, actorId, entry.createdBy()));
+        ledgers.canModifyTransaction(ledgerId, actorId, entry.createdBy()),
+        recordedRefunds);
   }
 
   @Transactional(readOnly = true)
@@ -113,6 +141,18 @@ public class LedgerTransactionApplicationService {
             command.transactionId(),
             command.expectedVersion(),
             false);
+    var recordedRefunds = refunds.findByTransaction(command.ledgerId(), command.transactionId());
+    if (!recordedRefunds.isEmpty()
+        && (command.direction() != TransactionDirection.EXPENSE
+            || command.amountCents() < refundedCents(recordedRefunds)
+            || recordedRefunds.stream()
+                .anyMatch(refund -> refund.receivedOn().isBefore(command.bookedOn())))) {
+      throw new FoundationException(
+          new ErrorCode("XIAOBU_TRANSACTION_HAS_REFUNDS"),
+          ErrorCategory.CONFLICT,
+          "这笔支出已有退款，不能改为收入、缩减至已退款金额以下，或把付款日期改到退款之后",
+          Map.of());
+    }
     accounts.requireAccountInLedger(command.ledgerId(), command.accountId());
     var details =
         new LedgerTransactionDetails(
@@ -179,6 +219,51 @@ public class LedgerTransactionApplicationService {
           Map.of());
     }
     return entry;
+  }
+
+  @Transactional
+  public LedgerRefundResult recordLedgerRefund(RecordLedgerRefundCommand command) {
+    var original =
+        requireEditable(
+            command.ledgerId(),
+            command.actorId(),
+            command.transactionId(),
+            command.expectedVersion(),
+            false);
+    if (original.details().direction() != TransactionDirection.EXPENSE) {
+      throw invalidRefund("只有支出可以登记退款");
+    }
+    long remaining =
+        original.details().amountCents()
+            - refundedCents(refunds.findByTransaction(command.ledgerId(), command.transactionId()));
+    if (command.amountCents() <= 0 || command.amountCents() > remaining) {
+      throw invalidRefund("退款金额必须大于 0 且不能超过剩余可退金额");
+    }
+    if (command.receivedOn().isBefore(original.details().bookedOn())
+        || command.receivedOn().isAfter(LocalDate.now(LEDGER_ZONE))) {
+      throw invalidRefund("退款到账日期须在原付款日期至今天之间");
+    }
+    accounts.requireAccountInLedger(command.ledgerId(), command.accountId());
+    var refund =
+        new LedgerRefund(
+            idGenerator.next(REFUND_PREFIX),
+            command.ledgerId(),
+            original.id(),
+            command.amountCents(),
+            command.receivedOn(),
+            command.accountId(),
+            command.actorId());
+    refunds.add(refund);
+    return LedgerRefundResult.from(
+        refund, accounts.findAccountName(command.ledgerId(), command.accountId()));
+  }
+
+  private static long refundedCents(List<LedgerRefund> refunds) {
+    return refunds.stream().mapToLong(LedgerRefund::amountCents).sum();
+  }
+
+  private static FoundationException invalidRefund(String message) {
+    return new FoundationException(new ErrorCode("XIAOBU_INVALID_REFUND"), message);
   }
 
   private FoundationException denied() {
