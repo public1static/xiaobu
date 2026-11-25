@@ -47,6 +47,10 @@ public class LedgerAccountController {
     return ApiResponse.success(
         mapper.toResponse(
             accounts.createLedgerAccount(
-                new CreateLedgerAccountCommand(ledgerId, actor.actorId(), input.name()))));
+                new CreateLedgerAccountCommand(
+                    ledgerId,
+                    actor.actorId(),
+                    input.name(),
+                    input.openingBalanceCents() == null ? 0 : input.openingBalanceCents()))));
   }
 }

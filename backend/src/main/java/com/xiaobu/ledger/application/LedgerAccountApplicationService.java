@@ -19,14 +19,17 @@ public class LedgerAccountApplicationService {
 
   private final PersonalLedgerApplicationService ledgers;
   private final LedgerAccountRepository accounts;
+  private final LedgerAccountTransferRepository transfers;
   private final EntityIdGenerator ids;
 
   LedgerAccountApplicationService(
       PersonalLedgerApplicationService ledgers,
       LedgerAccountRepository accounts,
+      LedgerAccountTransferRepository transfers,
       EntityIdGenerator ids) {
     this.ledgers = ledgers;
     this.accounts = accounts;
+    this.transfers = transfers;
     this.ids = ids;
   }
 
@@ -34,19 +37,34 @@ public class LedgerAccountApplicationService {
   public LedgerAccountResult createLedgerAccount(CreateLedgerAccountCommand command) {
     ledgers.lockLedger(command.ledgerId());
     ledgers.requireOwnership(command.ledgerId(), command.actorId());
-    var account = new LedgerAccount(ids.next(ACCOUNT_PREFIX), command.ledgerId(), command.name());
+    var account =
+        new LedgerAccount(
+            ids.next(ACCOUNT_PREFIX),
+            command.ledgerId(),
+            command.name(),
+            command.openingBalanceCents());
     accounts.add(account);
-    return new LedgerAccountResult(account.id(), account.name(), 0);
+    return new LedgerAccountResult(
+        account.id(),
+        account.name(),
+        account.openingBalanceCents(),
+        0,
+        account.openingBalanceCents());
   }
 
   @Transactional(readOnly = true)
   public List<LedgerAccountResult> listLedgerAccounts(String ledgerId, String actorId) {
     ledgers.requireReadAccess(ledgerId, actorId);
     var balances = accounts.findRecordedBalancesByLedger(ledgerId);
+    var transferNet = transfers.findNetByLedger(ledgerId);
     return accounts.findByLedger(ledgerId).stream()
-        .map(account ->
-            new LedgerAccountResult(
-                account.id(), account.name(), balances.getOrDefault(account.id(), 0L)))
+        .map(account -> {
+          long recorded = balances.getOrDefault(account.id(), 0L);
+          long balance =
+              account.openingBalanceCents() + recorded + transferNet.getOrDefault(account.id(), 0L);
+          return new LedgerAccountResult(
+              account.id(), account.name(), account.openingBalanceCents(), recorded, balance);
+        })
         .toList();
   }
 

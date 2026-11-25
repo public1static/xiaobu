@@ -23,14 +23,18 @@ public class LedgerAccountEntity implements Persistable<String> {
   @Column(nullable = false, length = 32)
   private String name;
 
+  @Column(name = "opening_balance_cents", nullable = false, updatable = false)
+  private long openingBalanceCents;
+
   @Transient private boolean newEntity = true;
 
   protected LedgerAccountEntity() {}
 
-  public LedgerAccountEntity(String id, String ledgerId, String name) {
+  public LedgerAccountEntity(String id, String ledgerId, String name, long openingBalanceCents) {
     this.id = id;
     this.ledgerId = ledgerId;
     this.name = name;
+    this.openingBalanceCents = openingBalanceCents;
   }
 
   @Override
@@ -44,6 +48,10 @@ public class LedgerAccountEntity implements Persistable<String> {
 
   public String getName() {
     return name;
+  }
+
+  public long getOpeningBalanceCents() {
+    return openingBalanceCents;
   }
 
   @Override

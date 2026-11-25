@@ -52,3 +52,20 @@ test('income categories are separate and monthly balance uses exact cents', asyn
     { income: 500003, expense: 1230, balance: 498773 },
   );
 });
+
+test('account opening balances support signed exact cents and strict precision', async () => {
+  const { parseOpeningBalance } = await import('../src/pages/ledger/transaction.ts');
+  for (const [input, expected] of [
+    ['', 0],
+    ['-0.00', 0],
+    ['+100.05', 10005],
+    ['-100.05', -10005],
+    ['-.50', -50],
+    ['-99999999.99', -9999999999],
+  ]) {
+    assert.equal(parseOpeningBalance(input), expected, input);
+  }
+  for (const input of ['--1', '￥2', '-100000000', '0.001', '1e2', '+']) {
+    assert.equal(parseOpeningBalance(input), null, input);
+  }
+});
