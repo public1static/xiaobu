@@ -7,6 +7,7 @@ import com.xiaobu.ledger.application.LedgerAccountRepository;
 import com.xiaobu.ledger.domain.LedgerAccount;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
 
@@ -51,6 +52,11 @@ class LedgerAccountPersistenceAdapter implements LedgerAccountRepository {
         .collect(
             Collectors.toUnmodifiableMap(
                 LedgerAccountBalanceRow::getAccountId, LedgerAccountBalanceRow::getBalanceCents));
+  }
+
+  @Override
+  public Optional<LedgerAccount> findByLedgerAndId(String ledgerId, String accountId) {
+    return accounts.findByLedgerIdAndId(ledgerId, accountId).map(mapper::toDomain);
   }
 
   @Override

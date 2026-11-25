@@ -119,6 +119,10 @@ public class LedgerTransactionEntity extends AuditableEntity implements Persista
     return accountId;
   }
 
+  public String getCreatedBy() {
+    return createdBy;
+  }
+
   public String getNote() {
     return note;
   }

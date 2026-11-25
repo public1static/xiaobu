@@ -55,4 +55,9 @@ public class LedgerAccountApplicationService {
       throw new FoundationException(ACCOUNT_UNAVAILABLE, "请选择当前账本的账户");
     }
   }
+
+  String findAccountName(String ledgerId, String accountId) {
+    if (accountId == null) return null;
+    return accounts.findByLedgerAndId(ledgerId, accountId).map(LedgerAccount::name).orElse(null);
+  }
 }

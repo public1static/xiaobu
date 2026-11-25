@@ -3,11 +3,13 @@ package com.xiaobu.ledger.interfaces;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.aegisid.foundation.web.api.ApiResponse;
+import com.xiaobu.identity.interfaces.LocalPreviewAccount;
 import com.xiaobu.identity.interfaces.LocalSessionContext;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
 import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -39,10 +41,13 @@ public class LedgerTransactionController {
   @GetMapping
   public ApiResponse<List<LedgerTransactionResponse>> listLedgerTransactions(
       @PathVariable("ledgerId") String ledgerId,
-      @RequestParam("month") String month,
+      @RequestParam(name = "month", required = false) String month,
+      @RequestParam(name = "from", required = false) String from,
+      @RequestParam(name = "through", required = false) String through,
+      @RequestParam(name = "keyword", defaultValue = "") String keyword,
       HttpServletRequest request) {
     var actor = LocalSessionContext.require(request);
-    var query = new ListLedgerTransactionsQuery(ledgerId, actor.actorId(), parseMonth(month));
+    var query = toQuery(ledgerId, actor.actorId(), month, from, through, keyword);
     return ApiResponse.success(
         transactions.listLedgerTransactions(query).stream().map(mapper::toResponse).toList());
   }
@@ -55,6 +60,44 @@ public class LedgerTransactionController {
     var actor = LocalSessionContext.require(httpRequest);
     var command = mapper.toCommand(request, ledgerId, actor.actorId());
     return ApiResponse.success(mapper.toResponse(transactions.recordLedgerTransaction(command)));
+  }
+
+  @GetMapping("/{transactionId}")
+  public ApiResponse<LedgerTransactionDetailResponse> getLedgerTransaction(
+      @PathVariable("ledgerId") String ledgerId,
+      @PathVariable("transactionId") String transactionId,
+      HttpServletRequest request) {
+    var actor = LocalSessionContext.require(request);
+    var result = transactions.getLedgerTransaction(ledgerId, actor.actorId(), transactionId);
+    String name =
+        actor.actorId().equals(result.createdBy())
+            ? "我"
+            : LocalPreviewAccount.displayNameForActor(result.createdBy());
+    return ApiResponse.success(
+        new LedgerTransactionDetailResponse(
+            mapper.toResponse(result.transaction()), name, result.accountName()));
+  }
+
+  private static ListLedgerTransactionsQuery toQuery(
+      String ledgerId, String actorId, String month, String from, String through, String keyword) {
+    if (month != null && from == null && through == null) {
+      YearMonth selected = parseMonth(month);
+      return new ListLedgerTransactionsQuery(
+          ledgerId, actorId, selected.atDay(1), selected.atEndOfMonth(), keyword);
+    }
+    if (month != null || from == null || through == null) {
+      throw invalidRange();
+    }
+    try {
+      return new ListLedgerTransactionsQuery(
+          ledgerId, actorId, LocalDate.parse(from), LocalDate.parse(through), keyword);
+    } catch (DateTimeParseException ex) {
+      throw invalidRange();
+    }
+  }
+
+  private static FoundationException invalidRange() {
+    return new FoundationException(new ErrorCode("XIAOBU_INVALID_DATE_RANGE"), "请选择有效的日期区间");
   }
 
   private static YearMonth parseMonth(String value) {

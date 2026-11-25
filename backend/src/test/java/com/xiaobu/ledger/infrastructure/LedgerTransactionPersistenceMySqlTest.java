@@ -89,6 +89,7 @@ class LedgerTransactionPersistenceMySqlTest {
     var conflict =
         new LedgerTransaction(
             saved.id(),
+            "alice",
             new LedgerTransactionDetails(
                 TransactionDirection.EXPENSE, 9900, date, "DINING", "冲突记录", null));
     assertThrows(
@@ -247,6 +248,62 @@ class LedgerTransactionPersistenceMySqlTest {
     assertEquals(
         10000, accounts.listLedgerAccounts(alpha, "alice").getFirst().recordedBalanceCents());
     assertEquals(0, accounts.listLedgerAccounts(beta, "bob").getFirst().recordedBalanceCents());
+  }
+
+  @Test
+  void searchesInclusiveCrossMonthRangeAndRestrictsDetailToLedger() {
+    String alpha = newLedgerId();
+    String beta = newLedgerId("bob");
+    var from = LocalDate.of(2026, 10, 31);
+    var through = from.plusDays(1);
+    var account =
+        accounts.createLedgerAccount(new CreateLedgerAccountCommand(alpha, "alice", "现金"));
+    var matched =
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                alpha,
+                "alice",
+                TransactionDirection.EXPENSE,
+                1230,
+                from,
+                "DINING",
+                "午饭 A%",
+                account.id()));
+    var otherDay =
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                alpha,
+                "alice",
+                TransactionDirection.INCOME,
+                3000,
+                through,
+                "BONUS",
+                "活动 a%",
+                null));
+    record(alpha, "alice", through.plusDays(1));
+
+    var query = new ListLedgerTransactionsQuery(alpha, "alice", from, through, " a% ");
+    assertEquals(List.of(otherDay, matched), expenses.listLedgerTransactions(query));
+
+    var detail = expenses.getLedgerTransaction(alpha, "alice", matched.id());
+    assertEquals(matched, detail.transaction());
+    assertEquals("alice", detail.createdBy());
+    assertEquals("现金", detail.accountName());
+    assertEquals(
+        ErrorCategory.FORBIDDEN,
+        assertThrows(
+                FoundationException.class,
+                () -> expenses.getLedgerTransaction(alpha, "bob", matched.id()))
+            .category());
+    assertEquals(
+        ErrorCategory.NOT_FOUND,
+        assertThrows(
+                FoundationException.class,
+                () -> expenses.getLedgerTransaction(beta, "bob", matched.id()))
+            .category());
+    assertThrows(
+        FoundationException.class,
+        () -> new ListLedgerTransactionsQuery(alpha, "alice", through, from, ""));
   }
 
   private String newLedgerId() {

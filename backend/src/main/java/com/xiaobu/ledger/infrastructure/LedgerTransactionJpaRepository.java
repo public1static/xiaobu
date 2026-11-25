@@ -2,6 +2,7 @@ package com.xiaobu.ledger.infrastructure;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
@@ -16,12 +17,16 @@ interface LedgerTransactionJpaRepository extends Repository<LedgerTransactionEnt
       where t.ledgerId = :ledgerId
           and t.deleted = false
           and t.bookedOn between :startInclusive and :endInclusive
+          and (:keyword = '' or locate(lower(:keyword), lower(t.note)) > 0)
       order by t.bookedOn desc, t.createdAt desc, t.id desc
       """)
   List<LedgerTransactionEntity> findActiveByLedgerAndDateRange(
       @Param("ledgerId") String ledgerId,
       @Param("startInclusive") LocalDate startInclusive,
-      @Param("endInclusive") LocalDate endInclusive);
+      @Param("endInclusive") LocalDate endInclusive,
+      @Param("keyword") String keyword);
+
+  Optional<LedgerTransactionEntity> findByLedgerIdAndIdAndDeletedFalse(String ledgerId, String id);
 
   @Query(
       """
