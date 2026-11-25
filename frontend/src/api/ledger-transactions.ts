@@ -1,4 +1,5 @@
 import type { CategoryCode, TransactionDirection } from '../pages/ledger/transaction';
+import type { TransactionExtension, TransactionExtensionChange } from './transaction-extensions';
 import { request } from './request';
 
 export interface LedgerTransactionDraft {
@@ -8,6 +9,7 @@ export interface LedgerTransactionDraft {
   categoryCode: CategoryCode;
   note: string;
   accountId?: string | null;
+  extensions?: TransactionExtensionChange[];
 }
 
 export type LedgerTransaction = LedgerTransactionDraft & {
@@ -32,6 +34,7 @@ export interface LedgerTransactionDetail {
   canModify: boolean;
   accountName: string | null;
   refunds: LedgerRefund[];
+  extensions?: TransactionExtension[];
 }
 
 export function listLedgerTransactions(

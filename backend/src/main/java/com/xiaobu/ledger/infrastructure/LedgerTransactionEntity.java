@@ -13,6 +13,7 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
+import java.time.Instant;
 import java.time.LocalDate;
 import org.springframework.data.domain.Persistable;
 
@@ -141,6 +142,9 @@ public class LedgerTransactionEntity extends AuditableEntity implements Persista
     note = details.note();
     accountId = details.accountId();
     updatedBy = actorId;
+    // Even an extension-only edit invalidates previously loaded forms.
+    Instant now = Instant.now();
+    setUpdatedAt(now.isAfter(getUpdatedAt()) ? now : getUpdatedAt().plusNanos(1_000));
   }
 
   void changeDeletion(boolean nextDeleted, String actorId) {

@@ -34,6 +34,7 @@ public class LedgerTransactionApplicationService {
   private final PersonalLedgerApplicationService ledgers;
   private final LedgerAccountApplicationService accounts;
   private final LedgerCategoryApplicationService categories;
+  private final TransactionExtensionRegistry extensions;
 
   public LedgerTransactionApplicationService(
       LedgerTransactionRepository repository,
@@ -41,13 +42,15 @@ public class LedgerTransactionApplicationService {
       EntityIdGenerator idGenerator,
       PersonalLedgerApplicationService ledgers,
       LedgerAccountApplicationService accounts,
-      LedgerCategoryApplicationService categories) {
+      LedgerCategoryApplicationService categories,
+      TransactionExtensionRegistry extensions) {
     this.repository = repository;
     this.refunds = refunds;
     this.idGenerator = idGenerator;
     this.ledgers = ledgers;
     this.accounts = accounts;
     this.categories = categories;
+    this.extensions = extensions;
   }
 
   @Transactional
@@ -68,6 +71,10 @@ public class LedgerTransactionApplicationService {
         new LedgerTransaction(
             idGenerator.next(TRANSACTION_PREFIX), command.actorId(), details, 0, false);
     repository.add(command.ledgerId(), command.actorId(), transaction);
+    extensions.apply(
+        extensionContext(command.ledgerId(), command.actorId(), transaction.id(), details),
+        command.extensions(),
+        true);
     return LedgerTransactionResult.from(transaction);
   }
 
@@ -115,7 +122,8 @@ public class LedgerTransactionApplicationService {
         accounts.findAccountName(ledgerId, entry.details().accountId()),
         entry.version(),
         ledgers.canModifyTransaction(ledgerId, actorId, entry.createdBy()),
-        recordedRefunds);
+        recordedRefunds,
+        extensions.read(extensionContext(ledgerId, actorId, entry.id(), entry.details())));
   }
 
   @Transactional(readOnly = true)
@@ -167,7 +175,17 @@ public class LedgerTransactionApplicationService {
       categories.requireActiveCategory(
           command.ledgerId(), details.direction(), details.categoryCode());
     }
+    extensions.apply(
+        extensionContext(command.ledgerId(), command.actorId(), command.transactionId(), details),
+        command.extensions(),
+        false);
     repository.edit(command.ledgerId(), command.transactionId(), command.actorId(), details);
+  }
+
+  private static TransactionExtensionContext extensionContext(
+      String ledgerId, String actorId, String transactionId, LedgerTransactionDetails details) {
+    return new TransactionExtensionContext(
+        ledgerId, actorId, transactionId, details.direction(), details.categoryCode());
   }
 
   @Transactional

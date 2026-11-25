@@ -319,6 +319,53 @@ class LedgerTransactionPersistenceMySqlTest {
   }
 
   @Test
+  void keepsAnExistingCustomGiftLabelIndependentFromTheNewSystemCategory() {
+    String ledgerId = newLedgerId();
+    String legacy = "CUS_0123456789ABCDEF";
+    var direction = TransactionDirection.EXPENSE;
+    jdbc.update(
+        "INSERT INTO ledger_categories (id, ledger_id, code, direction, name, display_order,"
+            + " active) VALUES (?, ?, ?, 'EXPENSE', '随礼', 20, 1)",
+        "cat_legacy_gift_label",
+        ledgerId,
+        legacy);
+    var catalog = categories.listLedgerCategories(ledgerId, "alice");
+    assertEquals(
+        "随礼",
+        catalog.stream().filter(row -> legacy.equals(row.code())).findFirst().orElseThrow().name());
+    assertEquals(
+        "随礼（系统）",
+        catalog.stream()
+            .filter(row -> "GIFT_SENT".equals(row.code()))
+            .findFirst()
+            .orElseThrow()
+            .name());
+    var order =
+        new java.util.ArrayList<>(
+            catalog.stream()
+                .filter(row -> row.direction() == direction)
+                .map(LedgerCategoryResult::code)
+                .toList());
+    order.remove("GIFT_SENT");
+    order.addFirst("GIFT_SENT");
+    categories.changeLedgerCategoryOrder(
+        new ChangeLedgerCategoryOrderCommand(ledgerId, "alice", direction, order));
+    var original =
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledgerId,
+                "alice",
+                direction,
+                500,
+                LocalDate.of(2026, 10, 31),
+                legacy,
+                "原普通流水",
+                null));
+    assertTrue(
+        expenses.getLedgerTransaction(ledgerId, "alice", original.id()).extensions().isEmpty());
+  }
+
+  @Test
   void managesCategoriesPerLedgerAndKeepsInactiveHistoryEditable() {
     String alpha = newLedgerId();
     String beta = newLedgerId("bob");

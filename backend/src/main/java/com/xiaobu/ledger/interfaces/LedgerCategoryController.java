@@ -6,6 +6,8 @@ import com.xiaobu.ledger.application.ChangeLedgerCategoryOrderCommand;
 import com.xiaobu.ledger.application.ChangeLedgerCategoryStatusCommand;
 import com.xiaobu.ledger.application.CreateLedgerCategoryCommand;
 import com.xiaobu.ledger.application.LedgerCategoryApplicationService;
+import com.xiaobu.ledger.application.LedgerCategoryResult;
+import com.xiaobu.ledger.application.TransactionExtensionRegistry;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -26,11 +28,15 @@ public class LedgerCategoryController {
 
   private final LedgerCategoryApplicationService categories;
   private final LedgerCategoryWebMapper mapper;
+  private final TransactionExtensionRegistry extensions;
 
   LedgerCategoryController(
-      LedgerCategoryApplicationService categories, LedgerCategoryWebMapper mapper) {
+      LedgerCategoryApplicationService categories,
+      LedgerCategoryWebMapper mapper,
+      TransactionExtensionRegistry extensions) {
     this.categories = categories;
     this.mapper = mapper;
+    this.extensions = extensions;
   }
 
   @GetMapping
@@ -40,7 +46,7 @@ public class LedgerCategoryController {
         categories
             .listLedgerCategories(ledgerId, LedgerSessionContext.require(request).actorId())
             .stream()
-            .map(mapper::toResponse)
+            .map(this::toResponse)
             .toList());
   }
 
@@ -50,7 +56,7 @@ public class LedgerCategoryController {
       @Valid @RequestBody CreateLedgerCategoryRequest body,
       HttpServletRequest request) {
     return ApiResponse.success(
-        mapper.toResponse(
+        toResponse(
             categories.createLedgerCategory(
                 new CreateLedgerCategoryCommand(
                     ledgerId,
@@ -71,7 +77,7 @@ public class LedgerCategoryController {
                 LedgerSessionContext.require(request).actorId(),
                 TransactionDirection.valueOf(input.direction()),
                 input.codes()));
-    return ApiResponse.success(rows.stream().map(mapper::toResponse).toList());
+    return ApiResponse.success(rows.stream().map(this::toResponse).toList());
   }
 
   @PutMapping("/{code}/status")
@@ -84,6 +90,10 @@ public class LedgerCategoryController {
         categories.changeLedgerCategoryStatus(
             new ChangeLedgerCategoryStatusCommand(
                 ledgerId, LedgerSessionContext.require(request).actorId(), code, input.active()));
-    return ApiResponse.success(rows.stream().map(mapper::toResponse).toList());
+    return ApiResponse.success(rows.stream().map(this::toResponse).toList());
+  }
+
+  private LedgerCategoryResponse toResponse(LedgerCategoryResult result) {
+    return mapper.toResponse(result, extensions.capabilities(result.direction(), result.code()));
   }
 }

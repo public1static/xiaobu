@@ -14,10 +14,12 @@ public enum LedgerCategoryDefaults {
   TRAVEL("旅行"),
   HEALTH("医疗"),
   EDUCATION("教育"),
+  GIFT_SENT("随礼"),
   OTHER("其他支出"),
   SALARY("工资", TransactionDirection.INCOME),
   BONUS("奖金", TransactionDirection.INCOME),
   SIDE_INCOME("兼职", TransactionDirection.INCOME),
+  GIFT_RECEIVED("收礼", TransactionDirection.INCOME),
   OTHER_INCOME("其他收入", TransactionDirection.INCOME);
 
   private final String label;
