@@ -7,12 +7,12 @@ import java.util.List;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class JpaExpenseRepository implements ExpenseRepository {
+class ExpensePersistenceAdapter implements ExpenseRepository {
 
   private final LedgerTransactionJpaRepository transactions;
   private final ExpensePersistenceMapper mapper;
 
-  JpaExpenseRepository(
+  ExpensePersistenceAdapter(
       LedgerTransactionJpaRepository transactions, ExpensePersistenceMapper mapper) {
     this.transactions = transactions;
     this.mapper = mapper;

@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 class ExpensePersistenceMySqlTest {
 
   @Autowired private ExpenseApplicationService expenses;
-  @Autowired private JpaExpenseRepository expenseRepository;
+  @Autowired private ExpensePersistenceAdapter expensePersistence;
   @Autowired private EntityManager entityManager;
   @Autowired private JdbcTemplate jdbc;
 
@@ -79,7 +79,7 @@ class ExpensePersistenceMySqlTest {
     assertThrows(
         ConstraintViolationException.class,
         () -> {
-          expenseRepository.add(ledgerId, "alice", conflict);
+          expensePersistence.add(ledgerId, "alice", conflict);
           entityManager.flush();
         });
   }
