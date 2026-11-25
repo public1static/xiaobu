@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Run only against the isolated local backend or H5 dev proxy."""
+"""Verify two isolated test identities against the local backend or H5 proxy."""
 import datetime
+import http.cookiejar
 import json
 import sys
 import urllib.error
@@ -11,34 +12,67 @@ PORTS = {"18125", "18126", "5173", "4173"}
 port = sys.argv[1] if len(sys.argv) > 1 else "18125"
 if port not in PORTS:
     raise SystemExit("The check only accepts known local test ports.")
-endpoint = f"http://127.0.0.1:{port}/api/v1/expenses"
+endpoint = f"http://127.0.0.1:{port}/api/v1"
 date = datetime.date.today().isoformat()
 note = f"小簿验收-{uuid.uuid4().hex[:8]}"
 draft = {"amountCents": 1230, "bookedOn": date, "categoryCode": "DINING", "note": note}
 
 
-def call(suffix="", payload=None):
+def client():
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
+    )
+
+
+def call(session, path, payload=None, method=None):
     req = urllib.request.Request(
-        endpoint + suffix,
+        endpoint + path,
         data=json.dumps(payload, ensure_ascii=False).encode() if payload is not None else None,
         headers={"Content-Type": "application/json"},
+        method=method,
     )
     try:
-        with urllib.request.urlopen(req, timeout=12) as response:
+        with session.open(req, timeout=12) as response:
+            if response.status == 204:
+                return response.status, None
             return response.status, json.load(response)
     except urllib.error.HTTPError as error:
         return error.code, json.load(error)
 
 
-for invalid in (0, 1230.5):
-    status, body = call(payload={**draft, "amountCents": invalid})
-    assert status == 400 and body["success"] is False, (status, body)
+def sign_in(session, account):
+    status, response = call(session, "/local-session", {"account": account})
+    assert status == 200 and response["success"], status
+    ledger = response["data"]["ledgerId"]
+    assert call(session, "/local-session")[1]["data"]["ledgerId"] == ledger
+    return f"/ledgers/{ledger}/expenses"
 
-status, saved = call(payload=draft)
-assert status == 200 and saved["success"], (status, saved)
+
+alpha, beta, guest = client(), client(), client()
+alpha_path, beta_path = sign_in(alpha, "alpha"), sign_in(beta, "beta")
+assert alpha_path != beta_path
+month = f"?month={date[:7]}"
+assert call(guest, alpha_path + month)[0] == 401
+assert call(guest, alpha_path, draft)[0] == 401
+assert call(beta, alpha_path + month)[0] == 403
+assert call(beta, alpha_path, draft)[0] == 403
+
+for invalid in (0, 1230.5):
+    status, body = call(alpha, alpha_path, {**draft, "amountCents": invalid})
+    assert status == 400 and body["success"] is False, status
+
+status, saved = call(alpha, alpha_path, {**draft, "actorId": "user_preview_beta", "ledgerId": "ignored"})
+assert status == 200 and saved["success"], status
 record = saved["data"]
-assert all(record[key] == value for key, value in draft.items()), record
-status, result = call(f"?month={date[:7]}")
-assert status == 200 and result["success"], (status, result)
+assert all(record[key] == value for key, value in draft.items())
+status, result = call(alpha, alpha_path + month)
+assert status == 200 and result["success"]
 assert [row for row in result["data"] if row["note"] == note] == [record]
-print(f"Expense persisted: {record['id']} | {date} | 1230 cents | {note}")
+status, result = call(beta, beta_path + month)
+assert status == 200 and all(row["note"] != note for row in result["data"])
+assert call(alpha, "/local-session", method="DELETE")[0] == 204
+assert call(alpha, alpha_path + month)[0] == 401
+assert sign_in(alpha, "alpha") == alpha_path
+assert record in call(alpha, alpha_path + month)[1]["data"]
+print(f"Expense persisted and isolated: {record['id']} | {date} | 1230 cents | {note}")

@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.aegisid.foundation.shared.error.ErrorCategory;
+import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
 import com.xiaobu.ledger.application.ExpenseApplicationService;
 import com.xiaobu.ledger.application.ExpenseResult;
 import com.xiaobu.ledger.application.ListExpensesQuery;
+import com.xiaobu.ledger.application.PersonalLedgerApplicationService;
 import com.xiaobu.ledger.application.RecordExpenseCommand;
 import com.xiaobu.ledger.domain.Expense;
 import com.xiaobu.ledger.domain.ExpenseDetails;
@@ -16,6 +19,9 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -37,6 +43,7 @@ class ExpensePersistenceMySqlTest {
 
   @Autowired private ExpenseApplicationService expenses;
   @Autowired private ExpensePersistenceAdapter expensePersistence;
+  @Autowired private PersonalLedgerApplicationService ledgers;
   @Autowired private EntityManager entityManager;
   @Autowired private JdbcTemplate jdbc;
 
@@ -85,7 +92,7 @@ class ExpensePersistenceMySqlTest {
   }
 
   @Test
-  void findsOnlyActiveExpensesForTheBookCreatorAndInclusiveMonth() {
+  void findsOnlyActiveExpensesForTheOwnedLedgerAndInclusiveMonth() {
     String ledgerId = newLedgerId();
     var october = YearMonth.of(2026, 10);
 
@@ -95,8 +102,7 @@ class ExpensePersistenceMySqlTest {
     var income = record(ledgerId, "alice", october.atDay(5));
     record(ledgerId, "alice", october.atDay(1).minusDays(1));
     record(ledgerId, "alice", october.plusMonths(1).atDay(1));
-    record(ledgerId, "bob", october.atDay(4));
-    record(newLedgerId(), "alice", october.atDay(5));
+    record(newLedgerId("bob"), "bob", october.atDay(5));
     entityManager.flush();
     jdbc.update("UPDATE ledger_transactions SET deleted = 1 WHERE id = ?", deleted.id());
     jdbc.update("UPDATE ledger_transactions SET direction = 'INCOME' WHERE id = ?", income.id());
@@ -111,7 +117,56 @@ class ExpensePersistenceMySqlTest {
         new RecordExpenseCommand(ledgerId, actorId, 1230, date, "DINING", " 午饭 "));
   }
 
-  private static String newLedgerId() {
-    return "book_test_" + UUID.randomUUID();
+  @Test
+  void deniesBothReadsAndWritesToABookOwnedByAnotherActor() {
+    String ledgerId = newLedgerId();
+    var date = LocalDate.of(2026, 10, 31);
+    assertEquals(
+        ErrorCategory.FORBIDDEN,
+        assertThrows(FoundationException.class, () -> record(ledgerId, "bob", date)).category());
+    assertEquals(
+        ErrorCategory.FORBIDDEN,
+        assertThrows(
+                FoundationException.class,
+                () ->
+                    expenses.listExpenses(
+                        new ListExpensesQuery(ledgerId, "bob", YearMonth.from(date))))
+            .category());
+    entityManager.flush();
+    assertEquals(
+        0,
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM ledger_transactions WHERE ledger_id = ?",
+            Integer.class,
+            ledgerId));
+  }
+
+  @Test
+  void simultaneousOpeningKeepsOnePersonalLedger() throws Exception {
+    String owner = "actor_" + UUID.randomUUID();
+    var gate = new CyclicBarrier(2);
+    try (var pool = Executors.newFixedThreadPool(2)) {
+      var first =
+          pool.submit(() -> {
+            gate.await(8, TimeUnit.SECONDS);
+            return ledgers.openPersonalLedger(owner);
+          });
+      var second =
+          pool.submit(() -> {
+            gate.await(8, TimeUnit.SECONDS);
+            return ledgers.openPersonalLedger(owner);
+          });
+      assertEquals(first.get(12, TimeUnit.SECONDS), second.get(12, TimeUnit.SECONDS));
+    }
+  }
+
+  private String newLedgerId() {
+    return newLedgerId("alice");
+  }
+
+  private String newLedgerId(String ownerId) {
+    String id = "book_test_" + UUID.randomUUID();
+    jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", id, ownerId);
+    return id;
   }
 }
