@@ -21,6 +21,8 @@
 
 ## 提交与格式检查
 
+后端分层、命名、JPA 与验收规则见[后端编码规范](docs/development/后端编码规范.md)。
+
 首次克隆后在项目根目录运行 `npm ci --prefix frontend` 和 `git config --local core.hooksPath .githooks`，启用当前仓库的 Git 钩子。推送检查需要 Node.js、JDK 和 Maven，Java 版本见 [Foundation 说明](foundation/README.md)。
 
 - 提交标题采用 `type(scope): 简述`，范围可省略。例如 `feat(ledger): 支持关联退款流水`。允许的类型见 [commit-msg](.githooks/commit-msg)。

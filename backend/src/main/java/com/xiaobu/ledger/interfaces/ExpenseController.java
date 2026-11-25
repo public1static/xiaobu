@@ -3,12 +3,9 @@ package com.xiaobu.ledger.interfaces;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.aegisid.foundation.web.api.ApiResponse;
-import com.xiaobu.ledger.application.ExpenseLedger;
-import com.xiaobu.ledger.domain.Expense;
-import com.xiaobu.ledger.domain.ExpenseDetails;
+import com.xiaobu.ledger.application.ExpenseApplicationService;
+import com.xiaobu.ledger.application.ListExpensesQuery;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
-import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -27,21 +24,30 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/expenses")
 public class ExpenseController {
 
-  private static final String PREVIEW_BOOK = "book_local_primary";
-  private static final String PREVIEW_ACTOR = "user_local_primary";
+  private static final String PREVIEW_LEDGER_ID = "book_local_primary";
+  private static final String PREVIEW_ACTOR_ID = "user_local_primary";
+  private static final ErrorCode INVALID_MONTH = new ErrorCode("XIAOBU_INVALID_MONTH");
 
-  private final ExpenseLedger ledger;
+  private final ExpenseApplicationService expenses;
+  private final ExpenseWebMapper mapper;
 
-  public ExpenseController(ExpenseLedger ledger) {
-    this.ledger = ledger;
+  ExpenseController(ExpenseApplicationService expenses, ExpenseWebMapper mapper) {
+    this.expenses = expenses;
+    this.mapper = mapper;
   }
 
   @GetMapping
-  public ApiResponse<List<ExpenseResponse>> list(@RequestParam("month") String month) {
+  public ApiResponse<List<ExpenseResponse>> listExpenses(@RequestParam("month") String month) {
+    var query = new ListExpensesQuery(PREVIEW_LEDGER_ID, PREVIEW_ACTOR_ID, parseMonth(month));
     return ApiResponse.success(
-        ledger.list(PREVIEW_BOOK, PREVIEW_ACTOR, parseMonth(month)).stream()
-            .map(ExpenseResponse::from)
-            .toList());
+        expenses.listExpenses(query).stream().map(mapper::toResponse).toList());
+  }
+
+  @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+  public ApiResponse<ExpenseResponse> recordExpense(
+      @Valid @RequestBody RecordExpenseRequest request) {
+    var command = mapper.toCommand(request, PREVIEW_LEDGER_ID, PREVIEW_ACTOR_ID);
+    return ApiResponse.success(mapper.toResponse(expenses.recordExpense(command)));
   }
 
   private static YearMonth parseMonth(String value) {
@@ -51,39 +57,8 @@ public class ExpenseController {
         return month;
       }
     } catch (DateTimeParseException e) {
-      throw new FoundationException(new ErrorCode("XIAOBU_INVALID_MONTH"), "月份格式为 YYYY-MM");
+      throw new FoundationException(INVALID_MONTH, "月份格式为 YYYY-MM");
     }
-    throw new FoundationException(new ErrorCode("XIAOBU_INVALID_MONTH"), "月份超出有效范围");
-  }
-
-  @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-  public ApiResponse<ExpenseResponse> record(@Valid @RequestBody ExpenseRequest request) {
-    return ApiResponse.success(
-        ExpenseResponse.from(
-            ledger.record(
-                PREVIEW_BOOK,
-                PREVIEW_ACTOR,
-                new ExpenseDetails(
-                    request.amountCents(),
-                    request.bookedOn(),
-                    request.categoryCode(),
-                    request.note()))));
-  }
-
-  public record ExpenseRequest(
-      @NotNull Long amountCents, @NotNull LocalDate bookedOn, String categoryCode, String note) {}
-
-  public record ExpenseResponse(
-      String id, long amountCents, LocalDate bookedOn, String categoryCode, String note) {
-
-    static ExpenseResponse from(Expense expense) {
-      var details = expense.details();
-      return new ExpenseResponse(
-          expense.id(),
-          details.amountCents(),
-          details.bookedOn(),
-          details.categoryCode(),
-          details.note());
-    }
+    throw new FoundationException(INVALID_MONTH, "月份超出有效范围");
   }
 }
