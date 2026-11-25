@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+npm --prefix frontend run format:check
+cd foundation
+exec mvn -q spotless:check checkstyle:check

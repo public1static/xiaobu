@@ -1,0 +1,11 @@
+{
+  "name": "xiaobu-frontend",
+  "private": true,
+  "scripts": {
+    "format:check": "cd .. && prettier --check --config frontend/.prettierrc.json --ignore-path frontend/.prettierignore \"{frontend,docs/ui-design/vant-pilot}/**/*.{vue,js,cjs,mjs,ts,css,scss,html,json}\"",
+    "format:write": "cd .. && prettier --write --config frontend/.prettierrc.json --ignore-path frontend/.prettierignore \"{frontend,docs/ui-design/vant-pilot}/**/*.{vue,js,cjs,mjs,ts,css,scss,html,json}\""
+  },
+  "devDependencies": {
+    "prettier": "3.10.1"
+  }
+}

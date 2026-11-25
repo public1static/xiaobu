@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+subject=$(head -n 1 "$1")
+case "$subject" in
+  "Merge "*) test -f "$(git rev-parse --git-path MERGE_HEAD)" && exit 0 ;;
+esac
+if ! printf '%s\n' "$subject" | grep -Eq '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^[:space:]].*$'; then
+  echo '提交标题应为 type(scope): 简述，例如 fix(ledger): 修正退款金额。' >&2
+  exit 1
+fi

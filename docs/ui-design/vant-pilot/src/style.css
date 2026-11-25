@@ -1,0 +1,1160 @@
+:root {
+  color-scheme: light;
+  --paper: #f3f5f1;
+  --surface: #fff;
+  --ink: #182623;
+  --muted: #536660;
+  --line: #e4eae5;
+  --green: #176a57;
+  --green-deep: #124334;
+  --mint: #e8f4eb;
+  --danger: #a23832;
+  --unit: min(100%, 560px);
+  --van-primary-color: var(--green);
+  --van-success-color: var(--green);
+  --van-text-color: var(--ink);
+  --van-text-color-2: var(--muted);
+  --van-text-color-3: #71837c;
+  --van-border-color: var(--line);
+  --van-background: var(--paper);
+  --van-background-2: var(--surface);
+  --van-active-color: var(--mint);
+  --van-danger-color: var(--danger);
+  --van-button-border-radius: 12px;
+  --van-button-default-height: 45px;
+  --van-tabs-bottom-bar-color: var(--green);
+  --van-search-content-background: #edf1ec;
+  --van-field-input-text-color: var(--ink);
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'PingFang SC',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    system-ui,
+    sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+  background: #e7ede7;
+  color: var(--ink);
+}
+body {
+  font-size: 15px;
+}
+h1,
+h2,
+h3,
+p,
+dl,
+dd,
+ul {
+  margin: 0;
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+input {
+  min-width: 0;
+}
+.pilot-shell {
+  width: var(--unit);
+  min-height: 100dvh;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  isolation: isolate;
+  background: var(--paper);
+  padding-bottom: calc(78px + env(safe-area-inset-bottom));
+}
+.pilot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 75px;
+  padding: calc(9px + env(safe-area-inset-top)) 22px 8px;
+}
+.pilot-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.pilot-brand h1,
+.pilot-head h1 {
+  font-size: 1.52rem;
+  font-weight: 790;
+  letter-spacing: -0.055em;
+  line-height: 1.14;
+}
+.pilot-kicker {
+  font-size: 0.73rem;
+  font-weight: 720;
+  color: var(--muted);
+  letter-spacing: 0.045em;
+}
+.pilot-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pilot-main {
+  width: 100%;
+  min-width: 0;
+  padding: 0 18px;
+}
+.pilot-summary {
+  display: grid;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 21px;
+  padding: 17px 19px 18px;
+  color: #f5fff6;
+  background: var(--green-deep);
+  background-image: radial-gradient(ellipse at 99% 2%, #276b52 0, transparent 48%);
+}
+.pilot-period {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  font-size: 0.81rem;
+  font-weight: 670;
+  color: #d4e8dc;
+}
+.pilot-period button,
+.pilot-period .van-button {
+  background: #ffffff18;
+  min-height: 33px;
+  height: auto;
+  padding: 5px 10px;
+  color: #f5fff6;
+  border: 1px solid #ffffff22;
+  border-radius: 9px;
+  font-weight: 680;
+  font-size: 0.76rem;
+  line-height: 1.22;
+}
+.pilot-amount {
+  display: block;
+  align-self: start;
+  max-width: 100%;
+  color: #f6fff5;
+  font-size: clamp(2.14rem, 9.4vw, 3rem);
+  line-height: 1;
+  font-weight: 775;
+  letter-spacing: -0.064em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.pilot-metrics {
+  display: flex;
+  gap: 18px;
+  border-top: 1px solid #ffffff30;
+  padding-top: 11px;
+  color: #e1f3e6;
+}
+.pilot-metrics > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.pilot-metrics > * + * {
+  border-inline-start: 1px solid #ffffff30;
+  padding-inline-start: 16px;
+}
+.pilot-metrics dt,
+.pilot-metrics span,
+.pilot-metrics small {
+  font-size: 0.73rem;
+  color: #c5ddcf;
+}
+.pilot-metrics dd,
+.pilot-metrics strong {
+  display: block;
+  margin-top: 3px;
+  font-weight: 730;
+  font-size: 0.94rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.pilot-scope {
+  margin: 9px 0 7px;
+  border-bottom: 1px solid var(--line);
+}
+.pilot-scope .van-tabs__nav {
+  background: transparent;
+}
+.pilot-scope .van-tab {
+  font-weight: 620;
+}
+.pilot-scope .van-tab--active {
+  color: var(--green);
+  font-weight: 790;
+}
+.pilot-scope .van-tabs__line {
+  height: 2px;
+}
+.pilot-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin: 12px 0 16px;
+  min-width: 0;
+}
+.pilot-toolbar .van-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+}
+.pilot-toolbar .van-search__content {
+  align-items: center;
+  min-height: 44px;
+  border-radius: 11px;
+  padding-inline: 10px;
+  background: #e8eee8;
+}
+.pilot-day {
+  padding: 0;
+  min-width: 0;
+  margin: 0 0 13px;
+}
+.pilot-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  font-size: 0.77rem;
+  color: var(--muted);
+  padding: 0 3px 7px;
+}
+.pilot-day-head strong,
+.pilot-day-head h2 {
+  font-size: 0.88rem;
+  font-weight: 720;
+  color: #344741;
+}
+.pilot-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 11px;
+  min-height: 59px;
+  border: 0;
+  border-bottom: 1px solid #edf0eb;
+  background: var(--surface);
+  text-align: start;
+  color: var(--ink);
+  cursor: pointer;
+}
+.pilot-row:first-of-type {
+  border-radius: 13px 13px 0 0;
+}
+.pilot-row:last-of-type {
+  border-bottom: 0;
+  border-radius: 0 0 13px 13px;
+}
+.pilot-row:only-of-type {
+  border-radius: 13px;
+}
+.pilot-row:hover {
+  background: #f9fbf8;
+}
+.pilot-row-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #edf3eb;
+  color: var(--green);
+  font-size: 16px;
+  font-weight: 700;
+}
+.pilot-row-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  line-height: 1.25;
+}
+.pilot-row-copy strong {
+  font-size: 0.92rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+.pilot-row-copy small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.73rem;
+  overflow-wrap: anywhere;
+}
+.pilot-row-amount {
+  font-size: 0.96rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+.pilot-row-amount.is-income,
+.pilot-row-amount.income {
+  color: var(--green);
+}
+.pilot-empty {
+  min-height: 108px;
+  padding: 22px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed #cedbd1;
+  border-radius: 14px;
+  display: grid;
+  place-content: center;
+  gap: 7px;
+}
+.pilot-detail {
+  min-width: 0;
+}
+.pilot-detail-head {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 19px 16px 17px;
+  background: var(--surface);
+  border-radius: 16px 16px 0 0;
+}
+.pilot-detail-head h2 {
+  font-size: 0.96rem;
+  font-weight: 720;
+  color: var(--muted);
+}
+.pilot-detail-head strong {
+  font-size: 2.57rem;
+  font-weight: 785;
+  letter-spacing: -0.065em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.pilot-facts {
+  display: grid;
+  padding: 0 16px;
+  background: var(--surface);
+}
+.pilot-facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 15px;
+  padding-block: 12px;
+  border-top: 1px solid var(--line);
+}
+.pilot-facts dt {
+  font-size: 0.88rem;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.pilot-facts dd {
+  font-size: 0.9rem;
+  font-weight: 690;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+.pilot-detail-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 0 0;
+}
+.pilot-popover {
+  max-width: 560px;
+}
+@media (min-width: 561px) {
+  .pilot-shell {
+    box-shadow:
+      0 0 0 1px #d9e2d9,
+      0 24px 72px #223e2d15;
+  }
+}
+@media (max-width: 360px) {
+  .pilot-main {
+    padding-inline: 13px;
+  }
+  .pilot-head {
+    padding-inline: 16px;
+  }
+  .pilot-toolbar {
+    gap: 5px;
+  }
+  .pilot-row {
+    gap: 8px;
+    padding-inline: 9px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Product surfaces: the list and entry sheet use the same quiet hierarchy. */
+.pilot-brand {
+  display: grid;
+  gap: 3px;
+}
+.pilot-kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pilot-brand-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--green);
+  box-shadow: inset 0 0 0 2px #ffffff26;
+}
+.pilot-head-actions .pilot-history {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #dce6dd;
+  color: var(--green);
+  background: #fbfcfa;
+  font-size: 19px;
+}
+.pilot-summary {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+}
+button.pilot-period {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid #ffffff26;
+  border-radius: 10px;
+  background: #ffffff13;
+  color: #f2fff3;
+  font-size: 0.76rem;
+  font-weight: 710;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pilot-period:focus-visible {
+  outline-color: #c2f0d7;
+}
+.pilot-period .van-icon {
+  font-size: 13px;
+}
+.pilot-balance-label {
+  grid-row: 1;
+  grid-column: 1;
+  align-self: center;
+  color: #cce7d7;
+  font-size: 0.84rem;
+  font-weight: 680;
+}
+.pilot-amount {
+  grid-column: 1/-1;
+  margin: 1px 0 7px;
+}
+.pilot-amount span {
+  font-size: 0.57em;
+  vertical-align: 0.22em;
+  margin-inline-end: 4px;
+  letter-spacing: 0;
+  opacity: 0.94;
+}
+.pilot-metrics {
+  grid-column: 1/-1;
+}
+.pilot-metrics dt {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.pilot-metrics dt .van-icon {
+  background: #ffffff15;
+  border-radius: 50%;
+  padding: 3px;
+}
+.pilot-day-head h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pilot-day-head h2 small {
+  font-weight: 500;
+  font-size: 0.71rem;
+  color: var(--muted);
+}
+.pilot-row {
+  grid-template-columns: 36px minmax(0, 1fr) auto 10px;
+}
+.pilot-row .pilot-chevron {
+  color: #73867d;
+  font-size: 11px;
+  justify-self: end;
+}
+.pilot-row-amount.kind-income {
+  color: var(--green);
+}
+.pilot-row-icon.kind-income {
+  background: #e7f2e9;
+  color: var(--green);
+}
+.pilot-row-icon.kind-expense {
+  background: #f0f2eb;
+  color: #4c6c5a;
+}
+.pilot-fixture-note {
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-align: center;
+  padding: 6px 0 13px;
+}
+.van-popup.pilot-popover.van-popup--bottom {
+  width: var(--unit);
+  left: max(0px, calc((100vw - 560px) / 2));
+  right: auto;
+  transform: none;
+}
+.van-popup.pilot-popover {
+  background: #fbfcfa;
+  max-height: calc(100dvh - max(24px, env(safe-area-inset-top)));
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+.pilot-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 17px 7px;
+}
+.pilot-sheet-head h2 {
+  font-size: 1.12rem;
+  font-weight: 780;
+  letter-spacing: -0.025em;
+}
+.pilot-sheet-head .van-button {
+  width: 42px;
+  height: 42px;
+  border-color: var(--line);
+  color: #405851;
+  background: white;
+}
+.pilot-sheet-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 16px max(14px, env(safe-area-inset-bottom));
+}
+.pilot-sheet-actions > button {
+  flex: 1 1 0;
+}
+.pilot-sheet-actions > .van-button--primary {
+  font-weight: 720;
+}
+.pilot-detail-head {
+  margin: 0 15px;
+}
+.pilot-detail-head > span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 675;
+}
+.pilot-detail .pilot-facts {
+  margin: 0 15px;
+  padding: 0;
+}
+.pilot-facts > .van-cell {
+  gap: 10px;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+.pilot-facts > .van-cell::after {
+  border: 0;
+}
+.pilot-detail-gift {
+  margin: 0 15px;
+  border-top: 1px solid var(--line);
+  background: white;
+  border-radius: 0 0 14px 14px;
+}
+.pilot-detail-gift h3 {
+  font-size: 0.87rem;
+  padding: 13px 14px 2px;
+}
+.pilot-detail-gift .van-cell {
+  padding: 8px 14px;
+}
+.pilot-detail-actions > .van-button:first-child {
+  color: var(--danger);
+  border-color: #ecddd9;
+}
+.pilot-trash {
+  padding: 0 14px 12px;
+}
+.pilot-trash .van-cell {
+  align-items: center;
+}
+.pilot-undo {
+  position: fixed;
+  z-index: 2;
+  left: 50%;
+  bottom: calc(70px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(calc(100vw - 28px), 532px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px 6px 15px;
+  border: 1px solid #d5e3d8;
+  background: #edf7ee;
+  border-radius: 13px;
+  box-shadow: 0 5px 24px #1e362514;
+}
+.pilot-undo > span {
+  flex: 1;
+}
+.pilot-undo .van-button {
+  background: #f9fcf8;
+}
+.van-calendar__day--start,
+.van-calendar__day--end,
+.van-calendar__day--start-end {
+  background: var(--green) !important;
+}
+.pilot-entry-sheet .pilot-entry-form {
+  padding: 8px 16px max(13px, env(safe-area-inset-bottom));
+}
+.pilot-entry-sheet .pilot-entry-head {
+  padding: 0 0 2px;
+}
+.pilot-entry-sheet .pilot-entry-head .van-button {
+  width: 44px;
+  height: 44px;
+}
+.pilot-entry-sheet .pilot-entry-footer {
+  padding-bottom: 0;
+}
+.pilot-summary .pilot-period:hover {
+  background: #ffffff24;
+}
+
+/* 页面共用的导航、表单和列表尺寸。 */
+:root {
+  --page-bg: #f6f7f3;
+  --paper: var(--page-bg);
+  --soft: #e9eee8;
+  --ink: #24342d;
+  --muted: #5f7067;
+  --line: #e0e6de;
+  --green: #206a54;
+  --green-deep: #214d3d;
+  --button-radius: 12px;
+  --van-cell-font-size: 14px;
+  --field-label: 84px;
+  --field-gap: 10px;
+  --van-field-label-width: var(--field-label);
+  --van-field-label-margin-right: var(--field-gap);
+}
+.business-body .business-header,
+.ask-page .business-header {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 52px;
+  gap: 8px;
+  align-items: center;
+  min-height: 46px;
+  margin-bottom: 16px;
+}
+.business-header :is(h1, h2) {
+  grid-column: 2;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1.4;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.business-header button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--green);
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+.business-header button:first-child {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  background: var(--soft);
+  font-size: 18px;
+}
+.business-header button:last-child:not(:first-child) {
+  justify-self: end;
+  min-width: 44px;
+  font-size: 14px;
+}
+.business-body .van-button--block,
+.pilot-sheet-actions .van-button,
+.ask-suggestions .van-button {
+  border-radius: var(--button-radius);
+}
+.business-body .van-cell {
+  --van-cell-vertical-padding: 12px;
+  align-items: center;
+  min-height: 46px;
+}
+.business-body .van-cell__value,
+.pilot-detail-head {
+  font-variant-numeric: tabular-nums;
+}
+.business-body .van-cell__right-icon {
+  font-size: 14px;
+  color: #89978d;
+}
+.hub-links,
+.account-rows,
+.managed-form {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.hub-links,
+.account-rows {
+  overflow: hidden;
+}
+.hub-links + .hub-links {
+  margin-top: 16px;
+}
+.hub-links .business-link {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  padding: 15px;
+  min-height: 64px;
+}
+.hub-links .business-link + .business-link {
+  border-top: 1px solid var(--line);
+}
+.hub-links .business-link > .van-icon:first-child,
+.account-rows .van-cell__left-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 11px;
+  background: var(--soft);
+  color: var(--green);
+  font-size: 20px;
+  flex: none;
+}
+.hub-links .business-link > .van-icon:last-child {
+  font-size: 14px;
+  color: var(--muted);
+}
+.account-rows .van-cell__left-icon {
+  margin-right: 12px;
+}
+.account-rows .van-cell__value {
+  color: var(--ink);
+  font-weight: 600;
+}
+.managed-form {
+  padding: 6px 16px 16px;
+}
+.managed-form > .van-cell {
+  padding-inline: 0;
+}
+.managed-form .van-field__label {
+  position: relative;
+}
+/* 错误另起一行，标签与第一行输入值保持对齐。 */
+.van-form .van-field:has(.van-field__error-message) {
+  align-items: flex-start;
+}
+.van-form .slot-field {
+  min-height: 0;
+}
+
+.managed-form .pick {
+  display: grid;
+  grid-template-columns: 5em minmax(0, 1fr);
+  gap: 10px;
+  padding-inline: 0;
+}
+.managed-form .pick select {
+  max-width: 100%;
+  width: 100%;
+  padding: 0;
+}
+.managed-form > .van-cell::after {
+  left: 0;
+  right: 0;
+}
+.book-settings > .van-cell,
+.book-settings > .member-line {
+  border-bottom: 1px solid var(--line);
+}
+.book-settings > .van-cell:after {
+  display: none;
+}
+.book-settings > p,
+.backup-card p {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin: 12px 0;
+}
+.book-settings .member-line {
+  flex-wrap: wrap;
+}
+.book-settings .member-line button,
+.book-settings .member-line select {
+  border-radius: 8px;
+}
+.business-body .backup-card {
+  border-color: var(--line);
+  border-radius: 16px;
+}
+.backup-card input::file-selector-button {
+  padding: 9px 12px;
+  background: var(--soft);
+  color: var(--green);
+  font: inherit;
+  border: 0;
+  border-radius: 8px;
+  margin-right: 8px;
+}
+.pilot-toolbar .van-search__content,
+.contact-book .van-search__content {
+  background: var(--soft);
+}
+.pilot-detail-head {
+  background: var(--green-deep);
+  color: white;
+}
+.pilot-detail .pilot-detail-head > span,
+.pilot-detail .pilot-detail-head h2 {
+  color: #d6e7dd;
+}
+.pilot-sheet-head .van-button {
+  background: var(--soft);
+  border: 0;
+  border-radius: 12px;
+}
+.pilot-shell .pilot-main {
+  padding-inline: 16px;
+}
+.pilot-shell .pilot-head {
+  padding-inline: 16px;
+}
+.pilot-summary {
+  border-radius: 16px;
+}
+
+/* 星号跟随标签，标签文字与值的起点保持固定。 */
+.field-mark,
+.van-field__label--required::after {
+  margin-inline-start: 3px;
+  color: var(--danger);
+  font-weight: 650;
+}
+.van-field__label.van-field__label--required::before {
+  content: none;
+}
+.van-field__label--required::after {
+  content: '*';
+}
+.form-picker-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: var(--field-label) minmax(0, 1fr);
+  gap: var(--field-gap);
+  align-items: center;
+  min-height: 46px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+.form-picker-row > span:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 原生下拉与 Vant 字段共用内容列；外层细线分隔每一行。 */
+.native-field-row {
+  display: grid;
+  grid-template-columns: var(--field-label) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--field-gap);
+  padding: 10px 16px;
+  min-height: 46px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.native-field-row select {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+:where(form, .book-settings, .contact-book) .van-field__control:focus,
+.native-field-row select:focus {
+  outline: 0;
+  box-shadow: none;
+}
+.van-field:focus-within .van-field__label,
+.native-field-row:focus-within > span,
+.pilot-entry-contact:has(> .pilot-entry-contact__input input:focus) > label,
+.pilot-entry-contact__new:focus-within > label {
+  color: var(--green);
+}
+
+/* 两项互斥的表单字段沿用输入列宽，分段底色标明可操作范围。 */
+.direction-field {
+  display: grid;
+  grid-template-columns: var(--field-label) minmax(0, 1fr);
+  gap: var(--field-gap);
+  align-items: center;
+  font-size: 14px;
+  min-height: 48px;
+}
+.pilot-entry-form .direction-field {
+  padding-inline: 14px;
+}
+.field-segments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 3px;
+  gap: 3px;
+  border-radius: 11px;
+  background: var(--soft);
+}
+.field-segments button {
+  min-height: 38px;
+  padding: 5px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.field-segments button[aria-pressed='true'] {
+  background: var(--green);
+  color: #fff;
+  font-weight: 650;
+}
+
+/* 同一个选项在表单与管理弹层中复用尺寸和选中态。 */
+.reason-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-content: start;
+}
+.reason-chip,
+.category-option {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid transparent;
+  background: var(--page-bg);
+  color: var(--ink);
+  font: inherit;
+}
+.reason-chip {
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.category-options {
+  display: grid;
+  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+  grid-auto-rows: 44px;
+  gap: 4px;
+}
+.category-option {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  padding: 2px 1px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.category-option > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--green);
+  font-size: 18px;
+}
+.category-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.category-name.long {
+  font-size: 11px;
+}
+.reason-chip[aria-pressed='true'],
+.category-option[aria-pressed='true'] {
+  color: var(--green);
+  background: var(--mint);
+  border-color: var(--green);
+}
+.field-segments.cycle-segments {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* 选择行共用值列和尾部箭头，空值只改变文字颜色。 */
+.picker-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.picker-display.is-placeholder {
+  color: var(--muted);
+}
+.picker-display > .van-icon-arrow {
+  flex: none;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+/* 固定值列末端的位置，清除按钮的命中区域不参与行高计算。 */
+.clearable-value .van-field__body {
+  position: relative;
+  padding-right: 32px;
+}
+.clearable-value .van-field__button {
+  padding: 0;
+}
+.picker-with-clear {
+  position: relative;
+}
+.picker-with-clear .picker-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker-with-clear:has(> .field-clear) .picker-text {
+  max-width: calc(100% - 56px);
+}
+.picker-with-clear > button.field-clear {
+  right: 22px;
+}
+.pilot-entry-form .picker-with-clear > button.field-clear {
+  right: 35px;
+}
+
+/* 三项互斥选择共用单行轨道，选中项与内容面板使用同一底色。 */
+.field-segments.three-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 10px;
+}
+.three-options button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--green);
+  box-shadow: 0 1px 4px #193c2820;
+}
+
+/* 记录页只保留一个主动作；辅助菜单与保存共用按钮高度。 */
+.record-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+.record-actions > .van-button {
+  margin: 0;
+  height: 44px;
+  border-radius: var(--button-radius);
+}
+.record-actions > .van-button--primary {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+.record-actions > .van-button--plain {
+  flex: 1;
+  min-width: 0;
+  padding-inline: 16px;
+  color: var(--muted);
+  background: white;
+  border-color: var(--line);
+}
+.record-actions > .record-danger {
+  color: var(--danger);
+}
+.record-actions.detail-footer {
+  margin: 0;
+  padding: 14px 16px max(14px, env(safe-area-inset-bottom));
+}
+.van-form .van-button--block[type='submit'] {
+  min-height: 44px;
+  border-radius: var(--button-radius);
+}
