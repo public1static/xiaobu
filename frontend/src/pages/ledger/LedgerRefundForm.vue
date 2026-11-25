@@ -18,9 +18,11 @@ const selectedAccount = ref<LedgerAccount | null>(null);
 const selectingAccount = ref(false);
 const saving = ref(false);
 const error = ref('');
+const validationError = ref('');
 
 function onDateChange(event: { detail: { value: string } }) {
   receivedOn.value = event.detail.value;
+  validationError.value = '';
 }
 
 function selectAccount(account: LedgerAccount | null) {
@@ -32,14 +34,15 @@ async function save() {
   if (saving.value) return;
   const amountCents = parseCents(amount.value);
   if (!amountCents || amountCents > props.remainingCents) {
-    error.value = '请输入不超过可退金额的退款金额。';
+    validationError.value = '请输入不超过可退金额的退款金额。';
     return;
   }
   if (receivedOn.value < props.detail.transaction.bookedOn || receivedOn.value > localDay()) {
-    error.value = '到账日期须在原付款日期至今天之间。';
+    validationError.value = '到账日期须在原付款日期至今天之间。';
     return;
   }
   saving.value = true;
+  validationError.value = '';
   error.value = '';
   try {
     await recordLedgerRefund(props.ledgerId, props.detail.transaction.id, {
@@ -70,7 +73,13 @@ async function save() {
         <label for="refund-amount">退款金额</label>
         <view class="refund-input">
           <text>¥</text>
-          <input id="refund-amount" v-model="amount" inputmode="decimal" placeholder="0.00" />
+          <input
+            id="refund-amount"
+            v-model="amount"
+            type="digit"
+            placeholder="0.00"
+            @input="validationError = ''"
+          />
         </view>
       </view>
       <view class="meta-row">
@@ -106,7 +115,9 @@ async function save() {
       @select="selectAccount"
       :allow-transfer="false"
     />
-    <text v-if="error" class="error" role="alert">{{ error }}</text>
+    <text v-if="validationError || error" class="error" role="alert">{{
+      validationError || error
+    }}</text>
     <view class="refund-actions">
       <button class="primary secondary" :disabled="saving" @click="emit('cancel')">取消</button>
       <button class="primary" :disabled="saving" @click="save">

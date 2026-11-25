@@ -226,7 +226,7 @@ onMounted(load);
 }
 .refund-history > .detail-caption {
   display: block;
-  margin-bottom: 4px;
+  padding: 10px 12px 0;
 }
 .detail-actions {
   display: grid;
