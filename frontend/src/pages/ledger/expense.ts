@@ -37,3 +37,20 @@ export function localDay(date = new Date()) {
     String(date.getDate()).padStart(2, '0'),
   ].join('-');
 }
+
+export const FIRST_LEDGER_MONTH = '1900-01';
+
+export function resolveLedgerMonth(value: unknown, currentMonth: string) {
+  return typeof value === 'string' &&
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(value) &&
+    value >= FIRST_LEDGER_MONTH &&
+    value <= currentMonth
+    ? value
+    : currentMonth;
+}
+
+export function shiftLedgerMonth(month: string, offset: -1 | 1) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const index = year * 12 + monthNumber - 1 + offset;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
+}
