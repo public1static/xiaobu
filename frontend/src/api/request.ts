@@ -1,3 +1,5 @@
+import { getWechatSessionToken, wechatPreviewApiBase } from './preview-transport';
+
 export class ApiRequestError extends Error {
   constructor(
     readonly status: number,
@@ -9,12 +11,20 @@ export class ApiRequestError extends Error {
 }
 
 export function request<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE', data?: object) {
+  let base = '';
+  const header: Record<string, string> = { 'Content-Type': 'application/json' };
+  // #ifdef MP-WEIXIN
+  base = wechatPreviewApiBase();
+  if (!base) return Promise.reject(new ApiRequestError(0, '尚未配置微信联调服务。'));
+  const token = getWechatSessionToken();
+  if (token) header.Authorization = `Bearer ${token}`;
+  // #endif
   return new Promise<T>((resolve, reject) => {
     uni.request({
-      url: `/api/v1${path}`,
+      url: `${base}/api/v1${path}`,
       method,
       data,
-      header: { 'Content-Type': 'application/json' },
+      header,
       success: ({ data: raw, statusCode }) => {
         if (statusCode === 204) {
           resolve(undefined as T);

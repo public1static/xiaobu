@@ -3,8 +3,8 @@ package com.xiaobu.ledger.interfaces;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.aegisid.foundation.web.api.ApiResponse;
+import com.xiaobu.identity.interfaces.LedgerSessionContext;
 import com.xiaobu.identity.interfaces.LocalPreviewAccount;
-import com.xiaobu.identity.interfaces.LocalSessionContext;
 import com.xiaobu.ledger.application.ChangeLedgerTransactionStateCommand;
 import com.xiaobu.ledger.application.EditLedgerTransactionCommand;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("local-expense")
+@Profile("local-expense | wechat-preview")
 @RequestMapping("/api/v1/ledgers/{ledgerId}/transactions")
 public class LedgerTransactionController {
 
@@ -53,7 +53,7 @@ public class LedgerTransactionController {
       @RequestParam(name = "through", required = false) String through,
       @RequestParam(name = "keyword", defaultValue = "") String keyword,
       HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     var query = toQuery(ledgerId, actor.actorId(), month, from, through, keyword);
     return ApiResponse.success(
         transactions.listLedgerTransactions(query).stream().map(mapper::toResponse).toList());
@@ -64,7 +64,7 @@ public class LedgerTransactionController {
       @PathVariable("ledgerId") String ledgerId,
       @Valid @RequestBody RecordLedgerTransactionRequest request,
       HttpServletRequest httpRequest) {
-    var actor = LocalSessionContext.require(httpRequest);
+    var actor = LedgerSessionContext.require(httpRequest);
     var command = mapper.toCommand(request, ledgerId, actor.actorId());
     return ApiResponse.success(mapper.toResponse(transactions.recordLedgerTransaction(command)));
   }
@@ -74,7 +74,7 @@ public class LedgerTransactionController {
       @PathVariable("ledgerId") String ledgerId,
       @PathVariable("transactionId") String transactionId,
       HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     var result = transactions.getLedgerTransaction(ledgerId, actor.actorId(), transactionId);
     String name =
         actor.actorId().equals(result.createdBy())
@@ -92,7 +92,7 @@ public class LedgerTransactionController {
   @GetMapping("/recently-deleted")
   public ApiResponse<List<DeletedLedgerTransactionResponse>> listRecentlyDeleted(
       @PathVariable("ledgerId") String ledgerId, HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     return ApiResponse.success(
         transactions.listRecentlyDeleted(ledgerId, actor.actorId()).stream()
             .map(result ->
@@ -108,7 +108,7 @@ public class LedgerTransactionController {
       @PathVariable("transactionId") String transactionId,
       @Valid @RequestBody EditLedgerTransactionRequest input,
       HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     var draft = input.draft();
     transactions.editLedgerTransaction(
         new EditLedgerTransactionCommand(
@@ -131,7 +131,7 @@ public class LedgerTransactionController {
       @PathVariable("transactionId") String transactionId,
       @RequestParam(name = "version", defaultValue = "") String version,
       HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     transactions.deleteLedgerTransaction(
         new ChangeLedgerTransactionStateCommand(
             ledgerId, actor.actorId(), transactionId, parseVersion(version)));
@@ -144,7 +144,7 @@ public class LedgerTransactionController {
       @PathVariable("transactionId") String transactionId,
       @Valid @RequestBody RestoreLedgerTransactionRequest input,
       HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     transactions.restoreLedgerTransaction(
         new ChangeLedgerTransactionStateCommand(
             ledgerId, actor.actorId(), transactionId, input.version()));

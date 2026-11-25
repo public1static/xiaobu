@@ -34,3 +34,16 @@ spring:
     password: ${XIAOBU_DEV_DB_PASSWORD}
     hikari:
       maximum-pool-size: 3
+---
+spring:
+  config:
+    activate:
+      on-profile: wechat-preview
+  datasource:
+    url: ${XIAOBU_DEV_DB_URL}
+    username: ${XIAOBU_DEV_DB_USER}
+    password: ${XIAOBU_DEV_DB_PASSWORD}
+xiaobu:
+  wechat:
+    app-id: ${XIAOBU_WECHAT_APP_ID:}
+    app-secret: ${XIAOBU_WECHAT_APP_SECRET:}

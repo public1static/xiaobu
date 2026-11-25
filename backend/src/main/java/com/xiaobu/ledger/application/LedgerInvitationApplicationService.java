@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("local-expense")
+@Profile("local-expense | wechat-preview")
 public class LedgerInvitationApplicationService {
 
   private static final Duration VALIDITY = Duration.ofHours(24);

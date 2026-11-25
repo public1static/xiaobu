@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Loopback test sign-in only; this endpoint does not verify a real identity. */
 @RestController
-@Profile("local-expense")
+@Profile("local-expense & !wechat-preview")
 @RequestMapping("/api/v1/local-session")
 public class LocalSessionController {
 
@@ -31,23 +31,23 @@ public class LocalSessionController {
       @Valid @RequestBody OpenLocalSessionRequest input, HttpServletRequest request) {
     var account = LocalPreviewAccount.fromSelector(input.account());
     var ledger = ledgers.openPersonalLedger(account.actorId());
-    var context = new LocalSessionContext(account.actorId(), account.displayName(), ledger.id());
-    LocalSessionContext.open(request, context);
+    var context = new LedgerSessionContext(account.actorId(), account.displayName(), ledger.id());
+    LedgerSessionContext.open(request, context);
     return ApiResponse.success(toResponse(context));
   }
 
   @GetMapping
   public ApiResponse<LocalSessionResponse> getLocalSession(HttpServletRequest request) {
-    return ApiResponse.success(toResponse(LocalSessionContext.require(request)));
+    return ApiResponse.success(toResponse(LedgerSessionContext.require(request)));
   }
 
   @DeleteMapping
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void closeLocalSession(HttpServletRequest request) {
-    LocalSessionContext.close(request);
+    LedgerSessionContext.close(request);
   }
 
-  private static LocalSessionResponse toResponse(LocalSessionContext context) {
+  private static LocalSessionResponse toResponse(LedgerSessionContext context) {
     return new LocalSessionResponse(context.displayName(), context.ledgerId());
   }
 }
