@@ -5,6 +5,7 @@ import com.aegisid.foundation.data.id.IdPrefix;
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
+import com.xiaobu.ledger.domain.LedgerMembership;
 import com.xiaobu.ledger.domain.PersonalLedger;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -17,6 +18,8 @@ public class PersonalLedgerApplicationService {
   private static final IdPrefix LEDGER_PREFIX = new IdPrefix("book");
   private static final ErrorCode LEDGER_ACCESS_DENIED =
       new ErrorCode("XIAOBU_LEDGER_ACCESS_DENIED");
+
+  private static final ErrorCode LEDGER_READ_ONLY = new ErrorCode("XIAOBU_LEDGER_READ_ONLY");
 
   private final PersonalLedgerRepository ledgers;
   private final EntityIdGenerator ids;
@@ -45,8 +48,28 @@ public class PersonalLedgerApplicationService {
 
   public void requireReadAccess(String ledgerId, String actorId) {
     if (!ledgers.existsByIdAndOwnerId(ledgerId, actorId)
-        && !memberships.existsByLedgerAndMember(ledgerId, actorId)) {
+        && !memberships.existsActiveByLedgerAndMember(ledgerId, actorId)) {
       throw denied();
+    }
+  }
+
+  void lockLedger(String ledgerId) {
+    if (!memberships.lockLedgerMembershipChanges(ledgerId)) {
+      throw denied();
+    }
+  }
+
+  public void requireWriteAccess(String ledgerId, String actorId) {
+    lockLedger(ledgerId);
+    if (ledgers.existsByIdAndOwnerId(ledgerId, actorId)) return;
+    var member =
+        memberships
+            .findByLedgerAndMember(ledgerId, actorId)
+            .filter(LedgerMembership::isActive)
+            .orElseThrow(this::denied);
+    if (!member.canRecord()) {
+      throw new FoundationException(
+          LEDGER_READ_ONLY, ErrorCategory.FORBIDDEN, "当前权限为只读，这笔账未保存", Map.of());
     }
   }
 

@@ -502,3 +502,13 @@ button::after {
   border-radius: 8px;
   font-size: 14px;
 }
+
+.ledger-notice {
+  display: block;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eaf3ed;
+  color: var(--green);
+  font-size: 13px;
+}

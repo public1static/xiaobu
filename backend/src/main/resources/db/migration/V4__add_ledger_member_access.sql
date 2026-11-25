@@ -1,0 +1,3 @@
+ALTER TABLE ledger_members
+    ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'READ_ONLY',
+    ADD COLUMN removed_at DATETIME(6) NULL;

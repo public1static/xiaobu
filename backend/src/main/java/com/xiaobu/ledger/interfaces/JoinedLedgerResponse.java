@@ -1,3 +1,5 @@
 package com.xiaobu.ledger.interfaces;
 
-record JoinedLedgerResponse(String ledgerId, String inviterName) {}
+import com.xiaobu.ledger.domain.LedgerMemberRole;
+
+record JoinedLedgerResponse(String ledgerId, String inviterName, LedgerMemberRole role) {}

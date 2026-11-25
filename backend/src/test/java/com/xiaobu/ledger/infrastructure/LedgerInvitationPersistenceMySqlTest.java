@@ -8,11 +8,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
+import com.xiaobu.ledger.application.ChangeLedgerMemberRoleCommand;
 import com.xiaobu.ledger.application.CreateLedgerInvitationCommand;
 import com.xiaobu.ledger.application.ExpenseApplicationService;
 import com.xiaobu.ledger.application.LedgerInvitationApplicationService;
+import com.xiaobu.ledger.application.LedgerMemberApplicationService;
 import com.xiaobu.ledger.application.ListExpensesQuery;
 import com.xiaobu.ledger.application.RecordExpenseCommand;
+import com.xiaobu.ledger.application.RemoveLedgerMemberCommand;
+import com.xiaobu.ledger.domain.LedgerMemberRole;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -37,6 +41,7 @@ class LedgerInvitationPersistenceMySqlTest {
 
   @Autowired private LedgerInvitationApplicationService invites;
   @Autowired private ExpenseApplicationService expenses;
+  @Autowired private LedgerMemberApplicationService members;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private EntityManager entities;
 
@@ -133,6 +138,91 @@ class LedgerInvitationPersistenceMySqlTest {
                 FoundationException.class,
                 () -> invites.acceptLedgerInvitation(invite.token(), "beta"))
             .category());
+  }
+
+  @Test
+  void roleChangesAffectWritesAndOldLinksCannotRestoreRemovedMember() {
+    String ledgerId = createLedger();
+    var date = LocalDate.of(2026, 10, 31);
+    var owner = new CreateLedgerInvitationCommand(ledgerId, "alpha", "测试甲");
+    var accepted = invites.createLedgerInvitation(owner);
+    var unused = invites.createLedgerInvitation(owner);
+    invites.acceptLedgerInvitation(accepted.token(), "beta");
+
+    var draft = new RecordExpenseCommand(ledgerId, "beta", 5400, date, "DINING", "乙记账");
+    assertEquals(
+        "XIAOBU_LEDGER_READ_ONLY",
+        assertThrows(FoundationException.class, () -> expenses.recordExpense(draft))
+            .errorCode()
+            .value());
+    members.changeLedgerMemberRole(
+        new ChangeLedgerMemberRoleCommand(ledgerId, "alpha", "beta", LedgerMemberRole.CAN_RECORD));
+    var saved = expenses.recordExpense(draft);
+    assertEquals(
+        LedgerMemberRole.CAN_RECORD,
+        invites.acceptLedgerInvitation(accepted.token(), "beta").role());
+    entities.flush();
+    assertEquals(
+        "beta",
+        jdbc.queryForObject(
+            "SELECT created_by FROM ledger_transactions WHERE id = ?", String.class, saved.id()));
+
+    members.changeLedgerMemberRole(
+        new ChangeLedgerMemberRoleCommand(ledgerId, "alpha", "beta", LedgerMemberRole.READ_ONLY));
+    assertEquals(
+        "XIAOBU_LEDGER_READ_ONLY",
+        assertThrows(FoundationException.class, () -> expenses.recordExpense(draft))
+            .errorCode()
+            .value());
+    assertEquals(
+        1,
+        expenses
+            .listExpenses(new ListExpensesQuery(ledgerId, "beta", YearMonth.from(date)))
+            .size());
+    assertEquals(
+        ErrorCategory.FORBIDDEN,
+        assertThrows(FoundationException.class, () -> members.listLedgerMembers(ledgerId, "beta"))
+            .category());
+    assertEquals(
+        ErrorCategory.FORBIDDEN,
+        assertThrows(
+                FoundationException.class,
+                () ->
+                    members.changeLedgerMemberRole(
+                        new ChangeLedgerMemberRoleCommand(
+                            ledgerId, "beta", "beta", LedgerMemberRole.CAN_RECORD)))
+            .category());
+
+    members.removeLedgerMember(new RemoveLedgerMemberCommand(ledgerId, "alpha", "beta"));
+    assertEquals(
+        ErrorCategory.FORBIDDEN,
+        assertThrows(
+                FoundationException.class,
+                () ->
+                    expenses.listExpenses(
+                        new ListExpensesQuery(ledgerId, "beta", YearMonth.from(date))))
+            .category());
+    assertTrue(invites.listJoinedLedgers("beta").isEmpty());
+    assertEquals(
+        ErrorCategory.NOT_FOUND,
+        assertThrows(
+                FoundationException.class,
+                () -> invites.acceptLedgerInvitation(accepted.token(), "beta"))
+            .category());
+    assertEquals(
+        ErrorCategory.NOT_FOUND,
+        assertThrows(
+                FoundationException.class,
+                () -> invites.acceptLedgerInvitation(unused.token(), "beta"))
+            .category());
+    assertEquals(
+        1,
+        expenses
+            .listExpenses(new ListExpensesQuery(ledgerId, "alpha", YearMonth.from(date)))
+            .size());
+    var fresh = invites.createLedgerInvitation(owner);
+    assertEquals(
+        LedgerMemberRole.READ_ONLY, invites.acceptLedgerInvitation(fresh.token(), "beta").role());
   }
 
   private String createLedger() {

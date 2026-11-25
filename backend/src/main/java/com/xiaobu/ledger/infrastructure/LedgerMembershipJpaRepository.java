@@ -8,9 +8,13 @@ interface LedgerMembershipJpaRepository extends Repository<LedgerMembershipEntit
 
   <S extends LedgerMembershipEntity> S save(S entity);
 
-  boolean existsByLedgerIdAndMemberId(String ledgerId, String memberId);
+  boolean existsByLedgerIdAndMemberIdAndRemovedAtIsNull(String ledgerId, String memberId);
 
   Optional<LedgerMembershipEntity> findByLedgerIdAndMemberId(String ledgerId, String memberId);
 
-  List<LedgerMembershipEntity> findByMemberIdOrderByIdAsc(String memberId);
+  List<LedgerMembershipEntity> findByMemberIdAndRemovedAtIsNullOrderByIdAsc(String memberId);
+
+  List<LedgerMembershipEntity> findByLedgerIdAndRemovedAtIsNullOrderByIdAsc(String ledgerId);
+
+  Optional<LedgerMembershipEntity> findById(String id);
 }

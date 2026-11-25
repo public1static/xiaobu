@@ -30,7 +30,7 @@ public class ExpenseApplicationService {
 
   @Transactional
   public ExpenseResult recordExpense(RecordExpenseCommand command) {
-    ledgers.requireOwnership(command.ledgerId(), command.actorId());
+    ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
     var details =
         new ExpenseDetails(
             command.amountCents(), command.bookedOn(), command.categoryCode(), command.note());

@@ -1,8 +1,11 @@
 import { request } from './request';
 
+export type LedgerMemberRole = 'READ_ONLY' | 'CAN_RECORD';
+
 export interface JoinedLedger {
   ledgerId: string;
   inviterName: string;
+  role: LedgerMemberRole;
 }
 
 interface LedgerInvitation {
