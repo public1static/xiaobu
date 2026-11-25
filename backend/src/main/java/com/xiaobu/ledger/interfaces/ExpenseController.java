@@ -10,7 +10,6 @@ import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import org.springframework.context.annotation.Profile;
-import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -43,7 +42,7 @@ public class ExpenseController {
         expenses.listExpenses(query).stream().map(mapper::toResponse).toList());
   }
 
-  @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+  @PostMapping
   public ApiResponse<ExpenseResponse> recordExpense(
       @Valid @RequestBody RecordExpenseRequest request) {
     var command = mapper.toCommand(request, PREVIEW_LEDGER_ID, PREVIEW_ACTOR_ID);

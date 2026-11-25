@@ -6,12 +6,16 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.LocalDate;
+import org.springframework.data.domain.Persistable;
 
 @Entity
 @Table(name = "ledger_transactions")
-public class LedgerTransactionEntity extends AuditableEntity {
+public class LedgerTransactionEntity extends AuditableEntity implements Persistable<String> {
 
   @Id
   @Column(length = 48, updatable = false)
@@ -45,6 +49,9 @@ public class LedgerTransactionEntity extends AuditableEntity {
   @Column(nullable = false)
   private boolean deleted;
 
+  // The application assigns the ID before the first save.
+  @Transient private boolean newEntity = true;
+
   protected LedgerTransactionEntity() {}
 
   public LedgerTransactionEntity(
@@ -70,8 +77,20 @@ public class LedgerTransactionEntity extends AuditableEntity {
     this.deleted = deleted;
   }
 
+  @Override
   public String getId() {
     return id;
+  }
+
+  @Override
+  public boolean isNew() {
+    return newEntity;
+  }
+
+  @PostLoad
+  @PostPersist
+  void markNotNew() {
+    newEntity = false;
   }
 
   public long getAmountCents() {

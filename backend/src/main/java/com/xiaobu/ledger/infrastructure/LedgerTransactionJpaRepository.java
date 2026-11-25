@@ -8,6 +8,8 @@ import org.springframework.data.repository.query.Param;
 
 interface LedgerTransactionJpaRepository extends Repository<LedgerTransactionEntity, String> {
 
+  <S extends LedgerTransactionEntity> S save(S entity);
+
   @Query(
       """
       select t from LedgerTransactionEntity t

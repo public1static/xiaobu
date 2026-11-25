@@ -1,6 +1,7 @@
 package com.xiaobu.ledger.infrastructure;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xiaobu.boot.XiaobuApplication;
@@ -8,11 +9,14 @@ import com.xiaobu.ledger.application.ExpenseApplicationService;
 import com.xiaobu.ledger.application.ExpenseResult;
 import com.xiaobu.ledger.application.ListExpensesQuery;
 import com.xiaobu.ledger.application.RecordExpenseCommand;
+import com.xiaobu.ledger.domain.Expense;
+import com.xiaobu.ledger.domain.ExpenseDetails;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 class ExpensePersistenceMySqlTest {
 
   @Autowired private ExpenseApplicationService expenses;
+  @Autowired private JpaExpenseRepository expenseRepository;
   @Autowired private EntityManager entityManager;
   @Autowired private JdbcTemplate jdbc;
 
@@ -60,6 +65,23 @@ class ExpensePersistenceMySqlTest {
     assertEquals(1, ((Number) audit.get("same_audit_time")).intValue());
     assertTrue(((Number) audit.get("utc_offset")).longValue() < 30);
     assertEquals(0, ((Number) audit.get("deleted_flag")).intValue());
+  }
+
+  @Test
+  void assignedIdConflictDoesNotUpdateAnExistingExpense() {
+    String ledgerId = newLedgerId();
+    var date = LocalDate.of(2026, 10, 31);
+    var saved = record(ledgerId, "alice", date);
+    entityManager.flush();
+    entityManager.clear();
+
+    var conflict = new Expense(saved.id(), new ExpenseDetails(9900, date, "DINING", "冲突记录"));
+    assertThrows(
+        ConstraintViolationException.class,
+        () -> {
+          expenseRepository.add(ledgerId, "alice", conflict);
+          entityManager.flush();
+        });
   }
 
   @Test
