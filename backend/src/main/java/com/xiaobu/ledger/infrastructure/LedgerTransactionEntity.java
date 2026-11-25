@@ -1,6 +1,7 @@
 package com.xiaobu.ledger.infrastructure;
 
 import com.aegisid.foundation.data.jpa.AuditableEntity;
+import com.xiaobu.ledger.domain.TransactionDirection;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -91,6 +92,10 @@ public class LedgerTransactionEntity extends AuditableEntity implements Persista
   @PostPersist
   void markNotNew() {
     newEntity = false;
+  }
+
+  public TransactionDirection getDirection() {
+    return direction;
   }
 
   public long getAmountCents() {

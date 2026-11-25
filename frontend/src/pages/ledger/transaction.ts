@@ -1,4 +1,4 @@
-export const CATEGORIES = [
+const EXPENSE_CATEGORIES = [
   ['DINING', '餐饮'],
   ['GROCERIES', '买菜'],
   ['TRANSIT', '交通'],
@@ -12,10 +12,38 @@ export const CATEGORIES = [
   ['OTHER', '其他支出'],
 ] as const;
 
-export type CategoryCode = (typeof CATEGORIES)[number][0];
+const INCOME_CATEGORIES = [
+  ['SALARY', '工资'],
+  ['BONUS', '奖金'],
+  ['SIDE_INCOME', '兼职'],
+  ['OTHER_INCOME', '其他收入'],
+] as const;
 
-export function categoryLabel(code: string) {
-  return CATEGORIES.find(([key]) => key === code)?.[1] ?? '其他支出';
+export type TransactionDirection = 'EXPENSE' | 'INCOME';
+type Category = (typeof EXPENSE_CATEGORIES)[number] | (typeof INCOME_CATEGORIES)[number];
+export type CategoryCode = Category[0];
+
+export function categoriesFor(direction: TransactionDirection): readonly Category[] {
+  return direction === 'INCOME' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+}
+
+export function categoryLabel(code: string, direction: TransactionDirection) {
+  return (
+    categoriesFor(direction).find(([key]) => key === code)?.[1] ??
+    (direction === 'INCOME' ? '其他收入' : '其他支出')
+  );
+}
+
+export function summarizeTransactions(
+  items: readonly { direction: TransactionDirection; amountCents: number }[],
+) {
+  let income = 0;
+  let expense = 0;
+  for (const item of items) {
+    if (item.direction === 'INCOME') income += item.amountCents;
+    else expense += item.amountCents;
+  }
+  return { income, expense, balance: income - expense };
 }
 
 export function parseCents(input: string): number | null {

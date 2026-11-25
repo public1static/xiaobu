@@ -10,13 +10,14 @@ import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
 import com.xiaobu.ledger.application.ChangeLedgerMemberRoleCommand;
 import com.xiaobu.ledger.application.CreateLedgerInvitationCommand;
-import com.xiaobu.ledger.application.ExpenseApplicationService;
 import com.xiaobu.ledger.application.LedgerInvitationApplicationService;
 import com.xiaobu.ledger.application.LedgerMemberApplicationService;
-import com.xiaobu.ledger.application.ListExpensesQuery;
-import com.xiaobu.ledger.application.RecordExpenseCommand;
+import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
+import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
+import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
 import com.xiaobu.ledger.application.RemoveLedgerMemberCommand;
 import com.xiaobu.ledger.domain.LedgerMemberRole;
+import com.xiaobu.ledger.domain.TransactionDirection;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -40,7 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 class LedgerInvitationPersistenceMySqlTest {
 
   @Autowired private LedgerInvitationApplicationService invites;
-  @Autowired private ExpenseApplicationService expenses;
+  @Autowired private LedgerTransactionApplicationService expenses;
   @Autowired private LedgerMemberApplicationService members;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private EntityManager entities;
@@ -50,8 +51,9 @@ class LedgerInvitationPersistenceMySqlTest {
     String ledgerId = createLedger();
     var date = LocalDate.of(2026, 10, 31);
     var record =
-        expenses.recordExpense(
-            new RecordExpenseCommand(ledgerId, "alpha", 1230, date, "DINING", "午饭"));
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledgerId, "alpha", TransactionDirection.EXPENSE, 1230, date, "DINING", "午饭"));
 
     var invite =
         invites.createLedgerInvitation(new CreateLedgerInvitationCommand(ledgerId, "alpha", "测试甲"));
@@ -65,8 +67,8 @@ class LedgerInvitationPersistenceMySqlTest {
         assertThrows(
                 FoundationException.class,
                 () ->
-                    expenses.listExpenses(
-                        new ListExpensesQuery(ledgerId, "beta", YearMonth.from(date))))
+                    expenses.listLedgerTransactions(
+                        new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date))))
             .category());
 
     var joined = invites.acceptLedgerInvitation(invite.token(), "beta");
@@ -77,7 +79,8 @@ class LedgerInvitationPersistenceMySqlTest {
     assertEquals(
         record,
         expenses
-            .listExpenses(new ListExpensesQuery(ledgerId, "beta", YearMonth.from(date)))
+            .listLedgerTransactions(
+                new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date)))
             .getFirst());
 
     assertEquals(
@@ -85,8 +88,15 @@ class LedgerInvitationPersistenceMySqlTest {
         assertThrows(
                 FoundationException.class,
                 () ->
-                    expenses.recordExpense(
-                        new RecordExpenseCommand(ledgerId, "beta", 200, date, "DINING", "")))
+                    expenses.recordLedgerTransaction(
+                        new RecordLedgerTransactionCommand(
+                            ledgerId,
+                            "beta",
+                            TransactionDirection.EXPENSE,
+                            200,
+                            date,
+                            "DINING",
+                            "")))
             .category());
     assertEquals(
         ErrorCategory.NOT_FOUND,
@@ -149,15 +159,17 @@ class LedgerInvitationPersistenceMySqlTest {
     var unused = invites.createLedgerInvitation(owner);
     invites.acceptLedgerInvitation(accepted.token(), "beta");
 
-    var draft = new RecordExpenseCommand(ledgerId, "beta", 5400, date, "DINING", "乙记账");
+    var draft =
+        new RecordLedgerTransactionCommand(
+            ledgerId, "beta", TransactionDirection.EXPENSE, 5400, date, "DINING", "乙记账");
     assertEquals(
         "XIAOBU_LEDGER_READ_ONLY",
-        assertThrows(FoundationException.class, () -> expenses.recordExpense(draft))
+        assertThrows(FoundationException.class, () -> expenses.recordLedgerTransaction(draft))
             .errorCode()
             .value());
     members.changeLedgerMemberRole(
         new ChangeLedgerMemberRoleCommand(ledgerId, "alpha", "beta", LedgerMemberRole.CAN_RECORD));
-    var saved = expenses.recordExpense(draft);
+    var saved = expenses.recordLedgerTransaction(draft);
     assertEquals(
         LedgerMemberRole.CAN_RECORD,
         invites.acceptLedgerInvitation(accepted.token(), "beta").role());
@@ -171,13 +183,14 @@ class LedgerInvitationPersistenceMySqlTest {
         new ChangeLedgerMemberRoleCommand(ledgerId, "alpha", "beta", LedgerMemberRole.READ_ONLY));
     assertEquals(
         "XIAOBU_LEDGER_READ_ONLY",
-        assertThrows(FoundationException.class, () -> expenses.recordExpense(draft))
+        assertThrows(FoundationException.class, () -> expenses.recordLedgerTransaction(draft))
             .errorCode()
             .value());
     assertEquals(
         1,
         expenses
-            .listExpenses(new ListExpensesQuery(ledgerId, "beta", YearMonth.from(date)))
+            .listLedgerTransactions(
+                new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date)))
             .size());
     assertEquals(
         ErrorCategory.FORBIDDEN,
@@ -199,8 +212,8 @@ class LedgerInvitationPersistenceMySqlTest {
         assertThrows(
                 FoundationException.class,
                 () ->
-                    expenses.listExpenses(
-                        new ListExpensesQuery(ledgerId, "beta", YearMonth.from(date))))
+                    expenses.listLedgerTransactions(
+                        new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date))))
             .category());
     assertTrue(invites.listJoinedLedgers("beta").isEmpty());
     assertEquals(
@@ -218,7 +231,8 @@ class LedgerInvitationPersistenceMySqlTest {
     assertEquals(
         1,
         expenses
-            .listExpenses(new ListExpensesQuery(ledgerId, "alpha", YearMonth.from(date)))
+            .listLedgerTransactions(
+                new ListLedgerTransactionsQuery(ledgerId, "alpha", YearMonth.from(date)))
             .size());
     var fresh = invites.createLedgerInvitation(owner);
     assertEquals(

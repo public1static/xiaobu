@@ -14,14 +14,12 @@ interface LedgerTransactionJpaRepository extends Repository<LedgerTransactionEnt
       """
       select t from LedgerTransactionEntity t
       where t.ledgerId = :ledgerId
-          and t.direction = :direction
           and t.deleted = false
           and t.bookedOn between :startInclusive and :endInclusive
-      order by t.bookedOn desc, t.id desc
+      order by t.bookedOn desc, t.createdAt desc, t.id desc
       """)
   List<LedgerTransactionEntity> findActiveByLedgerAndDateRange(
       @Param("ledgerId") String ledgerId,
-      @Param("direction") TransactionDirection direction,
       @Param("startInclusive") LocalDate startInclusive,
       @Param("endInclusive") LocalDate endInclusive);
 }
