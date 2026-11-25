@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { listExpenses, saveExpense, type Expense } from '../../api/expenses';
 import {
   closeLocalSession,
@@ -90,20 +90,37 @@ function readInviteFromUrl() {
   // #endif
 }
 
+function syncInviteFromUrl() {
+  const token = readInviteFromUrl();
+  if (token === incomingToken.value) return;
+  incomingToken.value = token;
+  invitePreview.value = null;
+  inviteError.value = '';
+  if (token) void loadInvitePreview();
+}
+
+// #ifdef H5
+onMounted(() => window.addEventListener('hashchange', syncInviteFromUrl));
+onUnmounted(() => window.removeEventListener('hashchange', syncInviteFromUrl));
+// #endif
+
 async function loadInvitePreview() {
-  if (!incomingToken.value) return;
+  const token = incomingToken.value;
+  if (!token) return;
   inviteLoading.value = true;
   inviteError.value = '';
   try {
-    invitePreview.value = await previewLedgerInvitation(incomingToken.value);
+    const result = await previewLedgerInvitation(token);
+    if (token === incomingToken.value) invitePreview.value = result;
   } catch (error) {
+    if (token !== incomingToken.value) return;
     invitePreview.value = null;
     inviteError.value =
       error instanceof ApiRequestError && (error.status === 404 || error.status === 400)
         ? '这条邀请已失效或已被使用。'
         : '暂时无法查看邀请，请重试。';
   } finally {
-    inviteLoading.value = false;
+    if (token === incomingToken.value) inviteLoading.value = false;
   }
 }
 
