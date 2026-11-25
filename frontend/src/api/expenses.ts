@@ -33,7 +33,7 @@ function request<T>(suffix: string, method: 'GET' | 'POST', data?: ExpenseDraft)
       data,
       header: { 'Content-Type': 'application/json' },
       success: ({ data: raw, statusCode }) => {
-        const body = raw as { success?: boolean; data?: T; message?: string } | undefined;
+        const body = raw as { success?: boolean; data?: T } | undefined;
         if (statusCode >= 200 && statusCode < 300 && body?.success && body.data != null) {
           resolve(body.data);
         } else {

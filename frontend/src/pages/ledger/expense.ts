@@ -1,21 +1,21 @@
 export const CATEGORIES = [
-  ['DINING', '餐饮', '碗'],
-  ['GROCERIES', '买菜', '菜'],
-  ['TRANSIT', '交通', '车'],
-  ['DAILY', '日用品', '日'],
-  ['HOUSING', '住房', '房'],
-  ['SHOPPING', '购物', '购'],
-  ['ENTERTAINMENT', '娱乐', '乐'],
-  ['TRAVEL', '旅行', '旅'],
-  ['HEALTH', '医疗', '医'],
-  ['EDUCATION', '教育', '学'],
-  ['OTHER', '其他支出', '…'],
+  ['DINING', '餐饮'],
+  ['GROCERIES', '买菜'],
+  ['TRANSIT', '交通'],
+  ['DAILY', '日用品'],
+  ['HOUSING', '住房'],
+  ['SHOPPING', '购物'],
+  ['ENTERTAINMENT', '娱乐'],
+  ['TRAVEL', '旅行'],
+  ['HEALTH', '医疗'],
+  ['EDUCATION', '教育'],
+  ['OTHER', '其他支出'],
 ] as const;
 
 export type CategoryCode = (typeof CATEGORIES)[number][0];
 
-export function categoryInfo(code: string) {
-  return CATEGORIES.find((item) => item[0] === code) ?? [code, '其他支出', '…'];
+export function categoryLabel(code: string) {
+  return CATEGORIES.find(([key]) => key === code)?.[1] ?? '其他支出';
 }
 
 export function parseCents(input: string): number | null {

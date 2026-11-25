@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { listExpenses, saveExpense, type Expense } from '../../api/expenses';
 import {
   CATEGORIES,
-  categoryInfo,
+  categoryLabel,
   formatCents,
   localDay,
   parseCents,
@@ -166,7 +166,7 @@ void refresh();
               ><image :src="`/static/ledger/${row.categoryCode}.svg`"
             /></view>
             <view class="row-copy"
-              ><text>{{ categoryInfo(row.categoryCode)[1] }}</text
+              ><text>{{ categoryLabel(row.categoryCode) }}</text
               ><text v-if="row.note">{{ row.note }}</text></view
             >
             <text class="row-amount">−¥{{ formatCents(row.amountCents) }}</text>

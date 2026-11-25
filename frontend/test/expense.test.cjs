@@ -13,7 +13,12 @@ test('amount input preserves exact cents and rejects invalid precision', async (
 });
 
 test('local day is taken from the device calendar', async () => {
-  const { localDay, categoryInfo } = await import('../src/pages/ledger/expense.ts');
+  const { localDay } = await import('../src/pages/ledger/expense.ts');
   assert.equal(localDay(new Date(2026, 10, 25)), '2026-11-25');
-  assert.equal(categoryInfo('DINING')[1], '餐饮');
+});
+
+test('category names have a fallback for unknown codes', async () => {
+  const { categoryLabel } = await import('../src/pages/ledger/expense.ts');
+  assert.equal(categoryLabel('DINING'), '餐饮');
+  assert.equal(categoryLabel('UNRECOGNIZED'), '其他支出');
 });
