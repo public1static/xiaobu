@@ -1,0 +1,25 @@
+server:
+  address: 127.0.0.1
+spring:
+  application:
+    name: xiaobu
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    clean-disabled: true
+---
+spring:
+  config:
+    activate:
+      on-profile: local-expense
+  datasource:
+    url: ${XIAOBU_DEV_DB_URL}
+    username: ${XIAOBU_DEV_DB_USER}
+    password: ${XIAOBU_DEV_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 3
