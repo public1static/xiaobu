@@ -1,6 +1,7 @@
 package com.xiaobu.ledger.infrastructure;
 
 import com.aegisid.foundation.data.jpa.AuditableEntity;
+import com.xiaobu.ledger.domain.LedgerTransactionDetails;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,6 +12,7 @@ import jakarta.persistence.PostLoad;
 import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import jakarta.persistence.Version;
 import java.time.LocalDate;
 import org.springframework.data.domain.Persistable;
 
@@ -52,6 +54,10 @@ public class LedgerTransactionEntity extends AuditableEntity implements Persista
 
   @Column(nullable = false)
   private boolean deleted;
+
+  @Version
+  @Column(nullable = false)
+  private long version;
 
   // The application assigns the ID before the first save.
   @Transient private boolean newEntity = true;
@@ -117,6 +123,29 @@ public class LedgerTransactionEntity extends AuditableEntity implements Persista
 
   public String getAccountId() {
     return accountId;
+  }
+
+  public long getVersion() {
+    return version;
+  }
+
+  public boolean isDeleted() {
+    return deleted;
+  }
+
+  void revise(LedgerTransactionDetails details, String actorId) {
+    direction = details.direction();
+    amountCents = details.amountCents();
+    bookedOn = details.bookedOn();
+    categoryCode = details.categoryCode();
+    note = details.note();
+    accountId = details.accountId();
+    updatedBy = actorId;
+  }
+
+  void changeDeletion(boolean nextDeleted, String actorId) {
+    deleted = nextDeleted;
+    updatedBy = actorId;
   }
 
   public String getCreatedBy() {

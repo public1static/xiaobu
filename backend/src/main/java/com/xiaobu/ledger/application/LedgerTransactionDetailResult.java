@@ -1,4 +1,8 @@
 package com.xiaobu.ledger.application;
 
 public record LedgerTransactionDetailResult(
-    LedgerTransactionResult transaction, String createdBy, String accountName) {}
+    LedgerTransactionResult transaction,
+    String createdBy,
+    String accountName,
+    long version,
+    boolean canModify) {}

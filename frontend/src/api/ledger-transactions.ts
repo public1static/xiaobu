@@ -25,6 +25,8 @@ export interface LedgerTransactionFilter {
 export interface LedgerTransactionDetail {
   transaction: LedgerTransaction;
   authorName: string;
+  version: number;
+  canModify: boolean;
   accountName: string | null;
 }
 
@@ -50,4 +52,43 @@ export function getLedgerTransaction(ledgerId: string, transactionId: string) {
 
 export function recordLedgerTransaction(ledgerId: string, draft: LedgerTransactionDraft) {
   return request<LedgerTransaction>(transactionPath(ledgerId), 'POST', draft);
+}
+
+export interface DeletedLedgerTransaction {
+  transaction: LedgerTransaction;
+  version: number;
+}
+
+export function listRecentlyDeleted(ledgerId: string) {
+  return request<DeletedLedgerTransaction[]>(
+    `${transactionPath(ledgerId)}/recently-deleted`,
+    'GET',
+  );
+}
+
+export function editLedgerTransaction(
+  ledgerId: string,
+  transactionId: string,
+  version: number,
+  draft: LedgerTransactionDraft,
+) {
+  return request<void>(`${transactionPath(ledgerId)}/${encodeURIComponent(transactionId)}`, 'PUT', {
+    version,
+    draft,
+  });
+}
+
+export function deleteLedgerTransaction(ledgerId: string, transactionId: string, version: number) {
+  return request<void>(
+    `${transactionPath(ledgerId)}/${encodeURIComponent(transactionId)}?version=${version}`,
+    'DELETE',
+  );
+}
+
+export function restoreLedgerTransaction(ledgerId: string, transactionId: string, version: number) {
+  return request<void>(
+    `${transactionPath(ledgerId)}/${encodeURIComponent(transactionId)}/restore`,
+    'POST',
+    { version },
+  );
 }

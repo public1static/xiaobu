@@ -9,7 +9,9 @@ import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
 import com.xiaobu.ledger.application.ChangeLedgerMemberRoleCommand;
+import com.xiaobu.ledger.application.ChangeLedgerTransactionStateCommand;
 import com.xiaobu.ledger.application.CreateLedgerInvitationCommand;
+import com.xiaobu.ledger.application.EditLedgerTransactionCommand;
 import com.xiaobu.ledger.application.LedgerInvitationApplicationService;
 import com.xiaobu.ledger.application.LedgerMemberApplicationService;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
@@ -238,6 +240,88 @@ class LedgerInvitationPersistenceMySqlTest {
     var fresh = invites.createLedgerInvitation(owner);
     assertEquals(
         LedgerMemberRole.READ_ONLY, invites.acceptLedgerInvitation(fresh.token(), "beta").role());
+  }
+
+  @Test
+  void rejectsStaleEditsAndLetsOnlyOwnerOrOriginalAuthorMaintainRows() {
+    String ledgerId = createLedger();
+    var date = LocalDate.of(2026, 10, 31);
+    var invite =
+        invites.createLedgerInvitation(new CreateLedgerInvitationCommand(ledgerId, "alpha", "测试甲"));
+    invites.acceptLedgerInvitation(invite.token(), "beta");
+    members.changeLedgerMemberRole(
+        new ChangeLedgerMemberRoleCommand(ledgerId, "alpha", "beta", LedgerMemberRole.CAN_RECORD));
+    var alpha =
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledgerId, "alpha", TransactionDirection.EXPENSE, 1000, date, "DINING", "甲", null));
+    var beta =
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledgerId, "beta", TransactionDirection.EXPENSE, 2000, date, "DINING", "乙", null));
+    assertFalse(expenses.getLedgerTransaction(ledgerId, "beta", alpha.id()).canModify());
+    assertTrue(expenses.getLedgerTransaction(ledgerId, "beta", beta.id()).canModify());
+
+    assertEquals(
+        ErrorCategory.FORBIDDEN,
+        assertThrows(
+                FoundationException.class,
+                () ->
+                    expenses.deleteLedgerTransaction(
+                        new ChangeLedgerTransactionStateCommand(ledgerId, "beta", alpha.id(), 0)))
+            .category());
+    expenses.editLedgerTransaction(
+        new EditLedgerTransactionCommand(
+            ledgerId,
+            "beta",
+            beta.id(),
+            0,
+            TransactionDirection.EXPENSE,
+            2400,
+            date,
+            "DINING",
+            "乙修改",
+            null));
+    entities.flush();
+    var current = expenses.getLedgerTransaction(ledgerId, "alpha", beta.id());
+    assertEquals(1, current.version());
+    assertEquals(2400, current.transaction().amountCents());
+    assertEquals(
+        ErrorCategory.CONFLICT,
+        assertThrows(
+                FoundationException.class,
+                () ->
+                    expenses.editLedgerTransaction(
+                        new EditLedgerTransactionCommand(
+                            ledgerId,
+                            "alpha",
+                            beta.id(),
+                            0,
+                            TransactionDirection.EXPENSE,
+                            3000,
+                            date,
+                            "DINING",
+                            "过时修改",
+                            null)))
+            .category());
+
+    expenses.deleteLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledgerId, "alpha", beta.id(), 1));
+    entities.flush();
+    assertEquals(
+        1,
+        expenses
+            .listLedgerTransactions(
+                new ListLedgerTransactionsQuery(ledgerId, "alpha", YearMonth.from(date)))
+            .size());
+    var deleted = expenses.listRecentlyDeleted(ledgerId, "beta").getFirst();
+    assertEquals(2, deleted.version());
+    expenses.restoreLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledgerId, "beta", beta.id(), deleted.version()));
+    entities.flush();
+    assertEquals("beta", expenses.getLedgerTransaction(ledgerId, "alpha", beta.id()).createdBy());
+    assertEquals(3, expenses.getLedgerTransaction(ledgerId, "alpha", beta.id()).version());
+    assertTrue(expenses.listRecentlyDeleted(ledgerId, "alpha").isEmpty());
   }
 
   private String createLedger() {
