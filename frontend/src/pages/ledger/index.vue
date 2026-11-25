@@ -6,6 +6,7 @@ import { setWechatSessionToken, wechatPreviewApiBase } from '../../api/preview-t
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerCategoriesSheet from './LedgerCategoriesSheet.vue';
+import LedgerCategoryGrid from './LedgerCategoryGrid.vue';
 import { listLedgerCategories, type LedgerCategory } from '../../api/ledger-categories';
 import LedgerSearchSheet from './LedgerSearchSheet.vue';
 import LedgerTransactionDetailSheet from './LedgerTransactionDetailSheet.vue';
@@ -678,6 +679,29 @@ onShareAppMessage(() => ({
     : '/pages/ledger/index',
 }));
 // #endif
+const showFloatingEntry = computed(
+  () =>
+    !readOnly.value &&
+    !(
+      open.value ||
+      loginOpen.value ||
+      ledgerPickerOpen.value ||
+      shareOpen.value ||
+      incomingToken.value ||
+      memberSheetOpen.value ||
+      accountView.value ||
+      filterOpen.value ||
+      transactionDetailId.value ||
+      recycleOpen.value ||
+      categorySheetOpen.value
+    ),
+);
+const entryDateLabel = computed(() => {
+  const [year, month, day] = date.value.split('-').map(Number);
+  const shortDate = `${month}月${day}日`;
+  if (date.value === today.value) return `今天 · ${shortDate}`;
+  return year === Number(today.value.slice(0, 4)) ? shortDate : `${year}年${shortDate}`;
+});
 </script>
 
 <template>
@@ -854,17 +878,17 @@ onShareAppMessage(() => ({
       </template>
     </view>
 
-    <view class="dock">
-      <view v-if="readOnly" class="readonly-banner">只读账本 · 不能新增或修改流水</view>
-      <button
-        v-else
-        class="primary"
-        :disabled="checkingSession || sessionBusy"
-        @click="startTransaction"
-      >
-        ＋ 记一笔
-      </button>
-    </view>
+    <view v-if="readOnly" class="dock readonly-banner">只读账本 · 不能新增或修改流水</view>
+    <button
+      v-else-if="showFloatingEntry"
+      class="floating-entry"
+      aria-label="记一笔"
+      title="记一笔"
+      :disabled="checkingSession || sessionBusy"
+      @click="startTransaction"
+    >
+      <image src="/static/ledger/vant/EDIT.svg" aria-hidden="true" />
+    </button>
 
     <view v-if="ledgerPickerOpen && !incomingToken" class="overlay">
       <view class="sheet login-sheet" role="dialog" aria-label="切换账本" aria-modal="true">
@@ -983,9 +1007,9 @@ onShareAppMessage(() => ({
     </view>
     <!-- #endif -->
 
-    <view v-if="open" class="overlay">
+    <view v-if="open" class="overlay entry-overlay">
       <view
-        class="sheet"
+        class="sheet entry-sheet"
         role="dialog"
         :aria-label="editing ? '编辑流水' : `记一笔${directionLabel}`"
         aria-modal="true"
@@ -1001,25 +1025,28 @@ onShareAppMessage(() => ({
             ×
           </button></view
         >
-        <view class="direction-tabs" role="group" aria-label="收支类型">
-          <button
-            class="direction-tab"
-            :class="{ selected: direction === 'EXPENSE' }"
-            :aria-pressed="direction === 'EXPENSE'"
-            :disabled="saving"
-            @click="selectDirection('EXPENSE')"
-          >
-            支出
-          </button>
-          <button
-            class="direction-tab"
-            :class="{ selected: direction === 'INCOME' }"
-            :aria-pressed="direction === 'INCOME'"
-            :disabled="saving"
-            @click="selectDirection('INCOME')"
-          >
-            收入
-          </button>
+        <view class="entry-direction">
+          <text>收支类型<text class="star">*</text></text>
+          <view class="direction-tabs" role="group" aria-label="收支类型">
+            <button
+              class="direction-tab"
+              :class="{ selected: direction === 'EXPENSE' }"
+              :aria-pressed="direction === 'EXPENSE'"
+              :disabled="saving"
+              @click="selectDirection('EXPENSE')"
+            >
+              支出
+            </button>
+            <button
+              class="direction-tab"
+              :class="{ selected: direction === 'INCOME' }"
+              :aria-pressed="direction === 'INCOME'"
+              :disabled="saving"
+              @click="selectDirection('INCOME')"
+            >
+              收入
+            </button>
+          </view>
         </view>
         <view class="amount-field">
           <text class="field-label">{{ directionLabel }}金额 <text class="star">*</text></text>
@@ -1030,38 +1057,29 @@ onShareAppMessage(() => ({
               type="digit"
               :maxlength="11"
               placeholder="0.00"
+              placeholder-class="entry-amount-placeholder"
               @input="fieldError.amount = ''"
               :aria-label="`${directionLabel}金额`"
           /></view>
           <text v-if="fieldError.amount" class="error" role="alert">{{ fieldError.amount }}</text>
         </view>
-        <view class="category-head">
-          <text>分类 <text class="star">*</text></text>
-          <button class="text-button" :disabled="saving" @click="categorySheetOpen = true">
-            {{ sharedLedger ? '选择分类' : '分类管理' }} ›
-          </button>
-        </view>
-        <scroll-view scroll-x class="category-rail">
-          <view class="category-inner">
-            <button
-              v-for="item in directionCategories"
-              :key="item[0]"
-              class="category"
-              :class="{ selected: category === item[0] }"
-              :aria-pressed="category === item[0]"
-              @click="
-                category = item[0];
-                fieldError.category = '';
-              "
-            >
-              <image
-                :src="`/static/ledger/${item[0].startsWith('CUS_') ? 'OTHER' : item[0]}.svg`"
-                aria-hidden="true"
-              /><text>{{ item[1] }}</text>
+        <view class="entry-categories">
+          <view class="category-head">
+            <text>分类<text class="star">*</text></text>
+            <button class="text-button" :disabled="saving" @click="categorySheetOpen = true">
+              {{ sharedLedger ? '选择分类' : '分类管理' }} ›
             </button>
           </view>
-        </scroll-view>
-        <text v-if="fieldError.category" class="error" role="alert">{{ fieldError.category }}</text>
+          <LedgerCategoryGrid
+            :items="directionCategories"
+            :selected="category"
+            :disabled="saving"
+            @select="chooseCategory"
+          />
+          <text v-if="fieldError.category" class="error" role="alert">{{
+            fieldError.category
+          }}</text>
+        </view>
         <view class="meta">
           <picker
             mode="date"
@@ -1072,10 +1090,13 @@ onShareAppMessage(() => ({
           >
             <view class="meta-row"
               ><text>日期 <text class="star">*</text></text
-              ><text>{{ date === today ? '今天 · ' : '' }}{{ date }} ›</text></view
+              ><view class="entry-field-value">
+                <text>{{ entryDateLabel }}</text>
+                <text class="entry-chevron" aria-hidden="true">›</text>
+              </view></view
             >
           </picker>
-          <view class="meta-row"
+          <view v-if="sharedLedger" class="meta-row"
             ><text>账本</text><text>{{ ledgerLabel }}</text></view
           >
           <view class="meta-row">
@@ -1085,12 +1106,14 @@ onShareAppMessage(() => ({
               :disabled="saving"
               @click="accountView = 'select'"
             >
-              {{ account?.name ?? '选填' }} ›
+              <text :class="{ 'entry-placeholder': !account }">{{
+                account?.name ?? '选择账户'
+              }}</text>
+              <text class="entry-chevron" aria-hidden="true">›</text>
             </button>
           </view>
           <view class="meta-row"
-            ><text>备注</text
-            ><input v-model="note" :maxlength="100" placeholder="选填" aria-label="备注"
+            ><text>备注</text><input v-model="note" :maxlength="100" aria-label="备注"
           /></view>
         </view>
         <text v-if="saveError" class="error" role="alert">{{ saveError }}</text>
@@ -1138,6 +1161,7 @@ onShareAppMessage(() => ({
       :ledger-id="ledgerId"
       :direction="direction"
       :selected="category"
+      :initial-catalog="categoryCatalog"
       :allow-manage="!sharedLedger"
       @close="categorySheetOpen = false"
       @select="chooseCategory"
