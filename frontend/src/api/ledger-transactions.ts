@@ -7,6 +7,7 @@ export interface LedgerTransactionDraft {
   bookedOn: string;
   categoryCode: CategoryCode;
   note: string;
+  accountId?: string | null;
 }
 
 export type LedgerTransaction = LedgerTransactionDraft & { id: string };

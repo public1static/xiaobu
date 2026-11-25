@@ -41,6 +41,9 @@ public class LedgerTransactionEntity extends AuditableEntity implements Persista
   @Column(nullable = false, length = 100)
   private String note;
 
+  @Column(name = "account_id", length = 48)
+  private String accountId;
+
   @Column(name = "created_by", nullable = false, length = 48, updatable = false)
   private String createdBy;
 
@@ -63,6 +66,7 @@ public class LedgerTransactionEntity extends AuditableEntity implements Persista
       LocalDate bookedOn,
       String categoryCode,
       String note,
+      String accountId,
       String createdBy,
       String updatedBy,
       boolean deleted) {
@@ -73,6 +77,7 @@ public class LedgerTransactionEntity extends AuditableEntity implements Persista
     this.bookedOn = bookedOn;
     this.categoryCode = categoryCode;
     this.note = note;
+    this.accountId = accountId;
     this.createdBy = createdBy;
     this.updatedBy = updatedBy;
     this.deleted = deleted;
@@ -108,6 +113,10 @@ public class LedgerTransactionEntity extends AuditableEntity implements Persista
 
   public String getCategoryCode() {
     return categoryCode;
+  }
+
+  public String getAccountId() {
+    return accountId;
   }
 
   public String getNote() {
