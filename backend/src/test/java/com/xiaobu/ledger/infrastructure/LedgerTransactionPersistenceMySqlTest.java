@@ -1,14 +1,21 @@
 package com.xiaobu.ledger.infrastructure;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
+import com.xiaobu.ledger.application.ChangeLedgerCategoryOrderCommand;
+import com.xiaobu.ledger.application.ChangeLedgerCategoryStatusCommand;
 import com.xiaobu.ledger.application.CreateLedgerAccountCommand;
+import com.xiaobu.ledger.application.CreateLedgerCategoryCommand;
+import com.xiaobu.ledger.application.EditLedgerTransactionCommand;
 import com.xiaobu.ledger.application.LedgerAccountApplicationService;
+import com.xiaobu.ledger.application.LedgerCategoryApplicationService;
+import com.xiaobu.ledger.application.LedgerCategoryResult;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
 import com.xiaobu.ledger.application.LedgerTransactionResult;
 import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
@@ -47,6 +54,7 @@ class LedgerTransactionPersistenceMySqlTest {
   @Autowired private LedgerTransactionApplicationService expenses;
   @Autowired private LedgerTransactionPersistenceAdapter expensePersistence;
   @Autowired private PersonalLedgerApplicationService ledgers;
+  @Autowired private LedgerCategoryApplicationService categories;
   @Autowired private LedgerAccountApplicationService accounts;
   @Autowired private EntityManager entityManager;
   @Autowired private JdbcTemplate jdbc;
@@ -306,6 +314,63 @@ class LedgerTransactionPersistenceMySqlTest {
     assertThrows(
         FoundationException.class,
         () -> new ListLedgerTransactionsQuery(alpha, "alice", through, from, ""));
+  }
+
+  @Test
+  void managesCategoriesPerLedgerAndKeepsInactiveHistoryEditable() {
+    String alpha = newLedgerId();
+    String beta = newLedgerId("bob");
+    var direction = TransactionDirection.EXPENSE;
+    var created =
+        categories.createLedgerCategory(
+            new CreateLedgerCategoryCommand(alpha, "alice", direction, "咖啡"));
+    var order =
+        new java.util.ArrayList<>(
+            categories.listLedgerCategories(alpha, "alice").stream()
+                .filter(item -> item.direction() == direction)
+                .map(LedgerCategoryResult::code)
+                .toList());
+    order.remove(created.code());
+    order.addFirst(created.code());
+    var reordered =
+        categories.changeLedgerCategoryOrder(
+            new ChangeLedgerCategoryOrderCommand(alpha, "alice", direction, order));
+    assertEquals(created.code(), reordered.getFirst().code());
+    var date = LocalDate.of(2026, 10, 31);
+    var command =
+        new RecordLedgerTransactionCommand(
+            alpha, "alice", direction, 1230, date, created.code(), "咖啡记录", null);
+    var saved = expenses.recordLedgerTransaction(command);
+    assertThrows(
+        FoundationException.class,
+        () ->
+            expenses.recordLedgerTransaction(
+                new RecordLedgerTransactionCommand(
+                    beta, "bob", direction, 1230, date, created.code(), "", null)));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            categories.changeLedgerCategoryStatus(
+                new ChangeLedgerCategoryStatusCommand(alpha, "bob", created.code(), false)));
+    var updated =
+        categories.changeLedgerCategoryStatus(
+            new ChangeLedgerCategoryStatusCommand(alpha, "alice", created.code(), false));
+    assertFalse(
+        updated.stream()
+            .filter(item -> item.code().equals(created.code()))
+            .findFirst()
+            .orElseThrow()
+            .active());
+    assertThrows(FoundationException.class, () -> expenses.recordLedgerTransaction(command));
+    expenses.editLedgerTransaction(
+        new EditLedgerTransactionCommand(
+            alpha, "alice", saved.id(), 0, direction, 1230, date, created.code(), "补充备注", null));
+    assertEquals(
+        created.code(),
+        expenses.getLedgerTransaction(alpha, "alice", saved.id()).transaction().categoryCode());
+    categories.changeLedgerCategoryStatus(
+        new ChangeLedgerCategoryStatusCommand(alpha, "alice", created.code(), true));
+    assertEquals(created.code(), expenses.recordLedgerTransaction(command).categoryCode());
   }
 
   private String newLedgerId() {

@@ -21,7 +21,7 @@ const INCOME_CATEGORIES = [
 
 export type TransactionDirection = 'EXPENSE' | 'INCOME';
 type Category = (typeof EXPENSE_CATEGORIES)[number] | (typeof INCOME_CATEGORIES)[number];
-export type CategoryCode = Category[0];
+export type CategoryCode = string;
 
 export function categoriesFor(direction: TransactionDirection): readonly Category[] {
   return direction === 'INCOME' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
