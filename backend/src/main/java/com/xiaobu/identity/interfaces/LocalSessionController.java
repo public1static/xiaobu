@@ -1,7 +1,5 @@
 package com.xiaobu.identity.interfaces;
 
-import com.aegisid.foundation.shared.error.ErrorCode;
-import com.aegisid.foundation.shared.error.FoundationException;
 import com.aegisid.foundation.web.api.ApiResponse;
 import com.xiaobu.ledger.application.PersonalLedgerApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,14 +29,7 @@ public class LocalSessionController {
   @PostMapping
   public ApiResponse<LocalSessionResponse> openLocalSession(
       @Valid @RequestBody OpenLocalSessionRequest input, HttpServletRequest request) {
-    var account =
-        switch (input.account()) {
-          case "alpha" -> new PreviewAccount("user_preview_alpha", "测试甲");
-          case "beta" -> new PreviewAccount("user_preview_beta", "测试乙");
-          default ->
-              throw new FoundationException(
-                  new ErrorCode("XIAOBU_UNKNOWN_PREVIEW_ACCOUNT"), "请选择有效的测试身份");
-        };
+    var account = LocalPreviewAccount.fromSelector(input.account());
     var ledger = ledgers.openPersonalLedger(account.actorId());
     var context = new LocalSessionContext(account.actorId(), account.displayName(), ledger.id());
     LocalSessionContext.open(request, context);
@@ -59,6 +50,4 @@ public class LocalSessionController {
   private static LocalSessionResponse toResponse(LocalSessionContext context) {
     return new LocalSessionResponse(context.displayName(), context.ledgerId());
   }
-
-  private record PreviewAccount(String actorId, String displayName) {}
 }

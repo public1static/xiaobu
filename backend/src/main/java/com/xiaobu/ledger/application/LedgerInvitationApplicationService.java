@@ -6,6 +6,7 @@ import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.LedgerInvitation;
+import com.xiaobu.ledger.domain.LedgerMemberRole;
 import com.xiaobu.ledger.domain.LedgerMembership;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -74,6 +75,13 @@ public class LedgerInvitationApplicationService {
     var invitation = invitations.findByTokenDigest(digest(token)).orElseThrow(this::unavailable);
     boolean accepted = alreadyAcceptedBy(invitation, actorId);
     requireAvailable(invitation, accepted);
+    if (actorId != null) {
+      var membership = memberships.findByLedgerAndMember(invitation.ledgerId(), actorId);
+      if ((accepted && membership.filter(LedgerMembership::isActive).isEmpty())
+          || membership.filter(member -> invalidAfterRemoval(invitation, member)).isPresent()) {
+        throw unavailable();
+      }
+    }
     return new LedgerInvitationPreviewResult(
         invitation.inviterName(), invitation.expiresAt(), accepted);
   }
@@ -89,13 +97,16 @@ public class LedgerInvitationApplicationService {
     }
     boolean accepted = alreadyAcceptedBy(invitation, actorId);
     requireAvailable(invitation, accepted);
-    // Two different invitations can be accepted concurrently by the same member.
-    memberships.lockLedgerMembershipChanges(invitation.ledgerId());
+    ledgers.lockLedger(invitation.ledgerId());
     var membership = memberships.findByLedgerAndMember(invitation.ledgerId(), actorId);
     if (accepted) {
-      return membership.map(JoinedLedgerResult::from).orElseThrow(this::unavailable);
+      return membership
+          .filter(LedgerMembership::isActive)
+          .map(JoinedLedgerResult::from)
+          .orElseThrow(this::unavailable);
     }
-    if (invitation.isExpiredAt(Instant.now())) {
+    if (invitation.isExpiredAt(Instant.now())
+        || membership.filter(member -> invalidAfterRemoval(invitation, member)).isPresent()) {
       throw unavailable();
     }
     var joined =
@@ -105,17 +116,35 @@ public class LedgerInvitationApplicationService {
                   ids.next(MEMBERSHIP_PREFIX),
                   invitation.ledgerId(),
                   actorId,
-                  invitation.inviterName());
+                  invitation.inviterName(),
+                  LedgerMemberRole.READ_ONLY,
+                  null);
           memberships.add(created);
           return created;
         });
+    if (!joined.isActive()) {
+      memberships.restoreReadOnly(joined.id());
+      joined =
+          new LedgerMembership(
+              joined.id(),
+              joined.ledgerId(),
+              joined.memberId(),
+              joined.inviterName(),
+              LedgerMemberRole.READ_ONLY,
+              null);
+    }
     invitations.markAccepted(tokenDigest, actorId);
     return JoinedLedgerResult.from(joined);
   }
 
   @Transactional(readOnly = true)
   public List<JoinedLedgerResult> listJoinedLedgers(String actorId) {
-    return memberships.findByMember(actorId).stream().map(JoinedLedgerResult::from).toList();
+    return memberships.findActiveByMember(actorId).stream().map(JoinedLedgerResult::from).toList();
+  }
+
+  private static boolean invalidAfterRemoval(LedgerInvitation invitation, LedgerMembership member) {
+    return !member.isActive()
+        && !invitation.expiresAt().minus(VALIDITY).isAfter(member.removedAt());
   }
 
   private static boolean alreadyAcceptedBy(LedgerInvitation invitation, String actorId) {

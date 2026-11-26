@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import { listExpenses, saveExpense, type Expense } from '../../api/expenses';
 import {
   closeLocalSession,
@@ -68,6 +69,9 @@ const ledgerId = computed(() => sharedLedger.value?.ledgerId ?? session.value?.l
 const ledgerLabel = computed(() =>
   sharedLedger.value ? `${sharedLedger.value.inviterName}的账本` : '个人账',
 );
+const readOnly = computed(() => sharedLedger.value?.role === 'READ_ONLY');
+const memberSheetOpen = ref(false);
+const ledgerNotice = ref('');
 const ledgerPickerOpen = ref(false);
 const shareOpen = ref(false);
 const shareLink = ref('');
@@ -183,8 +187,10 @@ async function openLedgerPicker() {
 
 function selectLedger(ledger: JoinedLedger | null) {
   ledgerPickerOpen.value = false;
-  if (sharedLedger.value?.ledgerId === ledger?.ledgerId) return;
+  const unchanged = sharedLedger.value?.ledgerId === ledger?.ledgerId;
   sharedLedger.value = ledger;
+  if (unchanged) return;
+  ledgerNotice.value = '';
   items.value = [];
   savedMessage.value = '';
   open.value = false;
@@ -230,6 +236,8 @@ function resetSession(next: LocalSession | null) {
   joinedLedgers.value = [];
   ledgerPickerOpen.value = false;
   shareOpen.value = false;
+  memberSheetOpen.value = false;
+  ledgerNotice.value = '';
   shareLink.value = '';
   session.value = next;
   items.value = [];
@@ -322,7 +330,9 @@ async function refresh() {
     if (request === generation) items.value = rows;
   } catch (error) {
     if (request !== generation) return;
-    if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiRequestError && error.status === 403 && sharedLedger.value) {
+      returnToPersonalLedger();
+    } else if (error instanceof ApiRequestError && error.status === 401) {
       resetSession(null);
       sessionError.value = '当前会话已失效，请重新登录。';
     } else {
@@ -331,6 +341,14 @@ async function refresh() {
   } finally {
     if (request === generation) loading.value = false;
   }
+}
+
+function returnToPersonalLedger() {
+  joinedLedgers.value = joinedLedgers.value.filter(
+    (ledger) => ledger.ledgerId !== sharedLedger.value?.ledgerId,
+  );
+  selectLedger(null);
+  ledgerNotice.value = '你已无法访问该共享账本，已返回个人账。';
 }
 
 function selectMonth(value: string) {
@@ -355,7 +373,7 @@ function changeMonth(offset: -1 | 1) {
 }
 
 function newExpense() {
-  if (checkingSession.value || sessionBusy.value || sharedLedger.value) return;
+  if (checkingSession.value || sessionBusy.value || readOnly.value) return;
   if (!session.value) {
     loginOpen.value = true;
     sessionError.value = '';
@@ -381,8 +399,8 @@ function closeExpense() {
 }
 
 async function submit() {
-  const ledgerId = session.value?.ledgerId;
-  if (saving.value || !ledgerId || sharedLedger.value) return;
+  const targetLedgerId = ledgerId.value;
+  if (saving.value || !targetLedgerId || readOnly.value) return;
   const cents = parseCents(amount.value);
   const selected = category.value;
   fieldError.value = {
@@ -404,7 +422,7 @@ async function submit() {
   saving.value = true;
   saveError.value = '';
   try {
-    const stored = await saveExpense(ledgerId, payload);
+    const stored = await saveExpense(targetLedgerId, payload);
     today.value = localDay();
     const nextMonth = stored.bookedOn.slice(0, 7);
     const current = nextMonth === month.value ? items.value : [];
@@ -416,7 +434,20 @@ async function submit() {
     savedMessage.value = '已记一笔';
     await refresh();
   } catch (error) {
-    if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403)) {
+    if (
+      error instanceof ApiRequestError &&
+      error.code === 'XIAOBU_LEDGER_READ_ONLY' &&
+      sharedLedger.value
+    ) {
+      sharedLedger.value = { ...sharedLedger.value, role: 'READ_ONLY' };
+      saveError.value = '你的权限已变为只读，这笔账未保存。';
+      return;
+    }
+    if (error instanceof ApiRequestError && error.status === 403 && sharedLedger.value) {
+      returnToPersonalLedger();
+      return;
+    }
+    if (error instanceof ApiRequestError && error.status === 401) {
       resetSession(null);
       sessionError.value = '当前会话已失效，请重新登录。';
       return;
@@ -450,6 +481,7 @@ void restoreSession();
     </view>
 
     <view class="main">
+      <text v-if="ledgerNotice" class="ledger-notice" role="status">{{ ledgerNotice }}</text>
       <text v-if="sessionError && !loginOpen" class="error" role="alert">{{ sessionError }}</text>
       <view v-if="checkingSession" class="empty" role="status">正在检查登录状态</view>
       <view v-else-if="!session" class="guest">
@@ -516,9 +548,10 @@ void restoreSession();
           <text>流水</text>
           <view class="ledger-actions">
             <button class="text-button" @click="openLedgerPicker">{{ ledgerLabel }} · 切换</button>
-            <button v-if="!sharedLedger" class="text-button" @click="generateInviteLink">
-              邀请只读成员
-            </button>
+            <template v-if="!sharedLedger">
+              <button class="text-button" @click="memberSheetOpen = true">成员</button>
+              <button class="text-button" @click="generateInviteLink">邀请只读成员</button>
+            </template>
           </view>
         </view>
         <text v-if="savedMessage" class="sr-only" role="status">{{ savedMessage }}</text>
@@ -548,7 +581,7 @@ void restoreSession();
 
     <!-- #ifdef H5 -->
     <view class="dock">
-      <view v-if="sharedLedger" class="readonly-banner">只读账本 · 不能新增或修改流水</view>
+      <view v-if="readOnly" class="readonly-banner">只读账本 · 不能新增或修改流水</view>
       <button v-else class="primary" :disabled="checkingSession || sessionBusy" @click="newExpense">
         ＋ 记一笔
       </button>
@@ -569,11 +602,17 @@ void restoreSession();
           class="primary secondary"
           @click="selectLedger(joined)"
         >
-          {{ joined.inviterName }}的账本 · 只读
+          {{ joined.inviterName }}的账本 · {{ joined.role === 'CAN_RECORD' ? '可记账' : '只读' }}
         </button>
         <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
       </view>
     </view>
+
+    <LedgerMembersSheet
+      v-if="memberSheetOpen && session && !sharedLedger"
+      :ledger-id="session.ledgerId"
+      @close="memberSheetOpen = false"
+    />
 
     <view v-if="shareOpen && !incomingToken" class="overlay">
       <view class="sheet login-sheet" role="dialog" aria-label="邀请只读成员" aria-modal="true">
@@ -718,14 +757,16 @@ void restoreSession();
               ><text>{{ date === today ? '今天 · ' : '' }}{{ date }} ›</text></view
             >
           </picker>
-          <view class="meta-row"><text>账本</text><text>个人账</text></view>
+          <view class="meta-row"
+            ><text>账本</text><text>{{ ledgerLabel }}</text></view
+          >
           <view class="meta-row"
             ><text>备注</text
             ><input v-model="note" :maxlength="100" placeholder="选填" aria-label="备注"
           /></view>
         </view>
         <text v-if="saveError" class="error" role="alert">{{ saveError }}</text>
-        <button class="primary save" :disabled="saving" @click="submit">
+        <button class="primary save" :disabled="saving || readOnly" @click="submit">
           {{ saving ? '保存中…' : '保存账目' }}
         </button>
       </view>
