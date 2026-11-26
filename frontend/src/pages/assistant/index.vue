@@ -4,6 +4,11 @@ import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app';
 import { assistantApi, chatRequestId, type Conversation, type Message } from '../../api/assistant';
 import { ApiRequestError } from '../../api/request';
 import type { LedgerStatementPage } from '../../api/ledger-transactions';
+import ExpenseDraftCard from './ExpenseDraftCard.vue';
+import { expenseIntent } from './expense-intent.mjs';
+import { listLedgerAccounts, type LedgerAccount } from '../../api/ledger-accounts';
+import { listLedgerCategories, type LedgerCategory } from '../../api/ledger-categories';
+import type { ExpenseDraft, DraftFields } from '../../api/assistant';
 import { formatCents } from '../ledger/transaction';
 import LedgerTransactionDetailSheet from '../ledger/LedgerTransactionDetailSheet.vue';
 
@@ -25,6 +30,11 @@ const source = ref(''),
   selected = ref<number>(),
   anchor = ref('');
 const api = computed(() => assistantApi(ledger.value));
+const writable = ref(false),
+  draft = ref<ExpenseDraft | null>(null),
+  uncertain = ref(false);
+const accounts = ref<LedgerAccount[]>([]),
+  categories = ref<LedgerCategory[]>([]);
 let epoch = 0,
   active = false;
 let retry:
@@ -33,6 +43,9 @@ let retry:
 // 账本被撤权或会话失效时立即清除屏幕上的私人信息。
 function clearPrivate() {
   denied.value = true;
+  draft.value = null;
+  accounts.value = [];
+  categories.value = [];
   turns.value = [];
   history.value = [];
   chat.value = null;
@@ -45,6 +58,11 @@ function clearPrivate() {
   error.value = '对话不可访问，请返回账本。';
 }
 function fail(e: unknown) {
+  if (e instanceof ApiRequestError && e.code === 'XIAOBU_LEDGER_READ_ONLY') {
+    writable.value = false;
+    error.value = '权限已变为只读，这笔账未保存。';
+    return;
+  }
   if (e instanceof ApiRequestError && [401, 403, 404].includes(e.status)) {
     clearPrivate();
     return;
@@ -75,8 +93,10 @@ function scrollLast() {
   anchor.value = last ? 'msg-' + last.sequence : '';
 }
 async function loadChat(c: Conversation, token: number) {
-  const rows = await api.value.history(c.id);
+  const [rows, state] = await Promise.all([api.value.history(c.id), api.value.draft(c.id)]);
   if (token !== epoch) return;
+  draft.value = state.draft;
+  uncertain.value = false;
   chat.value = { ...c, revision: rows[rows.length - 1]?.sequence ?? 0 };
   turns.value = rows;
   older.value = (rows[0]?.sequence ?? 0) > 1;
@@ -87,6 +107,8 @@ async function loadChat(c: Conversation, token: number) {
   scrollLast();
 }
 function fresh() {
+  draft.value = null;
+  uncertain.value = false;
   chat.value = null;
   turns.value = [];
   reference.value = undefined;
@@ -116,6 +138,75 @@ function previousTurns() {
     older.value = (rows[0]?.sequence ?? 0) > 1;
   });
 }
+// 已识别的支出在本地按原型规则生成字段，缺项保留到下一轮。
+function expenseFields(text: string): DraftFields | null {
+  if (!writable.value || reference.value) return null;
+  const old = draft.value?.fields;
+  const category = categories.value.find((c) => c.code === old?.categoryCode)?.name;
+  const account = accounts.value.find((a) => a.id === old?.accountId)?.name;
+  const prev = old ? { category, account, amount: old.amountCents, note: old.note } : null;
+  const parsed = expenseIntent(
+    text,
+    categories.value.map((c) => c.name),
+    accounts.value.map((a) => a.name),
+    prev,
+  );
+  if (!parsed) return null;
+  if (
+    old &&
+    ((old.amountCents && parsed.amount !== old.amountCents) ||
+      (category && parsed.category !== category))
+  ) {
+    throw new Error('请先修改、确认或放弃当前草稿');
+  }
+  const offset = parsed.day === '昨天' ? 1 : parsed.day === '前天' ? 2 : 0;
+  const day = new Date(Date.now() + 8 * 3600000 - offset * 86400000).toISOString().slice(0, 10);
+  return {
+    bookedOn: parsed.day || !old ? day : old.bookedOn,
+    amountCents: parsed.amount ?? null,
+    categoryCode: categories.value.find((c) => c.name === parsed.category)?.code ?? null,
+    accountId: accounts.value.find((a) => a.name === parsed.account)?.id ?? null,
+    note: parsed.note ?? '',
+  };
+}
+async function storeDraft(c: Conversation, t: number, q: string, fields: DraftFields) {
+  try {
+    await api.value.editDraft(c, draft.value, q, fields);
+  } catch (e) {
+    if (t === epoch && (!(e instanceof ApiRequestError) || [0, 409].includes(e.status)))
+      uncertain.value = true;
+    throw e;
+  }
+  if (t === epoch) await loadChat(c, t);
+}
+function editFields(fields: DraftFields) {
+  return run(async (t) => {
+    if (chat.value) await storeDraft(chat.value, t, '修改支出草稿', fields);
+  });
+}
+function recover() {
+  return run(async (t) => {
+    if (chat.value) {
+      const id = draft.value?.id;
+      if (id) {
+        const state = await api.value.draft(chat.value.id, id);
+        if (t !== epoch) return;
+        if (state.draft?.status === 'CONFIRMED') uni.$emit('assistant-expense-saved', ledger.value);
+      }
+      await loadChat(chat.value, t);
+    }
+  });
+}
+function finish(action: 'confirm' | 'discard') {
+  return run(async (t) => {
+    if (!chat.value || !draft.value || uncertain.value) return;
+    const c = chat.value;
+    uncertain.value = true;
+    const result = await api.value.finishDraft(c.id, draft.value, action);
+    if (result.status === 'CONFIRMED') uni.$emit('assistant-expense-saved', ledger.value);
+    if (t === epoch) await loadChat(c, t);
+  });
+}
 function send(text: string) {
   const q = text.trim();
   if (!q) return;
@@ -126,6 +217,21 @@ function send(text: string) {
       chat.value = c;
     }
     const c = chat.value;
+    let fields;
+    try {
+      fields = expenseFields(q);
+    } catch {
+      error.value = '请先修改、确认或放弃当前草稿。';
+      return;
+    }
+    if (fields) {
+      if (uncertain.value) {
+        error.value = '请先核对草稿状态。';
+        return;
+      }
+      await storeDraft(c, t, q, fields);
+      return;
+    }
     if (!retry || retry.chat !== c.id || retry.question !== q || retry.reply !== reference.value)
       retry = {
         id: chatRequestId(),
@@ -159,6 +265,7 @@ function back() {
 }
 onLoad((options) => {
   ledger.value = String(options?.ledger ?? '');
+  writable.value = options?.writable === '1';
   const label = String(options?.name ?? '当前账本');
   try {
     name.value = decodeURIComponent(label);
@@ -171,13 +278,25 @@ onShow(() => {
   active = true;
   denied.value = false;
   void run(async (t) => {
-    const rows = await api.value.list();
+    const [rows, accts, cats] = await Promise.all([
+      api.value.list(),
+      listLedgerAccounts(ledger.value),
+      listLedgerCategories(ledger.value),
+    ]);
+    if (t !== epoch) return;
+    accounts.value = accts;
+    categories.value = cats.filter(
+      (c) => c.active && c.direction === 'EXPENSE' && !c.capabilities?.length,
+    );
     if (t !== epoch) return;
     const c = chat.value ?? rows[0];
     if (c) await loadChat(c, t);
   });
 });
 function hide() {
+  draft.value = null;
+  accounts.value = [];
+  categories.value = [];
   active = false;
   epoch++;
   busy.value = false;
@@ -246,9 +365,12 @@ onUnload(hide);
     <scroll-view v-else class="thread" scroll-y :scroll-into-view="anchor">
       <button v-if="older" :disabled="busy" @click="previousTurns">更早的消息</button>
       <view v-if="!turns.length && !denied" class="welcome"
-        ><text>想查哪笔账？</text>
+        ><text>今天想记点什么？</text>
         <button :disabled="busy" @click="send('本月收支')">本月收支 ›</button
-        ><button :disabled="busy" @click="send('本月餐饮支出')">本月餐饮支出 ›</button></view
+        ><button :disabled="busy" @click="send('本月餐饮支出')">本月餐饮支出 ›</button
+        ><button v-if="writable" :disabled="busy" @click="send('昨天买菜')">
+          昨天买菜 ›
+        </button></view
       >
       <view v-for="m in turns" :key="m.sequence" :id="'msg-' + m.sequence" class="turn">
         <text class="mine">{{ m.question }}</text><view class="card"
@@ -332,6 +454,20 @@ onUnload(hide);
           </button></view
         ></view
       >
+      <ExpenseDraftCard
+        v-if="draft"
+        :draft="draft"
+        :name="name"
+        :accounts="accounts"
+        :categories="categories"
+        :busy="busy"
+        :uncertain="uncertain"
+        :writable="writable"
+        @finish="finish"
+        @edit="editFields"
+        @recover="recover"
+      />
+      <button v-else-if="uncertain" :disabled="busy" @click="recover">核对草稿状态</button>
     </scroll-view>
     <text v-if="error" class="error" role="alert">{{ error }}</text>
     <view v-if="!showHistory && !result && !denied" class="composer"

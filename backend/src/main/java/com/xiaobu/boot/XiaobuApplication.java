@@ -14,12 +14,14 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EntityScan({
   "com.xiaobu.ledger.infrastructure",
   "com.xiaobu.identity.infrastructure",
-  "com.xiaobu.gift.infrastructure"
+  "com.xiaobu.gift.infrastructure",
+  "com.xiaobu.assistant.infrastructure"
 })
 @EnableJpaRepositories({
   "com.xiaobu.ledger.infrastructure",
   "com.xiaobu.identity.infrastructure",
-  "com.xiaobu.gift.infrastructure"
+  "com.xiaobu.gift.infrastructure",
+  "com.xiaobu.assistant.infrastructure"
 })
 @Import(GlobalExceptionHandler.class)
 public class XiaobuApplication {

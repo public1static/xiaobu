@@ -159,6 +159,12 @@ function applyExtensionDateDefault(value: string) {
   if (value >= '1900-01-01' && value <= today.value) date.value = value;
 }
 
+// 从同账本的助手确认卡返回时刷新明细和汇总。
+function assistantExpenseSaved(book: string) {
+  if (ledgerId.value === book) refreshAfterTransactionChange();
+}
+onMounted(() => uni.$on('assistant-expense-saved', assistantExpenseSaved));
+onUnmounted(() => uni.$off('assistant-expense-saved', assistantExpenseSaved));
 function refreshAfterTransactionChange() {
   giftRevision.value++;
   void refresh();
@@ -172,7 +178,9 @@ function openAssistant() {
         '/pages/assistant/index?ledger=' +
         encodeURIComponent(ledgerId.value) +
         '&name=' +
-        encodeURIComponent(ledgerLabel.value),
+        encodeURIComponent(ledgerLabel.value) +
+        '&writable=' +
+        (readOnly.value ? '0' : '1'),
     });
 }
 
