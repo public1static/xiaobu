@@ -1,6 +1,8 @@
+import { setLedgerManualReminderCompletion } from '../../api/ledger-manual-reminders';
 import type { LedgerTodo } from '../../api/ledger-todos';
 
 interface LedgerTodoTargetContext {
+  openManualReminder: (id: string) => void;
   openContract: (contractId: string) => void;
   openFixedBill: (billId: string, month: string) => void;
 }
@@ -9,11 +11,23 @@ interface LedgerTodoSource {
   label: string;
   action: string;
   completedLabel: string;
+  complete?: (ledgerId: string, item: LedgerTodo, done: boolean) => Promise<unknown>;
   open: (item: LedgerTodo, context: LedgerTodoTargetContext) => void;
 }
 
 // 每个来源定义自己的目的地，待办列表不依赖分类名或业务路由。
 const sources = new Map<string, LedgerTodoSource>([
+  [
+    'MANUAL_REMINDER',
+    {
+      label: '自建提醒',
+      action: '查看提醒',
+      completedLabel: '自建提醒 · 已办结',
+      complete: (ledgerId, item, done) =>
+        setLedgerManualReminderCompletion(ledgerId, item.sourceId, done),
+      open: (item, context) => context.openManualReminder(item.sourceId),
+    },
+  ],
   [
     'RENTAL_EXPIRY',
     {

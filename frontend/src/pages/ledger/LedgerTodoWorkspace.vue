@@ -5,8 +5,14 @@ import { ledgerTodoKey, ledgerTodoSource } from './ledger-todo-sources';
 import { formatSignedCurrency } from './transaction';
 import LedgerIcon from '../../components/LedgerIcon.vue';
 
-const props = defineProps<{ ledgerId: string; revision: number }>();
-const emit = defineEmits<{ close: []; select: [item: LedgerTodo]; count: [count: number] }>();
+const props = defineProps<{ ledgerId: string; revision: number; writable: boolean }>();
+const emit = defineEmits<{
+  close: [];
+  create: [];
+  changed: [];
+  select: [item: LedgerTodo];
+  count: [count: number];
+}>();
 const topStyle: Record<string, string> = {};
 // #ifdef MP-WEIXIN
 topStyle.paddingTop = uni.getMenuButtonBoundingClientRect().bottom + 'px';
@@ -19,6 +25,26 @@ const pending = ref(0);
 const today = ref('');
 const busy = ref(false);
 const error = ref(false);
+const acting = ref(false);
+const undo = ref<LedgerTodo>();
+let undoTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function complete(row: LedgerTodo, done: boolean) {
+  const action = ledgerTodoSource(row.source)?.complete;
+  if (!props.writable || acting.value || !action) return;
+  acting.value = true;
+  try {
+    await action(props.ledgerId, row, done);
+    clearTimeout(undoTimer);
+    undo.value = done ? row : undefined;
+    if (done) undoTimer = setTimeout(() => (undo.value = undefined), 8000);
+    emit('changed');
+  } catch {
+    uni.showToast({ title: '未能更新状态，请重试', icon: 'none' });
+  } finally {
+    acting.value = false;
+  }
+}
 let sequence = 0;
 const groups = computed(() => {
   if (completed.value)
@@ -75,6 +101,7 @@ watch([completed, () => props.ledgerId, () => props.revision], () => void load()
 });
 onUnmounted(() => {
   sequence++;
+  clearTimeout(undoTimer);
 });
 function dueLabel(row: LedgerTodo) {
   const source = ledgerTodoSource(row.source);
@@ -101,7 +128,8 @@ function shortMonth(date: string) {
     <view class="agenda-head">
       <button aria-label="返回待办入口" @click="emit('close')">‹</button>
       <text>待办</text>
-      <view />
+      <button v-if="writable" class="agenda-create" @click="emit('create')">新增</button>
+      <view v-else />
     </view>
     <view class="agenda-content">
       <view class="agenda-tabs">
@@ -126,30 +154,44 @@ function shortMonth(date: string) {
           <text>{{ group.name }}</text><text class="agenda-count">{{ group.total }}</text>
         </view>
         <view v-if="group.rows.length" class="agenda-list">
-          <button
-            v-for="row in group.rows"
-            :key="ledgerTodoKey(row)"
-            class="agenda-row"
-            :disabled="!ledgerTodoSource(row.source)"
-            @click="emit('select', row)"
-          >
-            <view class="agenda-date"
-              ><text>{{ shortMonth(row.dueOn) }}</text
-              ><text>{{ row.dueOn.slice(8) }}</text></view
+          <view v-for="row in group.rows" :key="ledgerTodoKey(row)" class="agenda-item">
+            <button
+              class="agenda-row"
+              :aria-label="ledgerTodoSource(row.source)?.action + '：' + row.title"
+              :disabled="!ledgerTodoSource(row.source)"
+              @click="emit('select', row)"
             >
-            <view class="agenda-copy"
-              ><text>{{ row.title }}</text
-              ><text class="agenda-caption">{{ dueLabel(row) }}</text></view
-            >
-            <view class="agenda-target">
-              <text v-if="row.amountCents != null" class="agenda-amount">{{
-                formatSignedCurrency(row.amountCents)
-              }}</text>
-              <text v-if="ledgerTodoSource(row.source)" class="agenda-link"
-                >{{ ledgerTodoSource(row.source)?.action }} ›</text
+              <view class="agenda-date"
+                ><text>{{ shortMonth(row.dueOn) }}</text
+                ><text>{{ row.dueOn.slice(8) }}</text></view
               >
-            </view>
-          </button>
+              <view class="agenda-copy"
+                ><text>{{ row.title }}</text
+                ><text class="agenda-caption">{{ dueLabel(row) }}</text></view
+              >
+              <view class="agenda-target">
+                <text v-if="row.amountCents != null" class="agenda-amount">{{
+                  formatSignedCurrency(row.amountCents)
+                }}</text>
+                <text v-if="ledgerTodoSource(row.source)" class="agenda-link">{{
+                  ledgerTodoSource(row.source)?.complete
+                    ? '›'
+                    : ledgerTodoSource(row.source)?.action + ' ›'
+                }}</text>
+              </view>
+            </button>
+            <button
+              v-if="
+                writable && row.status !== 'COMPLETED' && ledgerTodoSource(row.source)?.complete
+              "
+              class="agenda-complete"
+              :aria-label="'标记已办：' + row.title"
+              :disabled="acting"
+              @click="complete(row, true)"
+            >
+              标记已办
+            </button>
+          </view>
         </view>
       </view>
       <text v-if="busy" class="agenda-empty">加载中…</text>
@@ -162,6 +204,10 @@ function shortMonth(date: string) {
       <button v-else-if="rows.length < total" class="agenda-more" @click="load(page + 1)">
         加载更多
       </button>
+    </view>
+    <view v-if="undo" class="agenda-undo" role="status">
+      <text>已标记为已办</text>
+      <button :disabled="acting" @click="complete(undo, false)">撤销</button>
     </view>
   </view>
 </template>
@@ -181,7 +227,7 @@ function shortMonth(date: string) {
   top: 0;
   z-index: 1;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
   align-items: center;
   text-align: center;
   min-height: 52px;
@@ -204,9 +250,17 @@ function shortMonth(date: string) {
   border: 0;
 }
 .agenda-head button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 42px;
   min-height: 44px;
   font-size: 28px;
+}
+.agenda-head button.agenda-create {
+  width: 48px;
+  font-size: 14px;
+  color: #176a57;
 }
 .agenda-content {
   width: min(100%, 540px);
@@ -267,11 +321,46 @@ function shortMonth(date: string) {
   min-height: 64px;
   padding: 8px 11px;
   border-radius: 0;
-  border-bottom: 1px solid #edf1ef;
   text-align: left;
+  min-width: 0;
+  flex: 1;
 }
-.todo-workspace .agenda-row:last-child {
+.agenda-item {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #edf1ef;
+}
+.agenda-item:last-child {
   border-bottom: 0;
+}
+.todo-workspace .agenda-complete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-height: 44px;
+  padding: 0 9px;
+  margin-right: 5px;
+  color: #176a57;
+  font-size: 12px;
+}
+.agenda-undo {
+  position: sticky;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: calc(min(100%, 540px) - 28px);
+  box-sizing: border-box;
+  margin: 0 auto 12px;
+  padding: 0 12px;
+  background: #21352e;
+  color: white;
+  border-radius: 10px;
+}
+.todo-workspace .agenda-undo button {
+  min-height: 44px;
+  padding: 0 8px;
 }
 .agenda-date {
   flex: 0 0 58px;
