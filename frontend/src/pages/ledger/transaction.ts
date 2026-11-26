@@ -76,8 +76,12 @@ export function parseOpeningBalance(input: string): number | null {
   return cents === null ? null : value.startsWith('-') ? -cents : cents;
 }
 
+export function formatCentsForInput(cents: number) {
+  return (cents / 100).toFixed(2);
+}
+
 export function formatCents(cents: number) {
-  return (cents / 100).toFixed(2).replace(/\B(?=(\d{3})+\.)/g, ',');
+  return formatCentsForInput(cents).replace(/\B(?=(\d{3})+\.)/g, ',');
 }
 
 export function formatSignedCurrency(cents: number) {
@@ -108,7 +112,7 @@ export function resolveLedgerMonth(value: unknown, currentMonth: string) {
     : currentMonth;
 }
 
-export function shiftLedgerMonth(month: string, offset: -1 | 1) {
+export function shiftLedgerMonth(month: string, offset: number) {
   const [year, monthNumber] = month.split('-').map(Number);
   const index = year * 12 + monthNumber - 1 + offset;
   return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;

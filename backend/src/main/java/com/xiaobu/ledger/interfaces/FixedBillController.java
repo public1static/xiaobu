@@ -43,12 +43,13 @@ class FixedBillController {
       @PathVariable String ledgerId,
       @RequestParam @DateTimeFormat(pattern = "uuuu-MM") YearMonth month,
       @RequestParam(defaultValue = "false") boolean paid,
+      @RequestParam(required = false) @Size(max = 48) String billId,
       @RequestParam(defaultValue = "0") @Min(0) @Max(1_000_000) int page,
       HttpServletRequest request) {
     var actor = LedgerSessionContext.require(request);
     return ApiResponse.success(
         mapper.toResponse(
-            bills.listFixedBillPeriods(ledgerId, actor.actorId(), month, paid, page)));
+            bills.listFixedBillPeriods(ledgerId, actor.actorId(), month, paid, page, billId)));
   }
 
   @PostMapping

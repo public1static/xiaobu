@@ -19,6 +19,7 @@ import LedgerFixedBillLink from './LedgerFixedBillLink.vue';
 import {
   FIRST_LEDGER_MONTH,
   formatCents,
+  formatCentsForInput,
   ledgerToday,
   parseCents,
   shiftLedgerMonth,
@@ -34,14 +35,41 @@ const props = defineProps<{
   writable: boolean;
   covered: boolean;
   revision: number;
+  rental?: { billId: string; firstDueOn: string; endsOn: string; cycleMonths: number };
 }>();
 const emit = defineEmits<{ close: []; saved: []; detail: [id: string] }>();
 const today = ledgerToday();
+const cycleLabels: Record<number, string> = { 1: '每月', 3: '季付', 6: '半年付', 12: '年付' };
 const workspaceStyle: Record<string, string> = {};
 // #ifdef MP-WEIXIN
 workspaceStyle.paddingTop = uni.getMenuButtonBoundingClientRect().bottom + 'px';
 // #endif
-const month = ref(today.slice(0, 7));
+const month = ref(firstVisibleMonth());
+function firstVisibleMonth() {
+  const current = today.slice(0, 7);
+  if (!props.rental) return current;
+  const first = props.rental.firstDueOn.slice(0, 7);
+  let period = first;
+  let next = shiftLedgerMonth(period, props.rental.cycleMonths);
+  while (next < current && isRentalPeriod(next)) {
+    period = next;
+    next = shiftLedgerMonth(period, props.rental.cycleMonths);
+  }
+  return current > period && isRentalPeriod(next) ? next : period;
+}
+function isRentalPeriod(candidate: string) {
+  if (!props.rental) return candidate >= FIRST_LEDGER_MONTH && candidate <= '2100-12';
+  const first = props.rental.firstDueOn;
+  if (candidate < first.slice(0, 7) || candidate > props.rental.endsOn.slice(0, 7)) return false;
+  const [year, number] = candidate.split('-').map(Number);
+  const last = new Date(Date.UTC(year, number, 0)).getUTCDate();
+  const due = Math.min(last, Number(first.slice(8)));
+  return candidate + '-' + String(due).padStart(2, '0') <= props.rental.endsOn;
+}
+const previousPeriod = computed(() =>
+  shiftLedgerMonth(month.value, -(props.rental?.cycleMonths ?? 1)),
+);
+const nextPeriod = computed(() => shiftLedgerMonth(month.value, props.rental?.cycleMonths ?? 1));
 const paid = ref(false);
 const view = ref<'list' | 'create' | 'period' | 'link' | 'plans' | 'edit'>('list');
 const selected = ref<FixedBillPeriod>();
@@ -119,7 +147,13 @@ async function load(next = 0) {
     total.value = 0;
   }
   try {
-    const result = await listFixedBillPeriods(props.ledgerId, month.value, paid.value, next);
+    const result = await listFixedBillPeriods(
+      props.ledgerId,
+      month.value,
+      paid.value,
+      next,
+      props.rental?.billId,
+    );
     if (sequence !== loadNumber) return;
     if (
       next &&
@@ -199,7 +233,7 @@ async function loadPlans(pageIndex = 0) {
   }
 }
 
-if (props.writable) void loadPlans();
+if (props.writable && !props.rental) void loadPlans();
 
 function openPlans() {
   view.value = 'plans';
@@ -209,7 +243,7 @@ function openPlans() {
 function editPlan(plan: FixedBillPlan) {
   selectedPlan.value = plan;
   name.value = plan.name;
-  amount.value = formatCents(plan.amountCents);
+  amount.value = formatCentsForInput(plan.amountCents);
   date.value = plan.earliestFirstDueOn;
   categoryCode.value = plan.categoryCode;
   accountId.value = plan.accountId ?? null;
@@ -218,8 +252,8 @@ function editPlan(plan: FixedBillPlan) {
 }
 
 function shiftMonth(direction: -1 | 1) {
-  const next = shiftLedgerMonth(month.value, direction);
-  if (next >= FIRST_LEDGER_MONTH && next <= '2100-12') month.value = next;
+  const next = direction === -1 ? previousPeriod.value : nextPeriod.value;
+  if (isRentalPeriod(next)) month.value = next;
 }
 
 function create() {
@@ -234,7 +268,7 @@ function create() {
 
 function openPeriod(row: FixedBillPeriod) {
   selected.value = row;
-  amount.value = formatCents(row.amountCents);
+  amount.value = formatCentsForInput(row.amountCents);
   date.value = today;
   accountId.value = row.accountId ?? null;
   error.value = '';
@@ -388,10 +422,12 @@ async function save() {
                 ? '账单计划'
                 : view === 'edit'
                   ? '修改后续账期'
-                  : '固定账单'
+                  : rental
+                    ? '房租账期'
+                    : '固定账单'
       }}</text>
       <button
-        v-if="view === 'list' && writable"
+        v-if="view === 'list' && writable && !rental"
         class="bill-header-action bill-add"
         @click="create"
       >
@@ -401,16 +437,30 @@ async function save() {
     </view>
     <view v-if="view === 'list'" class="bill-content">
       <button
-        v-if="writable && (plansTotal || plansError)"
+        v-if="writable && !rental && (plansTotal || plansError)"
         class="bill-row bill-manage"
         @click="openPlans"
       >
         <text>管理账单计划</text><text>›</text>
       </button>
       <view class="bill-month">
-        <button aria-label="上个月" @click="shiftMonth(-1)">‹</button>
+        <button
+          :aria-label="rental ? '上期' : '上个月'"
+          :disabled="!!rental && !isRentalPeriod(previousPeriod)"
+          :aria-disabled="rental && !isRentalPeriod(previousPeriod) ? 'true' : undefined"
+          @click="shiftMonth(-1)"
+        >
+          ‹
+        </button>
         <text>{{ month.replace('-', ' 年 ') }} 月</text>
-        <button aria-label="下个月" @click="shiftMonth(1)">›</button>
+        <button
+          :aria-label="rental ? '下期' : '下个月'"
+          :disabled="!!rental && !isRentalPeriod(nextPeriod)"
+          :aria-disabled="rental && !isRentalPeriod(nextPeriod) ? 'true' : undefined"
+          @click="shiftMonth(1)"
+        >
+          ›
+        </button>
       </view>
       <view class="bill-tabs">
         <button :class="{ active: !paid }" :aria-pressed="!paid" @click="paid = false">
@@ -470,7 +520,8 @@ async function save() {
     </view>
     <view v-else class="bill-content">
       <view v-if="(view === 'period' || view === 'link') && selected" class="bill-summary">
-        <text>{{ month }} · 每月</text><text>{{ selected.name }}</text>
+        <text>{{ month }} · {{ cycleLabels[selected.cycleMonths] || '每月' }}</text
+        ><text>{{ selected.name }}</text>
         <text>{{ selected.dueOn }} 到期{{ selectedCategory ? ' · ' + selectedCategory : '' }}</text>
       </view>
       <LedgerFixedBillLink
@@ -673,6 +724,9 @@ async function save() {
   border-radius: 10px;
   color: #176a57;
   font-size: 22px;
+}
+.bill-month button[aria-disabled='true'] {
+  opacity: 0.42;
 }
 .bill-tabs {
   display: flex;

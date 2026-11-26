@@ -7,6 +7,7 @@ public record FixedBillPeriodResponse(
     String name,
     LocalDate dueOn,
     long amountCents,
+    int cycleMonths,
     String categoryCode,
     String accountId,
     String transactionId,

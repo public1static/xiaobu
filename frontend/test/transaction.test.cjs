@@ -90,3 +90,11 @@ test('refund date rolls over at Beijing midnight', async () => {
   assert.equal(ledgerToday(new Date('2026-11-25T15:59:59Z')), '2026-11-25');
   assert.equal(ledgerToday(new Date('2026-11-25T16:00:00Z')), '2026-11-26');
 });
+
+test('pre-filled bill amounts can be submitted without editing', async () => {
+  const { formatCents, formatCentsForInput, parseCents } =
+    await import('../src/pages/ledger/transaction.ts');
+  assert.equal(formatCents(750000), '7,500.00');
+  assert.equal(formatCentsForInput(750000), '7500.00');
+  assert.equal(parseCents(formatCentsForInput(750000)), 750000);
+});

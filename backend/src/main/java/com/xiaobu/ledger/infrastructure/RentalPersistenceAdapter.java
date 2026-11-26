@@ -1,0 +1,98 @@
+package com.xiaobu.ledger.infrastructure;
+
+import com.xiaobu.ledger.application.RentalContractResult;
+import com.xiaobu.ledger.application.RentalHomeResult;
+import com.xiaobu.ledger.application.RentalPageResult;
+import com.xiaobu.ledger.application.RentalRepository;
+import com.xiaobu.ledger.domain.RentalContract;
+import com.xiaobu.ledger.domain.RentalHome;
+import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Repository;
+
+@Repository
+class RentalPersistenceAdapter implements RentalRepository {
+  private static final int PAGE_SIZE = 20;
+  private final RentalHomeJpaRepository homes;
+  private final RentalContractJpaRepository contracts;
+
+  RentalPersistenceAdapter(RentalHomeJpaRepository homes, RentalContractJpaRepository contracts) {
+    this.homes = homes;
+    this.contracts = contracts;
+  }
+
+  @Override
+  public Optional<RentalHome> findHome(String ledgerId, String homeId) {
+    return homes
+        .findByLedgerIdAndIdAndDeletedFalse(ledgerId, homeId)
+        .map(RentalHomeEntity::toDomain);
+  }
+
+  @Override
+  public boolean existsOtherHomeWithName(String ledgerId, String homeId, String name) {
+    return homes.existsByLedgerIdAndNameAndIdNotAndDeletedFalse(ledgerId, name, homeId);
+  }
+
+  @Override
+  public void addHome(RentalHome home, String actorId) {
+    homes.save(new RentalHomeEntity(home, actorId));
+  }
+
+  @Override
+  public void updateHome(RentalHome home, String actorId) {
+    homes
+        .findByLedgerIdAndIdAndDeletedFalse(home.ledgerId(), home.id())
+        .orElseThrow()
+        .updateHome(home, actorId);
+  }
+
+  @Override
+  public long countHomeContracts(String ledgerId, String homeId) {
+    return contracts.countByLedgerIdAndHomeIdAndDeletedFalse(ledgerId, homeId);
+  }
+
+  @Override
+  public RentalPageResult<RentalHomeResult> listHomes(String ledgerId, int page) {
+    return toResult(
+        homes
+            .listHomes(ledgerId, PageRequest.of(page, PAGE_SIZE))
+            .map(row -> RentalHomeResult.from(row.getHome().toDomain(), row.getContractCount())));
+  }
+
+  @Override
+  public RentalPageResult<RentalContractResult> listContracts(
+      String ledgerId, String homeId, int page) {
+    return toResult(
+        contracts
+            .listContracts(ledgerId, homeId, PageRequest.of(page, PAGE_SIZE))
+            .map(row ->
+                RentalContractResult.from(
+                    row.getContract().toDomain(), row.getHomeName(), row.getFirstDueOn())));
+  }
+
+  @Override
+  public Optional<RentalContract> findContract(String ledgerId, String contractId) {
+    return contracts
+        .findByLedgerIdAndIdAndDeletedFalse(ledgerId, contractId)
+        .map(RentalContractEntity::toDomain);
+  }
+
+  @Override
+  public void linkBill(String ledgerId, String contractId, String billId, String actorId) {
+    contracts
+        .findByLedgerIdAndIdAndDeletedFalse(ledgerId, contractId)
+        .orElseThrow()
+        .linkBill(billId, actorId);
+  }
+
+  @Override
+  public void addContract(RentalContract contract, String actorId) {
+    contracts.save(new RentalContractEntity(contract, actorId));
+  }
+
+  private static <T> RentalPageResult<T> toResult(Page<T> page) {
+    return new RentalPageResult<>(
+        page.getContent(), page.getTotalElements(), page.getNumber(), page.getSize());
+  }
+}
