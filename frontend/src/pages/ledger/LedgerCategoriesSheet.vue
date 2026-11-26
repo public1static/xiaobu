@@ -7,6 +7,8 @@ import {
   listLedgerCategories,
   type LedgerCategory,
 } from '../../api/ledger-categories';
+import { useLedgerCategoryColumns } from './category-layout';
+import LedgerCategoryTiles from './LedgerCategoryTiles.vue';
 import { ApiRequestError } from '../../api/request';
 import type { TransactionDirection } from './transaction';
 
@@ -15,26 +17,41 @@ const props = defineProps<{
   direction: TransactionDirection;
   selected: string;
   allowManage: boolean;
+  initialCatalog: LedgerCategory[] | null;
 }>();
 const emit = defineEmits<{
   (event: 'close'): void;
   (event: 'select', code: string): void;
   (event: 'catalog', catalog: LedgerCategory[]): void;
 }>();
-const catalog = ref<LedgerCategory[]>([]);
+const columns = useLedgerCategoryColumns();
+const catalog = ref<LedgerCategory[]>(props.initialCatalog ?? []);
 const busy = ref(false);
-const managing = ref(false);
+const maintenanceOpen = ref(false);
 const adding = ref(false);
 const name = ref('');
 const error = ref('');
-const dragFrom = ref<number | null>(null);
-const dragTo = ref<number | null>(null);
 const active = computed(() =>
   catalog.value.filter((row) => row.direction === props.direction && row.active),
 );
 const inactive = computed(() =>
   catalog.value.filter((row) => row.direction === props.direction && !row.active),
 );
+
+const directionLabel = computed(() => (props.direction === 'INCOME' ? '收入' : '支出'));
+const choices = computed<readonly [string, string][]>(() => {
+  const historical = inactive.value.find((item) => item.code === props.selected);
+  return [...active.value, ...(historical ? [historical] : [])].map(({ code, name }) => [
+    code,
+    name,
+  ]);
+});
+
+function toggleAdd() {
+  adding.value = !adding.value;
+  name.value = '';
+  error.value = '';
+}
 
 function replaceCatalog(rows: LedgerCategory[]) {
   catalog.value = rows;
@@ -54,6 +71,7 @@ async function refresh() {
 }
 
 async function add() {
+  if (busy.value) return;
   const label = name.value.trim();
   if (!label) {
     error.value = '请输入分类名称。';
@@ -105,157 +123,118 @@ async function setActive(row: LedgerCategory, enabled: boolean) {
   }
 }
 
-function startDrag(event: PointerEvent, index: number) {
-  // #ifdef H5
-  if (busy.value) return;
-  dragFrom.value = index;
-  dragTo.value = index;
-  (event.currentTarget as HTMLElement)?.setPointerCapture?.(event.pointerId);
-  // #endif
-}
-function updateDrag(event: PointerEvent) {
-  // #ifdef H5
-  if (dragFrom.value === null) return;
-  const row = document
-    .elementFromPoint(event.clientX, event.clientY)
-    ?.closest('[data-category-order]');
-  const index = row?.getAttribute('data-category-order');
-  if (index != null) dragTo.value = Number(index);
-  // #endif
-}
-function resetDrag() {
-  dragFrom.value = null;
-  dragTo.value = null;
-}
-function endDrag() {
-  if (dragFrom.value !== null && dragTo.value !== null) void move(dragFrom.value, dragTo.value);
-  resetDrag();
-}
-
 onMounted(refresh);
 </script>
 
 <template>
-  <view class="overlay category-sheet-overlay">
-    <view class="sheet login-sheet" role="dialog" aria-label="选分类" aria-modal="true">
-      <view class="sheet-head">
-        <text>{{ direction === 'INCOME' ? '收入' : '支出' }}分类</text>
-        <button class="close" aria-label="关闭分类" :disabled="busy" @click="emit('close')">
+  <view class="overlay category-sheet-overlay" @click.self="!busy && emit('close')">
+    <view
+      class="sheet category-sheet"
+      role="dialog"
+      :aria-label="allowManage ? directionLabel + '分类管理' : '选分类'"
+      aria-modal="true"
+      @keydown.esc.stop="!busy && emit('close')"
+    >
+      <view class="category-toolbar">
+        <button
+          class="text-button category-close"
+          aria-label="关闭分类"
+          :disabled="busy"
+          @click="emit('close')"
+        >
           ×
         </button>
-      </view>
-      <view v-if="allowManage && !adding" class="category-tools">
-        <button class="text-button" :disabled="busy" @click="managing = !managing">
-          {{ managing ? '完成管理' : '管理' }}
-        </button>
-        <button
-          class="text-button"
-          :disabled="busy"
-          @click="
-            adding = true;
-            error = '';
-          "
-        >
-          新增分类
+        <text>{{ directionLabel }}分类{{ allowManage ? '管理' : '' }}</text>
+        <button v-if="allowManage" class="text-button" :disabled="busy" @click="toggleAdd">
+          {{ adding ? '取消' : '新增' }}
         </button>
       </view>
-      <view v-if="adding" class="meta">
-        <view class="meta-row">
-          <text>新分类</text>
-          <input v-model="name" :maxlength="24" aria-label="新分类名称" placeholder="输入名称" />
-        </view>
-        <view class="category-tools">
-          <button
-            class="text-button"
-            :disabled="busy"
-            @click="
-              adding = false;
-              error = '';
-            "
-          >
-            取消新增
-          </button>
-          <button class="text-button" :disabled="busy" @click="add">保存分类</button>
-        </view>
+      <view v-if="adding" class="category-add">
+        <text>分类名称<text class="star">*</text></text>
+        <input
+          v-model="name"
+          :focus="adding"
+          :maxlength="24"
+          aria-label="新分类名称"
+          placeholder="输入分类名称"
+          confirm-type="done"
+          @confirm="add"
+          @input="error = ''"
+        />
+        <button class="text-button" :disabled="busy" @click="add">保存并选用</button>
       </view>
-      <view v-if="!managing" class="category-grid">
-        <button
-          v-for="item in active"
-          :key="item.code"
-          class="category choice"
-          :class="{ selected: item.code === selected }"
-          :aria-pressed="item.code === selected"
-          :disabled="busy"
-          @click="emit('select', item.code)"
-        >
-          <text>{{ item.name }}</text>
-        </button>
-      </view>
-      <template v-else>
-        <text class="preview-label"
-          >拖动手柄调整快捷顺序，或用上移、下移。停用不影响历史流水。</text
-        >
-        <view
-          v-for="(item, index) in active"
-          :key="item.code"
-          :data-category-order="index"
-          class="category-manage-row"
-          :class="{ 'drag-target': dragTo === index }"
-        >
-          <!-- #ifdef H5 -->
-          <span
-            class="drag-handle"
-            aria-hidden="true"
-            @pointerdown.prevent="startDrag($event, index)"
-            @pointermove="updateDrag"
-            @pointerup="endDrag"
-            @pointercancel="resetDrag"
-            >⠿</span
-          >
-          <!-- #endif -->
-          <text class="category-name">{{ item.name }}</text>
-          <button
-            class="text-button"
-            :disabled="busy || index === 0"
-            :aria-label="'上移' + item.name"
-            @click="move(index, index - 1)"
-          >
-            ↑
-          </button>
-          <button
-            class="text-button"
-            :disabled="busy || index === active.length - 1"
-            :aria-label="'下移' + item.name"
-            @click="move(index, index + 1)"
-          >
-            ↓
-          </button>
-          <button
-            class="text-button"
-            :disabled="busy"
-            :aria-label="'停用' + item.name"
-            @click="setActive(item, false)"
-          >
-            停用
-          </button>
-        </view>
-        <text v-if="inactive.length" class="preview-label">已停用</text>
-        <view v-for="item in inactive" :key="item.code" class="category-manage-row">
-          <text class="category-name">{{ item.name }}</text>
-          <button
-            class="text-button"
-            :disabled="busy"
-            :aria-label="'恢复' + item.name"
-            @click="setActive(item, true)"
-          >
-            恢复
-          </button>
-        </view>
-      </template>
       <text v-if="error" class="error" role="alert">{{ error }}</text>
-      <button v-if="error && !adding" class="text-button" :disabled="busy" @click="refresh">
+      <button
+        v-if="error && !adding"
+        class="text-button category-reload"
+        :disabled="busy"
+        @click="refresh"
+      >
         重新加载
       </button>
+      <text class="category-hint">{{ allowManage ? '点选使用，拖动调整顺序' : '点选使用' }}</text>
+      <LedgerCategoryTiles
+        class="category-sheet-grid"
+        :items="choices"
+        :columns="columns"
+        :selected="selected"
+        :sortable="allowManage"
+        :sortable-count="active.length"
+        :disabled="busy"
+        @select="emit('select', $event)"
+        @move="move"
+      />
+      <view v-if="allowManage && choices.length" class="category-maintenance">
+        <button
+          class="text-button category-reload"
+          :aria-expanded="maintenanceOpen"
+          @click="maintenanceOpen = !maintenanceOpen"
+        >
+          {{ maintenanceOpen ? '收起' : '停用与恢复' }}
+        </button>
+        <template v-if="maintenanceOpen">
+          <text class="category-hint">停用不影响历史流水，也可用箭头调整顺序。</text>
+          <view v-for="(item, index) in active" :key="item.code" class="category-manage-row">
+            <text class="category-name">{{ item.name }}</text>
+            <button
+              class="text-button"
+              :disabled="busy || index === 0"
+              :aria-label="'上移' + item.name"
+              @click="move(index, index - 1)"
+            >
+              ↑
+            </button>
+            <button
+              class="text-button"
+              :disabled="busy || index === active.length - 1"
+              :aria-label="'下移' + item.name"
+              @click="move(index, index + 1)"
+            >
+              ↓
+            </button>
+            <button
+              class="text-button"
+              :disabled="busy"
+              :aria-label="'停用' + item.name"
+              @click="setActive(item, false)"
+            >
+              停用
+            </button>
+          </view>
+          <text v-if="inactive.length" class="category-hint">已停用</text>
+          <view v-for="item in inactive" :key="item.code" class="category-manage-row">
+            <text class="category-name">{{ item.name }}</text>
+            <button
+              class="text-button"
+              :disabled="busy"
+              :aria-label="'恢复' + item.name"
+              @click="setActive(item, true)"
+            >
+              恢复
+            </button>
+          </view>
+        </template>
+      </view>
     </view>
   </view>
 </template>
@@ -264,46 +243,71 @@ onMounted(refresh);
 <style scoped>
 .category-sheet-overlay {
   z-index: 4;
+  background: #000b;
 }
-.category-tools,
+.category-sheet {
+  gap: 7px;
+  padding-top: 6px;
+  background: #fff;
+  max-height: 80vh;
+  max-height: 80dvh;
+}
+.category-sheet-grid {
+  margin-inline: 14px;
+}
+.category-toolbar {
+  display: grid;
+  grid-template-columns: 50px 1fr 50px;
+  align-items: center;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 650;
+}
+.category-toolbar .text-button {
+  width: 100%;
+  padding: 0;
+  font-weight: 400;
+}
+.category-toolbar .category-close {
+  font-size: 23px;
+  justify-self: start;
+  width: 40px;
+}
+.category-add,
 .category-manage-row {
   display: flex;
+  gap: 8px;
   align-items: center;
-  gap: 6px;
-}
-.category-tools {
-  justify-content: flex-end;
-}
-.category-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
-  gap: 7px;
-}
-.choice {
-  min-width: 0;
-  min-height: 46px;
-  overflow-wrap: anywhere;
-}
-.category-manage-row {
-  padding: 3px 4px;
   border-bottom: 1px solid var(--line);
+  font-size: 14px;
 }
-.category-manage-row .text-button {
-  min-width: 36px;
-  padding-inline: 3px;
+.category-add input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+}
+.category-hint {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.category-reload {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  align-self: flex-start;
+}
+.category-maintenance .category-reload {
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 32px;
+  margin-left: 14px;
+  margin-right: auto;
 }
 .category-name {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-}
-.drag-handle {
-  padding: 8px 6px;
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-}
-.drag-target {
-  background: #eaf3ed;
 }
 </style>
