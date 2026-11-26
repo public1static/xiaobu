@@ -70,10 +70,35 @@
   font-size: 14px;
   font-weight: 700;
 }
-.period {
-  padding: 7px 9px;
-  border-radius: 9px;
+.month-switcher {
+  display: flex;
+  flex: none;
+  align-items: center;
+  border-radius: 10px;
   background: #ffffff20;
+}
+.month-arrow {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #f5fff6;
+  background: transparent;
+  font-size: 23px;
+  line-height: 1;
+}
+.month-arrow[disabled] {
+  opacity: 0.4;
+  color: #f5fff6;
+  background: transparent;
+}
+.period {
+  min-width: 67px;
+  text-align: center;
   color: #f5fff6;
   font-size: 13px;
   font-weight: 650;

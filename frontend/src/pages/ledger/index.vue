@@ -3,15 +3,28 @@ import { computed, ref } from 'vue';
 import { listExpenses, saveExpense, type Expense } from '../../api/expenses';
 import {
   CATEGORIES,
+  FIRST_LEDGER_MONTH,
   categoryLabel,
   formatCents,
   localDay,
   parseCents,
+  resolveLedgerMonth,
+  shiftLedgerMonth,
   type CategoryCode,
 } from './expense';
 
-const today = localDay();
-const month = ref(today.slice(0, 7));
+const MONTH_PREFERENCE_KEY = 'xiaobu.ledger.last-month';
+const today = ref(localDay());
+const currentMonth = computed(() => today.value.slice(0, 7));
+const month = ref(readMonthPreference());
+
+function readMonthPreference() {
+  try {
+    return resolveLedgerMonth(uni.getStorageSync(MONTH_PREFERENCE_KEY), currentMonth.value);
+  } catch {
+    return currentMonth.value;
+  }
+}
 const monthText = computed(() => {
   const [year, value] = month.value.split('-');
   return `${year}年${Number(value)}月`;
@@ -23,7 +36,7 @@ const savedMessage = ref('');
 const open = ref(false);
 const saving = ref(false);
 const amount = ref('');
-const date = ref(today);
+const date = ref(today.value);
 const category = ref<CategoryCode | ''>('');
 const note = ref('');
 const fieldError = ref({ amount: '', category: '' });
@@ -33,6 +46,7 @@ let generation = 0;
 const total = computed(() =>
   items.value.reduce((value, expense) => value + expense.amountCents, 0),
 );
+const showTotals = computed(() => !loading.value && !listError.value);
 const groups = computed(() => {
   const dates = new Map<string, Expense[]>();
   for (const expense of items.value) {
@@ -62,8 +76,30 @@ async function refresh() {
   }
 }
 
+function selectMonth(value: string) {
+  if (value !== month.value) {
+    month.value = value;
+    items.value = [];
+  }
+  try {
+    // A preference only: the server remains the source of truth for the list.
+    uni.setStorageSync(MONTH_PREFERENCE_KEY, value);
+  } catch {
+    // Keep month navigation available even when storage is disabled or full.
+  }
+}
+
+function changeMonth(offset: -1 | 1) {
+  today.value = localDay();
+  const target = shiftLedgerMonth(month.value, offset);
+  if (target < FIRST_LEDGER_MONTH || target > currentMonth.value) return;
+  selectMonth(target);
+  void refresh();
+}
+
 function newExpense() {
-  date.value = today;
+  today.value = localDay();
+  date.value = today.value;
   amount.value = '';
   category.value = '';
   note.value = '';
@@ -101,9 +137,10 @@ async function submit() {
   saveError.value = '';
   try {
     const stored = await saveExpense(payload);
+    today.value = localDay();
     const nextMonth = stored.bookedOn.slice(0, 7);
     const current = nextMonth === month.value ? items.value : [];
-    month.value = nextMonth;
+    selectMonth(nextMonth);
     items.value = [stored, ...current.filter((row) => row.id !== stored.id)].sort(
       (a, b) => b.bookedOn.localeCompare(a.bookedOn) || b.id.localeCompare(a.id),
     );
@@ -121,7 +158,7 @@ async function submit() {
 }
 
 const showDay = (day: string) =>
-  day === today ? '今天' : `${Number(day.slice(5, 7))}月${Number(day.slice(8))}日`;
+  day === today.value ? '今天' : `${Number(day.slice(5, 7))}月${Number(day.slice(8))}日`;
 
 void refresh();
 </script>
@@ -137,16 +174,48 @@ void refresh();
       <view class="summary">
         <view class="summary-line">
           <text class="summary-label">收支结余</text>
-          <text class="period">{{ monthText }}</text>
+          <view class="month-switcher">
+            <button
+              class="month-arrow"
+              role="button"
+              aria-label="上个月"
+              :disabled="month <= FIRST_LEDGER_MONTH"
+              :aria-disabled="month <= FIRST_LEDGER_MONTH"
+              :tabindex="month <= FIRST_LEDGER_MONTH ? -1 : 0"
+              @click="changeMonth(-1)"
+              @keydown.enter.prevent="changeMonth(-1)"
+              @keydown.space.prevent="changeMonth(-1)"
+            >
+              ‹
+            </button>
+            <text class="period" role="status">{{ monthText }}</text>
+            <button
+              class="month-arrow"
+              role="button"
+              aria-label="下个月"
+              :disabled="month >= currentMonth"
+              :aria-disabled="month >= currentMonth"
+              :tabindex="month >= currentMonth ? -1 : 0"
+              @click="changeMonth(1)"
+              @keydown.enter.prevent="changeMonth(1)"
+              @keydown.space.prevent="changeMonth(1)"
+            >
+              ›
+            </button>
+          </view>
         </view>
-        <view class="balance"
-          ><text class="yuan">{{ total ? '−¥' : '¥' }}</text
-          >{{ formatCents(total) }}</view
-        >
+        <view class="balance">
+          <template v-if="showTotals">
+            <text class="yuan">{{ total ? '−¥' : '¥' }}</text>{{ formatCents(total) }}
+          </template>
+          <text v-else aria-label="暂无汇总">···</text>
+        </view>
         <view class="metrics">
-          <view><text>收入</text><text>¥0.00</text></view>
           <view
-            ><text>支出</text><text>¥{{ formatCents(total) }}</text></view
+            ><text>收入</text><text>{{ showTotals ? '¥0.00' : '···' }}</text></view
+          >
+          <view
+            ><text>支出</text><text>{{ showTotals ? `¥${formatCents(total)}` : '···' }}</text></view
           >
         </view>
       </view>

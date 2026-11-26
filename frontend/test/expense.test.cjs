@@ -22,3 +22,17 @@ test('category names have a fallback for unknown codes', async () => {
   assert.equal(categoryLabel('DINING'), '餐饮');
   assert.equal(categoryLabel('UNRECOGNIZED'), '其他支出');
 });
+
+test('month navigation crosses year boundaries', async () => {
+  const { shiftLedgerMonth } = await import('../src/pages/ledger/expense.ts');
+  assert.equal(shiftLedgerMonth('2026-01', -1), '2025-12');
+  assert.equal(shiftLedgerMonth('2026-12', 1), '2027-01');
+});
+
+test('saved month is accepted only if supported and not in the future', async () => {
+  const { resolveLedgerMonth } = await import('../src/pages/ledger/expense.ts');
+  assert.equal(resolveLedgerMonth('2026-10', '2026-11'), '2026-10');
+  for (const invalid of [null, '', '2026-1', '2026-00', '2026-12', '1899-12']) {
+    assert.equal(resolveLedgerMonth(invalid, '2026-11'), '2026-11', String(invalid));
+  }
+});
