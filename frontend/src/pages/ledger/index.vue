@@ -8,6 +8,7 @@ import { closeWechatSession, getWechatSession, openWechatSession } from '../../a
 import { setWechatSessionToken, wechatPreviewApiBase } from '../../api/preview-transport';
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerFixedBills from './LedgerFixedBills.vue';
+import LedgerMonthlyBudget from './LedgerMonthlyBudget.vue';
 import LedgerRentalWorkspace from './LedgerRentalWorkspace.vue';
 import LedgerRentalReminders from './LedgerRentalReminders.vue';
 import { countRentalExpiryReminders } from '../../api/rentals';
@@ -159,6 +160,7 @@ const account = ref<Pick<LedgerAccount, 'id' | 'name'> | null>(null);
 const accountView = ref<'manage' | 'select' | null>(null);
 const ledgerHubOpen = ref(false);
 const fixedBillsOpen = ref(false);
+const budgetOpen = ref(false);
 const rentalsOpen = ref(false);
 const remindersOpen = ref(false);
 const reminderContractId = ref('');
@@ -1021,6 +1023,7 @@ const showFloatingEntry = computed(
       giftWorkspaceOpen.value ||
       remindersOpen.value ||
       rentalsOpen.value ||
+      budgetOpen.value ||
       ledgerHubOpen.value
     ),
 );
@@ -1242,6 +1245,11 @@ const entryDateLabel = computed(() => {
         <button class="hub-link" @click="openGiftWorkspace">
           <LedgerIcon class="page-icon" src="/static/ledger/vant/GIFT_RECEIVED.svg" /><view
             ><text>礼金往来</text><text class="preview-label">往来 · 礼单 · 亲友</text></view
+          ><text>›</text>
+        </button>
+        <button class="hub-link" @click="budgetOpen = true">
+          <LedgerIcon class="page-icon" src="/static/ledger/vant/MONTHLY_BUDGET.svg" /><view
+            ><text>月度预算</text><text class="preview-label">总预算 · 已用 · 剩余</text></view
           ><text>›</text>
         </button>
         <button class="hub-link" @click="fixedBillsOpen = true">
@@ -1697,6 +1705,14 @@ const entryDateLabel = computed(() => {
       @close="recycleOpen = false"
       :category-names="categoryNames"
       @restored="refreshAfterTransactionChange"
+    />
+    <LedgerMonthlyBudget
+      v-if="budgetOpen && ledgerId"
+      :key="ledgerId"
+      :ledger-id="ledgerId"
+      :initial-month="month"
+      :writable="!readOnly"
+      @close="budgetOpen = false"
     />
     <LedgerFixedBills
       v-if="fixedBillsOpen && ledgerId"
