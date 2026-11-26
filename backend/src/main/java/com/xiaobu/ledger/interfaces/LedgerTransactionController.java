@@ -51,17 +51,21 @@ public class LedgerTransactionController {
   }
 
   @GetMapping
-  public ApiResponse<List<LedgerTransactionResponse>> listLedgerTransactions(
+  public ApiResponse<LedgerStatementPageResponse> listLedgerTransactions(
       @PathVariable("ledgerId") String ledgerId,
       @RequestParam(name = "month", required = false) String month,
       @RequestParam(name = "from", required = false) String from,
       @RequestParam(name = "through", required = false) String through,
       @RequestParam(name = "keyword", defaultValue = "") String keyword,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(
+              name = "pageSize",
+              defaultValue = "" + ListLedgerTransactionsQuery.DEFAULT_PAGE_SIZE)
+          int pageSize,
       HttpServletRequest request) {
     var actor = LedgerSessionContext.require(request);
-    var query = toQuery(ledgerId, actor.actorId(), month, from, through, keyword);
-    return ApiResponse.success(
-        transactions.listLedgerTransactions(query).stream().map(mapper::toResponse).toList());
+    var query = toQuery(ledgerId, actor.actorId(), month, from, through, keyword, page, pageSize);
+    return ApiResponse.success(mapper.toResponse(transactions.listLedgerTransactions(query)));
   }
 
   @PostMapping
@@ -192,18 +196,31 @@ public class LedgerTransactionController {
   }
 
   private static ListLedgerTransactionsQuery toQuery(
-      String ledgerId, String actorId, String month, String from, String through, String keyword) {
+      String ledgerId,
+      String actorId,
+      String month,
+      String from,
+      String through,
+      String keyword,
+      int page,
+      int pageSize) {
     if (month != null && from == null && through == null) {
       YearMonth selected = parseMonth(month);
       return new ListLedgerTransactionsQuery(
-          ledgerId, actorId, selected.atDay(1), selected.atEndOfMonth(), keyword);
+          ledgerId, actorId, selected.atDay(1), selected.atEndOfMonth(), keyword, page, pageSize);
     }
     if (month != null || from == null || through == null) {
       throw invalidRange();
     }
     try {
       return new ListLedgerTransactionsQuery(
-          ledgerId, actorId, LocalDate.parse(from), LocalDate.parse(through), keyword);
+          ledgerId,
+          actorId,
+          LocalDate.parse(from),
+          LocalDate.parse(through),
+          keyword,
+          page,
+          pageSize);
     } catch (DateTimeParseException ex) {
       throw invalidRange();
     }

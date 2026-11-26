@@ -139,8 +139,9 @@ class LedgerTransactionPersistenceMySqlTest {
     entityManager.clear();
 
     var found =
-        expenses.listLedgerTransactions(
-            new ListLedgerTransactionsQuery(ledgerId, "alice", october));
+        expenses
+            .listLedgerTransactions(new ListLedgerTransactionsQuery(ledgerId, "alice", october))
+            .entries();
     assertEquals(List.of(last, income, first), found);
     assertEquals(
         "INCOME",
@@ -170,8 +171,10 @@ class LedgerTransactionPersistenceMySqlTest {
         assertThrows(
                 FoundationException.class,
                 () ->
-                    expenses.listLedgerTransactions(
-                        new ListLedgerTransactionsQuery(ledgerId, "bob", YearMonth.from(date))))
+                    expenses
+                        .listLedgerTransactions(
+                            new ListLedgerTransactionsQuery(ledgerId, "bob", YearMonth.from(date)))
+                        .entries())
             .category());
     entityManager.flush();
     assertEquals(
@@ -295,7 +298,7 @@ class LedgerTransactionPersistenceMySqlTest {
     record(alpha, "alice", through.plusDays(1));
 
     var query = new ListLedgerTransactionsQuery(alpha, "alice", from, through, " a% ");
-    assertEquals(List.of(otherDay, matched), expenses.listLedgerTransactions(query));
+    assertEquals(List.of(otherDay, matched), expenses.listLedgerTransactions(query).entries());
 
     var detail = expenses.getLedgerTransaction(alpha, "alice", matched.id());
     assertEquals(matched, detail.transaction());
@@ -316,6 +319,59 @@ class LedgerTransactionPersistenceMySqlTest {
     assertThrows(
         FoundationException.class,
         () -> new ListLedgerTransactionsQuery(alpha, "alice", through, from, ""));
+  }
+
+  @Test
+  void pagesTheCombinedStatementWithoutChangingFilteredDayAndPeriodTotals() {
+    String ledgerId = newLedgerId();
+    String actor = "alice";
+    var payment = LocalDate.of(2026, 10, 30);
+    var received = payment.plusDays(1);
+    var tag = "分页验收%_";
+    var expense =
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledgerId, actor, TransactionDirection.EXPENSE, 1500, payment, "DINING", tag, null));
+    var refund =
+        expenses.recordLedgerRefund(
+            new RecordLedgerRefundCommand(ledgerId, expense.id(), actor, 0L, 600, received, null));
+    var ordered = new java.util.ArrayList<String>();
+    for (int i = 0; i < 23; i++) {
+      var income =
+          expenses.recordLedgerTransaction(
+              new RecordLedgerTransactionCommand(
+                  ledgerId,
+                  actor,
+                  TransactionDirection.INCOME,
+                  100,
+                  received,
+                  "SALARY",
+                  tag,
+                  null));
+      ordered.addFirst(income.id());
+    }
+    expenses.recordLedgerTransaction(
+        new RecordLedgerTransactionCommand(
+            ledgerId, actor, TransactionDirection.INCOME, 9000, received, "SALARY", "不匹配", null));
+    entityManager.flush();
+    ordered.add(refund.id());
+    ordered.add(expense.id());
+    var actual = new java.util.ArrayList<String>();
+    for (int page = 0; page < 3; page++) {
+      var result =
+          expenses.listLedgerTransactions(
+              new ListLedgerTransactionsQuery(ledgerId, actor, payment, received, tag, page, 10));
+      assertEquals(page == 2 ? 5 : 10, result.entries().size());
+      assertEquals(25, result.totalCount());
+      assertEquals(2300, result.incomeCents());
+      assertEquals(900, result.expenseCents());
+      assertEquals(1400, result.balanceCents());
+      assertEquals(-600, result.days().getFirst().expenseCents());
+      assertEquals(24, result.days().getFirst().entryCount());
+      assertEquals(1500, result.days().getLast().expenseCents());
+      result.entries().forEach(item -> actual.add(item.id()));
+    }
+    assertEquals(ordered, actual);
   }
 
   @Test
@@ -490,8 +546,8 @@ class LedgerTransactionPersistenceMySqlTest {
         new ListLedgerTransactionsQuery(ledgerId, "alice", YearMonth.from(paymentDate));
     var refundMonth =
         new ListLedgerTransactionsQuery(ledgerId, "alice", YearMonth.from(receiptDate));
-    assertEquals(List.of(original), expenses.listLedgerTransactions(originalMonth));
-    var refundRows = expenses.listLedgerTransactions(refundMonth);
+    assertEquals(List.of(original), expenses.listLedgerTransactions(originalMonth).entries());
+    var refundRows = expenses.listLedgerTransactions(refundMonth).entries();
     assertEquals(2, refundRows.size());
     for (var row : refundRows) {
       assertEquals(original.id(), row.originalTransactionId());
@@ -512,13 +568,13 @@ class LedgerTransactionPersistenceMySqlTest {
 
     expenses.deleteLedgerTransaction(
         new ChangeLedgerTransactionStateCommand(ledgerId, "alice", original.id(), 0));
-    assertTrue(expenses.listLedgerTransactions(refundMonth).isEmpty());
+    assertTrue(expenses.listLedgerTransactions(refundMonth).entries().isEmpty());
     assertEquals(0, recordedBalance(ledgerId, payer.id()));
     assertEquals(0, recordedBalance(ledgerId, receiver.id()));
     entityManager.clear();
     expenses.restoreLedgerTransaction(
         new ChangeLedgerTransactionStateCommand(ledgerId, "alice", original.id(), 1));
-    assertEquals(refundRows, expenses.listLedgerTransactions(refundMonth));
+    assertEquals(refundRows, expenses.listLedgerTransactions(refundMonth).entries());
     assertEquals(1000, recordedBalance(ledgerId, receiver.id()));
   }
 

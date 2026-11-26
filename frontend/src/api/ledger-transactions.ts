@@ -37,17 +37,36 @@ export interface LedgerTransactionDetail {
   extensions?: TransactionExtension[];
 }
 
+export interface LedgerStatementDay {
+  bookedOn: string;
+  incomeCents: number;
+  expenseCents: number;
+  entryCount: number;
+}
+
+export interface LedgerStatementPage {
+  entries: LedgerTransaction[];
+  days: LedgerStatementDay[];
+  incomeCents: number;
+  expenseCents: number;
+  balanceCents: number;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export function listLedgerTransactions(
   ledgerId: string,
   month: string,
   filter: LedgerTransactionFilter,
+  page = 0,
 ) {
   const dates =
     filter.from && filter.through
       ? `from=${encodeURIComponent(filter.from)}&through=${encodeURIComponent(filter.through)}`
       : `month=${encodeURIComponent(month)}`;
   const query = filter.keyword ? `${dates}&keyword=${encodeURIComponent(filter.keyword)}` : dates;
-  return request<LedgerTransaction[]>(`${transactionPath(ledgerId)}?${query}`, 'GET');
+  return request<LedgerStatementPage>(`${transactionPath(ledgerId)}?${query}&page=${page}`, 'GET');
 }
 
 export function getLedgerTransaction(ledgerId: string, transactionId: string) {

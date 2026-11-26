@@ -69,8 +69,10 @@ class LedgerInvitationPersistenceMySqlTest {
         assertThrows(
                 FoundationException.class,
                 () ->
-                    expenses.listLedgerTransactions(
-                        new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date))))
+                    expenses
+                        .listLedgerTransactions(
+                            new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date)))
+                        .entries())
             .category());
 
     var joined = invites.acceptLedgerInvitation(invite.token(), "beta");
@@ -83,6 +85,7 @@ class LedgerInvitationPersistenceMySqlTest {
         expenses
             .listLedgerTransactions(
                 new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date)))
+            .entries()
             .getFirst());
 
     assertEquals(
@@ -136,7 +139,8 @@ class LedgerInvitationPersistenceMySqlTest {
                 () -> invites.acceptLedgerInvitation(invite.token(), "alpha"))
             .category());
     jdbc.update(
-        "UPDATE ledger_invitations SET expires_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE ledger_id = ?",
+        "UPDATE ledger_invitations SET expires_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE"
+            + " ledger_id = ?",
         ledgerId);
     entities.clear();
     assertEquals(
@@ -194,6 +198,7 @@ class LedgerInvitationPersistenceMySqlTest {
         expenses
             .listLedgerTransactions(
                 new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date)))
+            .entries()
             .size());
     assertEquals(
         ErrorCategory.FORBIDDEN,
@@ -215,8 +220,10 @@ class LedgerInvitationPersistenceMySqlTest {
         assertThrows(
                 FoundationException.class,
                 () ->
-                    expenses.listLedgerTransactions(
-                        new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date))))
+                    expenses
+                        .listLedgerTransactions(
+                            new ListLedgerTransactionsQuery(ledgerId, "beta", YearMonth.from(date)))
+                        .entries())
             .category());
     assertTrue(invites.listJoinedLedgers("beta").isEmpty());
     assertEquals(
@@ -236,6 +243,7 @@ class LedgerInvitationPersistenceMySqlTest {
         expenses
             .listLedgerTransactions(
                 new ListLedgerTransactionsQuery(ledgerId, "alpha", YearMonth.from(date)))
+            .entries()
             .size());
     var fresh = invites.createLedgerInvitation(owner);
     assertEquals(
@@ -313,6 +321,7 @@ class LedgerInvitationPersistenceMySqlTest {
         expenses
             .listLedgerTransactions(
                 new ListLedgerTransactionsQuery(ledgerId, "alpha", YearMonth.from(date)))
+            .entries()
             .size());
     var deleted = expenses.listRecentlyDeleted(ledgerId, "beta").getFirst();
     assertEquals(2, deleted.version());

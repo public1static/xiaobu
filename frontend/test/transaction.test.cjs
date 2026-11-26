@@ -37,20 +37,11 @@ test('saved month is accepted only if supported and not in the future', async ()
   }
 });
 
-test('income categories are separate and monthly balance uses exact cents', async () => {
-  const { categoriesFor, categoryLabel, summarizeTransactions } =
-    await import('../src/pages/ledger/transaction.ts');
+test('income categories are separate from expense categories', async () => {
+  const { categoriesFor, categoryLabel } = await import('../src/pages/ledger/transaction.ts');
   assert.equal(categoryLabel('SALARY', 'INCOME'), '工资');
   assert.equal(categoryLabel('DINING', 'INCOME'), '其他收入');
   assert.ok(categoriesFor('INCOME').every(([code]) => code !== 'DINING'));
-  assert.deepEqual(
-    summarizeTransactions([
-      { direction: 'INCOME', amountCents: 500000 },
-      { direction: 'INCOME', amountCents: 3 },
-      { direction: 'EXPENSE', amountCents: 1230 },
-    ]),
-    { income: 500003, expense: 1230, balance: 498773 },
-  );
 });
 
 test('account opening balances support signed exact cents and strict precision', async () => {
@@ -70,18 +61,17 @@ test('account opening balances support signed exact cents and strict precision',
   }
 });
 
-test('refunds offset period expenses and never count as income', async () => {
-  const { formatSignedCurrency, summarizeTransactions } =
-    await import('../src/pages/ledger/transaction.ts');
-  const refund = { direction: 'EXPENSE', amountCents: 3000, originalTransactionId: 'txn-original' };
-  assert.deepEqual(summarizeTransactions([refund]), { income: 0, expense: -3000, balance: 3000 });
+test('a negative expense from the statement is rendered in exact cents', async () => {
+  const { formatSignedCurrency } = await import('../src/pages/ledger/transaction.ts');
   assert.equal(formatSignedCurrency(-3000), '−¥30.00');
-  assert.deepEqual(
-    summarizeTransactions([
-      refund,
-      { direction: 'EXPENSE', amountCents: 10000 },
-      { direction: 'INCOME', amountCents: 20000 },
-    ]),
-    { income: 20000, expense: 7000, balance: 13000 },
-  );
+});
+
+test('load more depends only on the server page metadata', async () => {
+  const { hasNextStatementPage } = await import('../src/pages/ledger/transaction.ts');
+  assert.equal(hasNextStatementPage(null), false);
+  assert.equal(hasNextStatementPage({ page: 0, pageSize: 20, totalCount: 0 }), false);
+  assert.equal(hasNextStatementPage({ page: 0, pageSize: 20, totalCount: 49 }), true);
+  assert.equal(hasNextStatementPage({ page: 1, pageSize: 20, totalCount: 49 }), true);
+  assert.equal(hasNextStatementPage({ page: 2, pageSize: 20, totalCount: 49 }), false);
+  assert.equal(hasNextStatementPage({ page: 1, pageSize: 20, totalCount: 40 }), false);
 });

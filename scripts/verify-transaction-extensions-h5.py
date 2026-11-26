@@ -70,7 +70,7 @@ def main():
     url = f"{path}/{row['id']}"
     detail = call(alpha, "GET", url)
     assert detail["transaction"]["amountCents"] == 50000
-    assert len(call(alpha, "GET", monthly)) == len(before) + 1
+    assert call(alpha, "GET", monthly)["totalCount"] == before["totalCount"] + 1
     assert detail["extensions"] == [
         {
             "type": "GIFT",
@@ -103,7 +103,7 @@ def main():
     version = saved["version"]
     call(alpha, "DELETE", f"{url}?version={version}", status=204)
     call(alpha, "GET", url, status=404)
-    assert len(call(alpha, "GET", monthly)) == len(before)
+    assert call(alpha, "GET", monthly)["totalCount"] == before["totalCount"]
     call(alpha, "POST", url + "/restore", {"version": version + 1}, 204)
     saved = call(alpha, "GET", url)
     assert saved["extensions"][0]["detail"]["reason"] == "改事由"

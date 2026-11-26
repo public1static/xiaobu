@@ -78,8 +78,10 @@ class LedgerAccountTransferPersistenceMySqlTest {
     assertEquals(-1000, account(ledgerId, "alpha", target.id()).openingBalanceCents());
     assertEquals(
         java.util.List.of(expense),
-        transactions.listLedgerTransactions(
-            new ListLedgerTransactionsQuery(ledgerId, "alpha", YearMonth.from(DATE))));
+        transactions
+            .listLedgerTransactions(
+                new ListLedgerTransactionsQuery(ledgerId, "alpha", YearMonth.from(DATE)))
+            .entries());
     assertEquals(java.util.List.of(transfer), transfers.listRecentTransfers(ledgerId, "alpha"));
   }
 

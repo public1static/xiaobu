@@ -26,16 +26,4 @@ public record LedgerTransactionResult(
         details.accountId(),
         null);
   }
-
-  static LedgerTransactionResult fromRefund(LedgerRefundActivity refund) {
-    return new LedgerTransactionResult(
-        refund.id(),
-        TransactionDirection.EXPENSE,
-        refund.amountCents(),
-        refund.receivedOn(),
-        refund.categoryCode(),
-        refund.note(),
-        refund.accountId(),
-        refund.transactionId());
-  }
 }

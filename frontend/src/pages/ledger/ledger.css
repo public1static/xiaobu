@@ -715,3 +715,8 @@ button::after {
 .row-amount.refund {
   color: #336a8b;
 }
+
+.statement-more {
+  width: 100%;
+  margin-top: 8px;
+}

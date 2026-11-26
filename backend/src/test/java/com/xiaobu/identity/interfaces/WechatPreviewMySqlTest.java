@@ -70,12 +70,10 @@ class WechatPreviewMySqlTest {
     assertEquals(200, send("POST", "/ledger-invitations/preview", invite, null).statusCode());
     assertEquals(403, send("GET", transactions + "?month=2026-10", null, betaToken).statusCode());
     assertEquals(200, send("POST", "/ledger-invitations/accept", invite, betaToken).statusCode());
-    assertEquals(
-        3200,
-        data(send("GET", transactions + "?month=2026-10", null, betaToken))
-            .get(0)
-            .get("amountCents")
-            .asInt());
+    var statement = data(send("GET", transactions + "?month=2026-10", null, betaToken));
+    assertEquals(1, statement.get("totalCount").asInt());
+    assertEquals(3200, statement.get("expenseCents").asInt());
+    assertEquals(3200, statement.get("entries").get(0).get("amountCents").asInt());
     assertEquals(403, send("POST", transactions, draft, betaToken).statusCode());
     assertEquals(204, send("DELETE", "/wechat-session", null, betaToken).statusCode());
     assertEquals(401, send("GET", transactions + "?month=2026-10", null, betaToken).statusCode());

@@ -1,6 +1,8 @@
 package com.xiaobu.ledger.interfaces;
 
 import com.xiaobu.ledger.application.LedgerRefundResult;
+import com.xiaobu.ledger.application.LedgerStatementDayResult;
+import com.xiaobu.ledger.application.LedgerStatementPageResult;
 import com.xiaobu.ledger.application.LedgerTransactionResult;
 import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
 import com.xiaobu.ledger.application.TransactionExtensionChange;
@@ -23,6 +25,10 @@ interface LedgerTransactionWebMapper {
       List<TransactionExtensionChange> changes);
 
   LedgerTransactionResponse toResponse(LedgerTransactionResult result);
+
+  LedgerStatementDayResponse toResponse(LedgerStatementDayResult result);
+
+  LedgerStatementPageResponse toResponse(LedgerStatementPageResult result);
 
   LedgerRefundResponse toResponse(LedgerRefundResult result);
 }

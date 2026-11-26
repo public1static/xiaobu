@@ -11,10 +11,8 @@ import com.xiaobu.ledger.domain.LedgerTransactionDetails;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +27,7 @@ public class LedgerTransactionApplicationService {
   private static final ZoneId LEDGER_ZONE = ZoneId.of("Asia/Shanghai");
 
   private final LedgerTransactionRepository repository;
+  private final LedgerStatementQueryRepository statements;
   private final LedgerRefundRepository refunds;
   private final EntityIdGenerator idGenerator;
   private final PersonalLedgerApplicationService ledgers;
@@ -38,6 +37,7 @@ public class LedgerTransactionApplicationService {
 
   public LedgerTransactionApplicationService(
       LedgerTransactionRepository repository,
+      LedgerStatementQueryRepository statements,
       LedgerRefundRepository refunds,
       EntityIdGenerator idGenerator,
       PersonalLedgerApplicationService ledgers,
@@ -45,6 +45,7 @@ public class LedgerTransactionApplicationService {
       LedgerCategoryApplicationService categories,
       TransactionExtensionRegistry extensions) {
     this.repository = repository;
+    this.statements = statements;
     this.refunds = refunds;
     this.idGenerator = idGenerator;
     this.ledgers = ledgers;
@@ -79,22 +80,23 @@ public class LedgerTransactionApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public List<LedgerTransactionResult> listLedgerTransactions(ListLedgerTransactionsQuery query) {
+  public LedgerStatementPageResult listLedgerTransactions(ListLedgerTransactionsQuery query) {
     ledgers.requireReadAccess(query.ledgerId(), query.actorId());
+    var days = statements.summarizeByDay(query);
+    long income = 0;
+    long expense = 0;
+    long count = 0;
+    for (var day : days) {
+      income += day.incomeCents();
+      expense += day.expenseCents();
+      count += day.entryCount();
+    }
     var entries =
-        repository
-            .findByLedgerAndDateRange(
-                query.ledgerId(), query.from(), query.through(), query.keyword())
-            .stream()
-            .map(LedgerTransactionResult::from);
-    var refundEntries =
-        refunds
-            .findActiveByDateRange(query.ledgerId(), query.from(), query.through(), query.keyword())
-            .stream()
-            .map(LedgerTransactionResult::fromRefund);
-    return Stream.concat(entries, refundEntries)
-        .sorted(Comparator.comparing(LedgerTransactionResult::bookedOn).reversed())
-        .toList();
+        (long) query.page() * query.pageSize() < count
+            ? statements.findPage(query)
+            : List.<LedgerTransactionResult>of();
+    return new LedgerStatementPageResult(
+        entries, days, income, expense, income - expense, count, query.page(), query.pageSize());
   }
 
   @Transactional(readOnly = true)

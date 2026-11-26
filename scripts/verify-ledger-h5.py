@@ -74,12 +74,12 @@ assert status == 200 and income["data"]["amountCents"] == 500000
 assert income["data"]["direction"] == "INCOME"
 status, result = call(alpha, alpha_path + month)
 assert status == 200 and result["success"]
-assert [row for row in result["data"] if row["note"] == note] == [record]
-assert income["data"] in result["data"]
+assert [row for row in result["data"]["entries"] if row["note"] == note] == [record]
+assert income["data"] in result["data"]["entries"]
 status, result = call(beta, beta_path + month)
-assert status == 200 and all(not row["note"].startswith(note) for row in result["data"])
+assert status == 200 and all(not row["note"].startswith(note) for row in result["data"]["entries"])
 assert call(alpha, "/local-session", method="DELETE")[0] == 204
 assert call(alpha, alpha_path + month)[0] == 401
 assert sign_in(alpha, "alpha") == alpha_path
-assert record in call(alpha, alpha_path + month)[1]["data"]
+assert record in call(alpha, alpha_path + month)[1]["data"]["entries"]
 print(f"Income and expense persisted and isolated: {record['id']} | {date} | 1230 cents | {note}")

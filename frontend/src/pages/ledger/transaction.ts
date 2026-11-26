@@ -35,21 +35,10 @@ export function categoryLabel(code: string, direction: TransactionDirection) {
   );
 }
 
-export function summarizeTransactions(
-  items: readonly {
-    direction: TransactionDirection;
-    amountCents: number;
-    originalTransactionId?: string | null;
-  }[],
+export function hasNextStatementPage(
+  result: { page: number; pageSize: number; totalCount: number } | null,
 ) {
-  let income = 0;
-  let expense = 0;
-  for (const item of items) {
-    if (item.originalTransactionId) expense -= item.amountCents;
-    else if (item.direction === 'INCOME') income += item.amountCents;
-    else expense += item.amountCents;
-  }
-  return { income, expense, balance: income - expense };
+  return result !== null && (result.page + 1) * result.pageSize < result.totalCount;
 }
 
 export function parseCents(input: string): number | null {

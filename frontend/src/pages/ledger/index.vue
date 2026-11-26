@@ -31,6 +31,7 @@ import {
   listLedgerTransactions,
   recordLedgerTransaction,
   type LedgerTransaction,
+  type LedgerStatementPage,
   type LedgerTransactionFilter,
   type LedgerTransactionDetail,
 } from '../../api/ledger-transactions';
@@ -53,11 +54,11 @@ import {
   categoryLabel,
   formatCents,
   formatSignedCurrency,
+  hasNextStatementPage,
   localDay,
   parseCents,
   resolveLedgerMonth,
   shiftLedgerMonth,
-  summarizeTransactions,
   type CategoryCode,
   type TransactionDirection,
 } from './transaction';
@@ -79,6 +80,8 @@ const monthText = computed(() => {
   return `${year}年${Number(value)}月`;
 });
 const items = ref<LedgerTransaction[]>([]);
+const statement = ref<LedgerStatementPage | null>(null);
+const appendError = ref('');
 const loading = ref(true);
 const listError = ref('');
 const savedMessage = ref('');
@@ -328,6 +331,7 @@ function selectLedger(ledger: JoinedLedger | null) {
   if (unchanged) return;
   ledgerNotice.value = '';
   items.value = [];
+  statement.value = null;
   savedMessage.value = '';
   transactionDetailId.value = '';
   open.value = false;
@@ -388,6 +392,7 @@ function resetSession(next: LocalSession | null) {
   shareToken.value = '';
   session.value = next;
   items.value = [];
+  statement.value = null;
   listError.value = '';
   savedMessage.value = '';
   open.value = false;
@@ -532,11 +537,17 @@ function applyFilter(value: LedgerTransactionFilter) {
   searchText.value = value.keyword;
   filterOpen.value = false;
   items.value = [];
+  statement.value = null;
   void refresh();
 }
 
-const summary = computed(() => summarizeTransactions(items.value));
-const showTotals = computed(() => !loading.value && !listError.value);
+const summary = computed(() => ({
+  income: statement.value?.incomeCents ?? 0,
+  expense: statement.value?.expenseCents ?? 0,
+  balance: statement.value?.balanceCents ?? 0,
+}));
+const hasMore = computed(() => hasNextStatementPage(statement.value));
+const showTotals = computed(() => statement.value !== null && !listError.value);
 const groups = computed(() => {
   const dates = new Map<string, LedgerTransaction[]>();
   for (const transaction of items.value) {
@@ -544,23 +555,45 @@ const groups = computed(() => {
     list.push(transaction);
     dates.set(transaction.bookedOn, list);
   }
+  const totals = new Map(statement.value?.days.map((day) => [day.bookedOn, day]));
   return [...dates].map(([day, transactions]) => ({
     day,
     transactions,
-    ...summarizeTransactions(transactions),
+    income: totals.get(day)?.incomeCents ?? 0,
+    expense: totals.get(day)?.expenseCents ?? 0,
   }));
 });
 
-async function refresh() {
+async function refresh(append = false) {
+  if (append && (loading.value || !hasMore.value || !statement.value)) return;
   const targetLedgerId = ledgerId.value;
   if (!targetLedgerId) return;
   const request = ++generation;
   const selectedMonth = month.value;
   loading.value = true;
   listError.value = '';
+  appendError.value = '';
+  const page = append ? (statement.value?.page ?? 0) + 1 : 0;
+  if (!append) {
+    statement.value = null;
+    items.value = [];
+  }
   try {
-    const rows = await listLedgerTransactions(targetLedgerId, selectedMonth, filter.value);
-    if (request === generation) items.value = rows;
+    const result = await listLedgerTransactions(targetLedgerId, selectedMonth, filter.value, page);
+    if (request === generation) {
+      const existing = new Set(append ? items.value.map((item) => item.id) : []);
+      if (
+        append &&
+        (result.totalCount !== statement.value?.totalCount ||
+          result.entries.some((item) => existing.has(item.id)))
+      ) {
+        // Offset pages can shift after another member records or deletes an entry.
+        await refresh();
+        return;
+      }
+      items.value = append ? [...items.value, ...result.entries] : result.entries;
+      statement.value = result;
+    }
   } catch (error) {
     if (request !== generation) return;
     if (error instanceof ApiRequestError && error.status === 403 && sharedLedger.value) {
@@ -568,6 +601,8 @@ async function refresh() {
     } else if (error instanceof ApiRequestError && error.status === 401) {
       resetSession(null);
       sessionError.value = '当前会话已失效，请重新登录。';
+    } else if (append) {
+      appendError.value = '加载更多失败，点此重试';
     } else {
       listError.value = '流水加载失败，点此重试';
     }
@@ -588,6 +623,7 @@ function selectMonth(value: string) {
   if (value !== month.value) {
     month.value = value;
     items.value = [];
+    statement.value = null;
   }
   try {
     // A preference only: the server remains the source of truth for the list.
@@ -733,11 +769,7 @@ async function submit(continueEntry = false) {
     filter.value = { from: '', through: '', keyword: '' };
     searchText.value = '';
     const nextMonth = stored.bookedOn.slice(0, 7);
-    const current = nextMonth === month.value ? items.value : [];
     selectMonth(nextMonth);
-    items.value = [stored, ...current.filter((row) => row.id !== stored.id)].sort((a, b) =>
-      b.bookedOn.localeCompare(a.bookedOn),
-    );
     open.value = false;
     savedMessage.value = '已记一笔';
     giftRevision.value++;
@@ -971,7 +1003,7 @@ const entryDateLabel = computed(() => {
           </button>
         </view>
         <text v-if="savedMessage" class="sr-only" role="status">{{ savedMessage }}</text>
-        <button v-if="listError" class="empty retry" @click="refresh">{{ listError }}</button>
+        <button v-if="listError" class="empty retry" @click="refresh()">{{ listError }}</button>
         <view v-else-if="loading && !items.length" class="empty">正在加载流水</view>
         <view v-else-if="!items.length" class="empty">{{
           filter.keyword ? '未找到匹配流水' : '这段时间还没有流水'
@@ -1020,6 +1052,14 @@ const entryDateLabel = computed(() => {
             </view>
           </view>
         </view>
+        <button
+          v-if="hasMore && !listError"
+          class="text-button statement-more"
+          :disabled="loading"
+          @click="refresh(true)"
+        >
+          {{ loading ? '正在加载…' : appendError || '加载更多' }}
+        </button>
       </template>
     </view>
 

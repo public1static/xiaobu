@@ -1,9 +1,7 @@
 package com.xiaobu.ledger.infrastructure;
 
-import com.xiaobu.ledger.application.LedgerRefundActivity;
 import com.xiaobu.ledger.application.LedgerRefundRepository;
 import com.xiaobu.ledger.domain.LedgerRefund;
-import java.time.LocalDate;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 
@@ -31,11 +29,5 @@ class LedgerRefundPersistenceAdapter implements LedgerRefundRepository {
         .stream()
         .map(mapper::toDomain)
         .toList();
-  }
-
-  @Override
-  public List<LedgerRefundActivity> findActiveByDateRange(
-      String ledgerId, LocalDate from, LocalDate through, String keyword) {
-    return refunds.findActiveByDateRange(ledgerId, from, through, keyword);
   }
 }

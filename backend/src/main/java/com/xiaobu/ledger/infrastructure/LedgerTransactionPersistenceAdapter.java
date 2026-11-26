@@ -3,7 +3,6 @@ package com.xiaobu.ledger.infrastructure;
 import com.xiaobu.ledger.application.LedgerTransactionRepository;
 import com.xiaobu.ledger.domain.LedgerTransaction;
 import com.xiaobu.ledger.domain.LedgerTransactionDetails;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
@@ -24,14 +23,6 @@ class LedgerTransactionPersistenceAdapter implements LedgerTransactionRepository
   @Override
   public void add(String ledgerId, String actorId, LedgerTransaction transaction) {
     transactions.save(mapper.toNewEntity(transaction, ledgerId, actorId));
-  }
-
-  @Override
-  public List<LedgerTransaction> findByLedgerAndDateRange(
-      String ledgerId, LocalDate from, LocalDate through, String keyword) {
-    return transactions.findActiveByLedgerAndDateRange(ledgerId, from, through, keyword).stream()
-        .map(mapper::toDomain)
-        .toList();
   }
 
   @Override
