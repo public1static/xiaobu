@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   createRentalContract,
   generateRentalBill,
+  linkRentalBill,
+  listRentalBillPlans,
   listRentalContracts,
   listRentalHomes,
   rentalCycles,
   saveRentalHome,
+  type RentalBillPlan,
   type RentalContract,
   type RentalCycle,
   type RentalHome,
@@ -16,6 +19,11 @@ import LedgerPicker from '../../components/LedgerPicker.vue';
 import LedgerIcon from '../../components/LedgerIcon.vue';
 import LedgerFixedBills from './LedgerFixedBills.vue';
 import { formatCents, ledgerToday, parseCents } from './transaction';
+
+// #ifdef H5
+import { showConfirmDialog } from 'vant';
+import 'vant/es/dialog/style';
+// #endif
 
 const props = defineProps<{
   ledgerId: string;
@@ -38,6 +46,7 @@ type Screen =
   | 'contractForm'
   | 'chooseHome'
   | 'contract'
+  | 'chooseBill'
   | 'configureBill'
   | 'periods';
 const screen = ref<Screen>('homes');
@@ -47,6 +56,15 @@ const contract = ref<RentalContract>();
 const formHome = ref<RentalHome>();
 const formHomeEdit = ref(false);
 const billFirstDueOn = ref('');
+const billChoices = ['暂不设置', '生成固定账单', '关联已有固定账单'];
+const setupChoices = billChoices.slice(1);
+const setupMode = ref(0);
+const selectedBill = ref<RentalBillPlan>();
+const billPickerOrigin = ref<'contractForm' | 'configureBill'>('contractForm');
+const billOptions = ref<RentalBillPlan[]>([]);
+const billList = ref({ page: 0, total: 0, loading: false, error: false });
+let billSequence = 0;
+
 const homes = ref<RentalHome[]>([]);
 const contracts = ref<RentalContract[]>([]);
 const listState = ref({ page: 0, total: 0, loading: false, error: false });
@@ -65,7 +83,7 @@ function emptyContract() {
     deposit: '',
     cycle: 'MONTHLY' as RentalCycle,
     firstDueOn: today,
-    generate: false,
+    billMode: 0,
     note: '',
   };
 }
@@ -81,6 +99,7 @@ const title = computed(
       chooseHome: '选择房屋',
       contract: '租房合同',
       configureBill: '设置房租账单',
+      chooseBill: '选择已有房租账单',
       periods: '房租账期',
     })[screen.value],
 );
@@ -97,11 +116,12 @@ const periodAmount = computed(() => {
 });
 const rental = computed(() => {
   const row = contract.value;
-  return row?.billId && row.firstDueOn
+  return row?.billId && row.firstDueOn && row.dueDayOfMonth
     ? {
         billId: row.billId,
         firstDueOn: row.firstDueOn,
         endsOn: row.endsOn,
+        dueDayOfMonth: row.dueDayOfMonth,
         cycleMonths: rentalCycles[row.cycle].months,
       }
     : undefined;
@@ -109,9 +129,11 @@ const rental = computed(() => {
 
 function go(next: Screen) {
   loadSequence++;
+  billSequence++;
   screen.value = next;
   issue.value = undefined;
   if (['homes', 'contracts', 'home', 'chooseHome'].includes(next)) void load();
+  if (next === 'chooseBill') void loadBillOptions();
 }
 
 async function load(page = 0) {
@@ -178,6 +200,7 @@ function showHomeForm(edit = false) {
 function showContractForm() {
   contractOrigin.value = screen.value === 'home' ? 'home' : 'contracts';
   formHome.value = contractOrigin.value === 'home' ? home.value : undefined;
+  selectedBill.value = undefined;
   contractDraft.value = emptyContract();
   go('contractForm');
 }
@@ -197,6 +220,7 @@ function back() {
   else if (screen.value === 'contractForm' || screen.value === 'contract') go(contractOrigin.value);
   else if (screen.value === 'chooseHome') go('contractForm');
   else if (screen.value === 'configureBill') go('contract');
+  else if (screen.value === 'chooseBill') go(billPickerOrigin.value);
   else emit('close');
 }
 function leaseStatus(row: RentalContract) {
@@ -213,27 +237,145 @@ function fail(field: string, message: string) {
 }
 function openBillSetup() {
   if (!contract.value || !props.writable) return;
+  selectedBill.value = undefined;
+  setupMode.value = 0;
   billFirstDueOn.value = contract.value.startsOn;
   go('configureBill');
+}
+
+watch(
+  () => [
+    contractDraft.value.startsOn,
+    contractDraft.value.endsOn,
+    contractDraft.value.cycle,
+    formHome.value?.id,
+  ],
+  () => {
+    selectedBill.value = undefined;
+  },
+);
+
+function openBillPicker(origin: 'contractForm' | 'configureBill') {
+  const row = origin === 'contractForm' ? contractDraft.value : contract.value;
+  if (!row?.endsOn || row.endsOn < row.startsOn) {
+    fail('end', '请先填写有效租期');
+    return;
+  }
+  billPickerOrigin.value = origin;
+  go('chooseBill');
+}
+
+async function loadBillOptions(page = 0) {
+  const row = billPickerOrigin.value === 'contractForm' ? contractDraft.value : contract.value;
+  if (!row) return;
+  const seq = ++billSequence;
+  if (!page) billOptions.value = [];
+  billList.value = { ...billList.value, loading: true, error: false };
+  try {
+    const result = await listRentalBillPlans(props.ledgerId, row, page);
+    if (seq !== billSequence) return;
+    if (
+      page &&
+      (result.totalCount !== billList.value.total ||
+        result.entries.some((option) =>
+          billOptions.value.some((saved) => option.billId === saved.billId),
+        ))
+    ) {
+      await loadBillOptions();
+      return;
+    }
+    billOptions.value = page ? [...billOptions.value, ...result.entries] : result.entries;
+    billList.value = { page, total: result.totalCount, loading: false, error: false };
+  } catch {
+    if (seq === billSequence) billList.value = { ...billList.value, loading: false, error: true };
+  }
+}
+
+function selectBill(option: RentalBillPlan) {
+  selectedBill.value = option;
+  go(billPickerOrigin.value);
+}
+
+function setBillMode(index: number) {
+  if (screen.value === 'configureBill') {
+    setupMode.value = index;
+    if (index === 1) openBillPicker('configureBill');
+  } else {
+    contractDraft.value.billMode = index;
+    if (index === 2) openBillPicker('contractForm');
+  }
+}
+
+async function confirmSeparateBill(
+  row: { cycle: RentalCycle; startsOn: string; endsOn: string },
+  origin: 'contractForm' | 'configureBill',
+) {
+  const { totalCount } = await listRentalBillPlans(props.ledgerId, row, 0);
+  if (!totalCount) return true;
+  const title = '已有可关联的住房账单';
+  const message = '如果是同一笔房租，关联已有账单即可保留付款记录。';
+  let confirmed = false;
+  // #ifdef H5
+  try {
+    await showConfirmDialog({
+      title,
+      message,
+      confirmButtonText: '另建一份',
+      cancelButtonText: '选择已有账单',
+    });
+    confirmed = true;
+  } catch {
+    confirmed = false;
+  }
+  // #endif
+  // #ifdef MP-WEIXIN
+  confirmed = await new Promise<boolean>((resolve) =>
+    uni.showModal({
+      title,
+      content: message,
+      confirmText: '另建一份',
+      cancelText: '选已有账单',
+      success: ({ confirm }) => resolve(confirm),
+      fail: () => resolve(false),
+    }),
+  );
+  // #endif
+  if (!confirmed) setBillMode(origin === 'contractForm' ? 2 : 1);
+  return confirmed;
+}
+
+function saveBillFailure(error: unknown) {
+  if (error instanceof ApiRequestError && error.code === 'XIAOBU_RENTAL_HOME_ALREADY_BILLED') {
+    fail('bill', '这套房屋在该租期内已有房租账单。');
+  } else if (error instanceof ApiRequestError && error.status === 409) {
+    selectedBill.value = undefined;
+    fail('bill', '账单或合同已变更，请重新选择。');
+  } else {
+    fail('bill', '账单未确认保存，请返回核对。');
+  }
 }
 
 async function saveBillSetup() {
   const row = contract.value;
   if (!props.writable || saving.value || !row || row.billId) return;
-  if (billFirstDueOn.value < row.startsOn || billFirstDueOn.value > row.endsOn) {
+  if (setupMode.value === 1 && !selectedBill.value) return fail('bill', '请选择房租账单');
+  if (
+    setupMode.value === 0 &&
+    (billFirstDueOn.value < row.startsOn || billFirstDueOn.value > row.endsOn)
+  ) {
     return fail('due', '首次付款日需在合同租期内');
   }
   saving.value = true;
   try {
-    contract.value = await generateRentalBill(props.ledgerId, row.id, billFirstDueOn.value);
+    if (setupMode.value === 1 && selectedBill.value) {
+      contract.value = await linkRentalBill(props.ledgerId, row.id, selectedBill.value.billId);
+    } else {
+      if (!(await confirmSeparateBill(row, 'configureBill'))) return;
+      contract.value = await generateRentalBill(props.ledgerId, row.id, billFirstDueOn.value);
+    }
     go('contract');
   } catch (error) {
-    fail(
-      'due',
-      error instanceof ApiRequestError && error.status === 409
-        ? '该合同已设置房租账单，请返回合同列表重新打开。'
-        : '账单未确认保存，请返回合同核对。',
-    );
+    saveBillFailure(error);
   } finally {
     saving.value = false;
   }
@@ -274,11 +416,13 @@ async function save() {
     return fail('rent', '请输入有效的月租，最多两位小数');
   if (depositCents == null || depositCents > 9_999_999_999)
     return fail('deposit', '请输入非负金额，最多两位小数');
-  if (row.generate && (row.firstDueOn < row.startsOn || row.firstDueOn > row.endsOn)) {
+  if (row.billMode === 2 && !selectedBill.value) return fail('bill', '请选择房租账单');
+  if (row.billMode === 1 && (row.firstDueOn < row.startsOn || row.firstDueOn > row.endsOn)) {
     return fail('due', '首次付款日需在合同租期内');
   }
   saving.value = true;
   try {
+    if (row.billMode === 1 && !(await confirmSeparateBill(row, 'contractForm'))) return;
     contract.value = await createRentalContract(props.ledgerId, {
       homeId: formHome.value.id,
       landlordName: row.landlordName,
@@ -287,12 +431,16 @@ async function save() {
       monthlyRentCents,
       depositCents,
       cycle: row.cycle,
-      firstDueOn: row.generate ? row.firstDueOn : null,
+      firstDueOn: row.billMode === 1 ? row.firstDueOn : null,
+      ...(row.billMode === 2 && selectedBill.value
+        ? { existingBillId: selectedBill.value.billId }
+        : {}),
       note: row.note,
     });
     go('contract');
-  } catch {
-    fail('', '未确认合同保存，请返回合同列表核对。');
+  } catch (error) {
+    if (row.billMode) saveBillFailure(error);
+    else fail('', '未确认合同保存，请返回合同列表核对。');
   } finally {
     saving.value = false;
   }
@@ -444,12 +592,70 @@ async function save() {
         </view>
       </template>
 
+      <template v-if="screen === 'chooseBill'">
+        <view class="rental-card">
+          <button
+            v-for="option in billOptions"
+            :key="option.billId"
+            class="rental-row"
+            @click="selectBill(option)"
+          >
+            <view class="rental-row-main">
+              <text>{{ option.name }}</text>
+              <text class="rental-secondary">租期内首期 {{ option.firstDueOn }}</text>
+            </view>
+            <text class="rental-secondary">原计划 ¥{{ formatCents(option.amountCents) }}</text>
+            <text class="rental-arrow">{{
+              selectedBill?.billId === option.billId ? '✓' : '›'
+            }}</text>
+          </button>
+          <text
+            v-if="!billOptions.length && !billList.loading && !billList.error"
+            class="rental-empty"
+            >没有同周期且在租期内到期的住房账单</text
+          >
+        </view>
+        <text v-if="billList.loading" class="rental-empty">加载中…</text>
+        <button v-else-if="billList.error" class="rental-more" @click="loadBillOptions()">
+          加载失败，点击重试
+        </button>
+        <button
+          v-else-if="billOptions.length < billList.total"
+          class="rental-more"
+          @click="loadBillOptions(billList.page + 1)"
+        >
+          加载更多
+        </button>
+      </template>
+
       <template v-if="screen === 'configureBill' && contract">
         <view class="rental-card">
           <view class="rental-field"
             ><text>每期应付</text><text>¥{{ formatCents(contract.periodAmountCents) }}</text></view
           >
           <LedgerPicker
+            label="房租账单"
+            :value="setupMode"
+            :range="setupChoices"
+            @change="setBillMode(Number($event.detail.value))"
+          >
+            <view class="rental-field"
+              ><text>房租账单</text><text>{{ setupChoices[setupMode] }}</text
+              ><text class="rental-arrow">›</text></view
+            >
+          </LedgerPicker>
+          <button
+            v-if="setupMode === 1"
+            class="rental-field"
+            @click="openBillPicker('configureBill')"
+          >
+            <text>选择账单<text class="rental-star">*</text></text>
+            <text :class="{ 'rental-secondary': !selectedBill }">{{
+              selectedBill?.name || '选择房租账单'
+            }}</text><text class="rental-arrow">›</text>
+          </button>
+          <LedgerPicker
+            v-else
             mode="date"
             label="首次付款日"
             :value="billFirstDueOn"
@@ -463,10 +669,15 @@ async function save() {
               ><text class="rental-arrow">›</text></view
             >
           </LedgerPicker>
-          <text v-if="issue?.field === 'due'" class="rental-error">{{ issue.message }}</text>
+          <text v-if="issue?.field === 'due' || issue?.field === 'bill'" class="rental-error">{{
+            issue.message
+          }}</text>
         </view>
+        <text v-if="setupMode === 1" class="rental-help"
+          >保留原付款记录，租期内待付金额按合同计算。</text
+        >
         <button class="rental-save" :disabled="saving" @click="saveBillSetup">
-          {{ saving ? '保存中…' : '生成固定账单' }}
+          {{ saving ? '保存中…' : setupMode === 1 ? '确认关联' : '生成固定账单' }}
         </button>
       </template>
 
@@ -576,18 +787,27 @@ async function save() {
           >
           <LedgerPicker
             label="房租账单"
-            :value="contractDraft.generate ? 1 : 0"
-            :range="['暂不设置', '生成固定账单']"
-            @change="contractDraft.generate = $event.detail.value === '1'"
+            :value="contractDraft.billMode"
+            :range="billChoices"
+            @change="setBillMode(Number($event.detail.value))"
           >
             <view class="rental-field"
-              ><text>房租账单</text
-              ><text>{{ contractDraft.generate ? '生成固定账单' : '暂不设置' }}</text
+              ><text>房租账单</text><text>{{ billChoices[contractDraft.billMode] }}</text
               ><text class="rental-arrow">›</text></view
             >
           </LedgerPicker>
+          <button
+            v-if="contractDraft.billMode === 2"
+            class="rental-field"
+            @click="openBillPicker('contractForm')"
+          >
+            <text>选择账单<text class="rental-star">*</text></text>
+            <text :class="{ 'rental-secondary': !selectedBill }">{{
+              selectedBill?.name || '选择房租账单'
+            }}</text><text class="rental-arrow">›</text>
+          </button>
           <LedgerPicker
-            v-if="contractDraft.generate"
+            v-if="contractDraft.billMode === 1"
             mode="date"
             label="首次付款日"
             :value="contractDraft.firstDueOn"
@@ -599,7 +819,12 @@ async function save() {
               ><text class="rental-arrow">›</text></view
             >
           </LedgerPicker>
-          <text v-if="issue?.field === 'due'" class="rental-error">{{ issue.message }}</text>
+          <text v-if="issue?.field === 'due' || issue?.field === 'bill'" class="rental-error">{{
+            issue.message
+          }}</text>
+          <text v-else-if="contractDraft.billMode === 2" class="rental-help"
+            >保留原付款记录，租期内待付金额按合同计算。</text
+          >
           <view class="rental-field"
             ><text>备注</text
             ><input
@@ -812,6 +1037,12 @@ async function save() {
 }
 .rental-star {
   margin-left: 2px;
+}
+.rental-help {
+  display: block;
+  padding: 9px 13px;
+  color: #61736b;
+  font-size: 12px;
 }
 .rental-error {
   display: block;

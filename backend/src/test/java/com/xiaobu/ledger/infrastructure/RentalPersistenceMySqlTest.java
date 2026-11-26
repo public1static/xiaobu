@@ -6,12 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
 import com.xiaobu.ledger.application.ChangeLedgerTransactionStateCommand;
+import com.xiaobu.ledger.application.CreateFixedBillCommand;
 import com.xiaobu.ledger.application.CreateRentalContractCommand;
 import com.xiaobu.ledger.application.FixedBillApplicationService;
 import com.xiaobu.ledger.application.GenerateRentalBillCommand;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
 import com.xiaobu.ledger.application.LinkFixedBillPaymentCommand;
+import com.xiaobu.ledger.application.LinkRentalBillCommand;
 import com.xiaobu.ledger.application.ListFixedBillCandidatesQuery;
+import com.xiaobu.ledger.application.ListRentalBillPlansQuery;
 import com.xiaobu.ledger.application.PayFixedBillCommand;
 import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
 import com.xiaobu.ledger.application.RentalApplicationService;
@@ -110,12 +113,14 @@ class RentalPersistenceMySqlTest {
                 RentalPaymentCycle.QUARTERLY,
                 charge,
                 ""));
+    var otherHome =
+        rentals.saveRentalHome(new SaveRentalHomeCommand(ledger, actor, null, "知春路公寓", "", ""));
     var inclusive =
         rentals.createRentalContract(
             new CreateRentalContractCommand(
                 ledger,
                 actor,
-                home.id(),
+                otherHome.id(),
                 "测试房东",
                 start,
                 july.atEndOfMonth(),
@@ -124,8 +129,8 @@ class RentalPersistenceMySqlTest {
                 RentalPaymentCycle.QUARTERLY,
                 charge,
                 ""));
-    assertEquals(2, rentals.listRentalHomes(ledger, actor, 0).entries().getFirst().contractCount());
-    assertEquals(2, rentals.listRentalContracts(ledger, actor, home.id(), 0).totalCount());
+    assertEquals(1, rentals.listRentalHomes(ledger, actor, 0).entries().getFirst().contractCount());
+    assertEquals(1, rentals.listRentalContracts(ledger, actor, home.id(), 0).totalCount());
     assertEquals(0, rentals.listRentalContracts(other, otherActor, null, 0).totalCount());
     assertEquals(0, bills.listFixedBillPlans(ledger, actor, 0).totalCount());
     assertEquals(0, transactionCount(ledger));
@@ -256,6 +261,225 @@ class RentalPersistenceMySqlTest {
         1,
         bills
             .listFixedBillPeriods(ledger, actor, YearMonth.from(start).plusMonths(6), false, 0)
+            .totalCount());
+    assertEquals(0, transactionCount(ledger));
+  }
+
+  @Test
+  void adoptsExistingHousingPlanWithoutReplacingPaymentsOrLeavingDuplicateDuePeriods() {
+    String actor = "rent-" + UUID.randomUUID();
+    String ledger = "book_" + UUID.randomUUID();
+    jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", ledger, actor);
+    var jan = YearMonth.of(2025, 1);
+    var feb = jan.plusMonths(1);
+    var march = jan.plusMonths(2);
+    var april = jan.plusMonths(3);
+    var old =
+        bills.createFixedBill(
+            new CreateFixedBillCommand(
+                ledger, actor, "已有房租", jan.atEndOfMonth(), 220000, "HOUSING", null));
+    var power =
+        bills.createFixedBill(
+            new CreateFixedBillCommand(
+                ledger, actor, "水费", jan.atEndOfMonth(), 9900, "DAILY", null));
+    var historical =
+        bills.payFixedBill(
+            new PayFixedBillCommand(ledger, actor, old.billId(), jan, jan.atDay(20), 220000, null));
+    var inLease =
+        bills.payFixedBill(
+            new PayFixedBillCommand(ledger, actor, old.billId(), feb, jan.atDay(25), 220000, null));
+    var prepaid =
+        bills.payFixedBill(
+            new PayFixedBillCommand(
+                ledger, actor, old.billId(), april, march.atDay(20), 220000, null));
+    var start = feb.atEndOfMonth();
+    var end = april.atDay(15);
+    var query =
+        new ListRentalBillPlansQuery(ledger, actor, RentalPaymentCycle.MONTHLY, start, end, 0);
+    assertEquals(1, rentals.listRentalBillPlans(query).totalCount());
+    assertEquals(start, rentals.listRentalBillPlans(query).entries().getFirst().firstDueOn());
+    assertEquals(
+        0,
+        rentals
+            .listRentalBillPlans(
+                new ListRentalBillPlansQuery(
+                    ledger, actor, RentalPaymentCycle.QUARTERLY, start, end, 0))
+            .totalCount());
+    assertEquals(
+        0,
+        rentals
+            .listRentalBillPlans(
+                new ListRentalBillPlansQuery(
+                    ledger, actor, RentalPaymentCycle.MONTHLY, april.atDay(1), end, 0))
+            .totalCount());
+    var home = rentals.saveRentalHome(new SaveRentalHomeCommand(ledger, actor, null, "房屋", "", ""));
+    var contract =
+        rentals.createRentalContract(
+            new CreateRentalContractCommand(
+                ledger,
+                actor,
+                home.id(),
+                "出租方",
+                start,
+                end,
+                250000,
+                0,
+                RentalPaymentCycle.MONTHLY,
+                null,
+                ""));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            rentals.linkRentalBill(
+                new LinkRentalBillCommand(ledger, actor, contract.id(), power.billId())));
+    var link = new LinkRentalBillCommand(ledger, actor, contract.id(), old.billId());
+    var attached = rentals.linkRentalBill(link);
+    assertEquals(old.billId(), attached.billId());
+    assertEquals(start, attached.firstDueOn());
+    assertEquals(31, attached.dueDayOfMonth());
+    assertEquals(attached, rentals.linkRentalBill(link));
+    assertEquals(
+        attached, rentals.listRentalContracts(ledger, actor, home.id(), 0).entries().getFirst());
+    assertEquals(0, rentals.listRentalBillPlans(query).totalCount());
+    assertEquals(3, transactionCount(ledger));
+    assertEquals(1, bills.listFixedBillPlans(ledger, actor, 0).totalCount());
+    assertEquals(
+        250000,
+        bills
+            .listFixedBillPeriods(ledger, actor, march, false, 0, old.billId())
+            .entries()
+            .getFirst()
+            .amountCents());
+    assertEquals(
+        220000L,
+        bills
+            .listFixedBillPeriods(ledger, actor, feb, true, 0, old.billId())
+            .entries()
+            .getFirst()
+            .paidAmountCents());
+    assertEquals(
+        inLease.transactionId(),
+        bills
+            .listFixedBillPeriods(ledger, actor, feb, true, 0, old.billId())
+            .entries()
+            .getFirst()
+            .transactionId());
+    assertEquals(
+        0, bills.listFixedBillPeriods(ledger, actor, april, true, 0, old.billId()).totalCount());
+    assertEquals(
+        prepaid.transactionId(),
+        bills
+            .listFixedBillPeriods(ledger, actor, april, true, 0)
+            .entries()
+            .getFirst()
+            .transactionId());
+    assertEquals(
+        historical.transactionId(),
+        bills
+            .listFixedBillPeriods(ledger, actor, jan, true, 0)
+            .entries()
+            .getFirst()
+            .transactionId());
+    assertEquals(
+        0,
+        bills
+            .listFixedBillPeriods(ledger, actor, april.plusMonths(1), false, 0, old.billId())
+            .totalCount());
+    assertThrows(
+        FoundationException.class,
+        () ->
+            bills.payFixedBill(
+                new PayFixedBillCommand(
+                    ledger,
+                    actor,
+                    old.billId(),
+                    april.plusMonths(1),
+                    april.atDay(1),
+                    250000,
+                    null)));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            rentals.createRentalContract(
+                new CreateRentalContractCommand(
+                    ledger,
+                    actor,
+                    home.id(),
+                    "另一份",
+                    start,
+                    end,
+                    250000,
+                    0,
+                    RentalPaymentCycle.MONTHLY,
+                    start,
+                    "")));
+    var otherHome =
+        rentals.saveRentalHome(new SaveRentalHomeCommand(ledger, actor, null, "另一套房", "", ""));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            rentals.createRentalContract(
+                new CreateRentalContractCommand(
+                    ledger,
+                    actor,
+                    otherHome.id(),
+                    "另一个出租方",
+                    start,
+                    end,
+                    250000,
+                    0,
+                    RentalPaymentCycle.MONTHLY,
+                    null,
+                    "",
+                    old.billId())));
+  }
+
+  @Test
+  void candidatePagingAndCreatingWithAPlanUseTheSameLeaseWindow() {
+    String actor = "rent-" + UUID.randomUUID();
+    String ledger = "book_" + UUID.randomUUID();
+    jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", ledger, actor);
+    var day = LocalDate.of(2025, 2, 28);
+    var anchor = LocalDate.of(2025, 1, 31);
+    for (int i = 0; i < 21; i++) {
+      bills.createFixedBill(
+          new CreateFixedBillCommand(ledger, actor, "候选房租 " + i, anchor, 7000, "HOUSING", null));
+    }
+    var firstPage =
+        rentals.listRentalBillPlans(
+            new ListRentalBillPlansQuery(ledger, actor, RentalPaymentCycle.MONTHLY, day, day, 0));
+    var nextPage =
+        rentals.listRentalBillPlans(
+            new ListRentalBillPlansQuery(ledger, actor, RentalPaymentCycle.MONTHLY, day, day, 1));
+    assertEquals(21, firstPage.totalCount());
+    assertEquals(20, firstPage.entries().size());
+    assertEquals(21, nextPage.totalCount());
+    var existing = nextPage.entries().getFirst();
+    assertEquals(day, existing.firstDueOn());
+    var home = rentals.saveRentalHome(new SaveRentalHomeCommand(ledger, actor, null, "房屋", "", ""));
+    var contract =
+        rentals.createRentalContract(
+            new CreateRentalContractCommand(
+                ledger,
+                actor,
+                home.id(),
+                "出租方",
+                day,
+                day,
+                8000,
+                0,
+                RentalPaymentCycle.MONTHLY,
+                null,
+                "",
+                existing.billId()));
+    assertEquals(existing.billId(), contract.billId());
+    assertEquals(day, contract.firstDueOn());
+    assertEquals(
+        20,
+        rentals
+            .listRentalBillPlans(
+                new ListRentalBillPlansQuery(
+                    ledger, actor, RentalPaymentCycle.MONTHLY, day, day, 0))
             .totalCount());
     assertEquals(0, transactionCount(ledger));
   }

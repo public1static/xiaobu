@@ -28,7 +28,7 @@ public class FixedBillEntity extends AuditableEntity implements Persistable<Stri
   @Column(name = "first_due_on", nullable = false, updatable = false)
   private LocalDate firstDueOn;
 
-  @Column(name = "amount_cents", nullable = false, updatable = false)
+  @Column(name = "amount_cents", nullable = false)
   private long amountCents;
 
   @Column(name = "category_code", nullable = false, length = 48, updatable = false)
@@ -52,8 +52,11 @@ public class FixedBillEntity extends AuditableEntity implements Persistable<Stri
   @Column(name = "cycle_months", nullable = false, updatable = false)
   private int cycleMonths;
 
-  @Column(name = "last_due_on", updatable = false)
+  @Column(name = "last_due_on")
   private LocalDate lastDueOn;
+
+  @Column(name = "rental_starts_on")
+  private LocalDate rentalStartsOn;
 
   @Transient private boolean newEntity = true;
 
@@ -70,6 +73,7 @@ public class FixedBillEntity extends AuditableEntity implements Persistable<Stri
     stopMonth = row.stopMonth();
     cycleMonths = row.cycleMonths();
     lastDueOn = row.lastDueOn();
+    rentalStartsOn = row.rentalStartsOn();
     createdBy = actorId;
     updatedBy = actorId;
   }
@@ -85,7 +89,15 @@ public class FixedBillEntity extends AuditableEntity implements Persistable<Stri
         accountId,
         stopMonth,
         cycleMonths,
-        lastDueOn);
+        lastDueOn,
+        rentalStartsOn);
+  }
+
+  void adoptForRental(FixedBill bill, String actorId) {
+    rentalStartsOn = bill.rentalStartsOn();
+    lastDueOn = bill.lastDueOn();
+    amountCents = bill.amountCents();
+    updatedBy = actorId;
   }
 
   void closePlan(LocalDate stopMonth, String actorId) {

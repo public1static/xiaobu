@@ -14,6 +14,18 @@ interface RentalContractJpaRepository extends Repository<RentalContractEntity, S
 
   long countByLedgerIdAndHomeIdAndDeletedFalse(String ledgerId, String homeId);
 
+  @Query(
+      """
+      select count(c.id) from RentalContractEntity c
+      where c.ledgerId = :ledgerId and c.homeId = :homeId and c.id <> :excludedId
+          and c.billId is not null and c.deleted = false
+          and c.startsOn <= :endsOn and c.endsOn >= :startsOn
+      """)
+  long countOverlappingRentalBills(
+      String ledgerId, String homeId, String excludedId, LocalDate startsOn, LocalDate endsOn);
+
+  boolean existsByBillId(String billId);
+
   String CONTRACTS =
       """
       from RentalContractEntity c
@@ -24,7 +36,7 @@ interface RentalContractJpaRepository extends Repository<RentalContractEntity, S
 
   @Query(
       value =
-          "select c as contract, h.name as homeName, b.firstDueOn as firstDueOn "
+          "select c as contract, h.name as homeName, b as bill "
               + CONTRACTS
               + " order by c.startsOn desc, c.id desc",
       countQuery = "select count(c.id) " + CONTRACTS)
@@ -35,6 +47,6 @@ interface RentalContractJpaRepository extends Repository<RentalContractEntity, S
 
     String getHomeName();
 
-    LocalDate getFirstDueOn();
+    FixedBillEntity getBill();
   }
 }

@@ -77,7 +77,8 @@ public record RentalContract(
         null,
         null,
         cycle.months(),
-        endsOn);
+        endsOn,
+        startsOn);
   }
 
   private static FoundationException invalid(String message) {

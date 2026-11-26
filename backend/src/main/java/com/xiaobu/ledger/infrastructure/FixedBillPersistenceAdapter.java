@@ -7,8 +7,11 @@ import com.xiaobu.ledger.application.FixedBillPeriodResult;
 import com.xiaobu.ledger.application.FixedBillPlanPageResult;
 import com.xiaobu.ledger.application.FixedBillPlanResult;
 import com.xiaobu.ledger.application.FixedBillRepository;
+import com.xiaobu.ledger.application.RentalBillPlanResult;
+import com.xiaobu.ledger.application.RentalPageResult;
 import com.xiaobu.ledger.domain.FixedBill;
 import com.xiaobu.ledger.domain.FixedBillPayment;
+import com.xiaobu.ledger.domain.LedgerCategoryDefaults;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
@@ -38,6 +41,38 @@ class FixedBillPersistenceAdapter implements FixedBillRepository {
     return bills
         .findByLedgerIdAndIdAndDeletedFalse(ledgerId, billId)
         .map(FixedBillEntity::toDomain);
+  }
+
+  @Override
+  public void adoptForRental(FixedBill bill, String actorId) {
+    bills
+        .findByLedgerIdAndIdAndDeletedFalse(bill.ledgerId(), bill.id())
+        .orElseThrow()
+        .adoptForRental(bill, actorId);
+  }
+
+  @Override
+  public RentalPageResult<RentalBillPlanResult> listRentalPlanCandidates(
+      String ledgerId, int cycleMonths, LocalDate startsOn, LocalDate endsOn, int page) {
+    var rows =
+        bills.listRentalPlanCandidates(
+            ledgerId,
+            LedgerCategoryDefaults.HOUSING.name(),
+            cycleMonths,
+            startsOn.getYear() * 12 + startsOn.getMonthValue(),
+            startsOn.lengthOfMonth(),
+            startsOn.getDayOfMonth(),
+            endsOn.getYear() * 12 + endsOn.getMonthValue(),
+            endsOn.lengthOfMonth(),
+            endsOn.getDayOfMonth(),
+            PageRequest.of(page, PAGE_SIZE));
+    var result =
+        rows.map(row -> {
+          var bill = row.toDomain();
+          return new RentalBillPlanResult(
+              bill.id(), bill.name(), bill.firstDueOnOrAfter(startsOn), bill.amountCents());
+        });
+    return new RentalPageResult<>(result.getContent(), rows.getTotalElements(), page, PAGE_SIZE);
   }
 
   @Override

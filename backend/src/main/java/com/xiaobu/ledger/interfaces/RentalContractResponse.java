@@ -15,5 +15,6 @@ public record RentalContractResponse(
     RentalPaymentCycle cycle,
     String billId,
     LocalDate firstDueOn,
+    Integer dueDayOfMonth,
     long periodAmountCents,
     String note) {}

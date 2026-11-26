@@ -1,5 +1,6 @@
 package com.xiaobu.ledger.application;
 
+import com.xiaobu.ledger.domain.FixedBill;
 import com.xiaobu.ledger.domain.RentalContract;
 import com.xiaobu.ledger.domain.RentalPaymentCycle;
 import java.time.LocalDate;
@@ -16,10 +17,11 @@ public record RentalContractResult(
     RentalPaymentCycle cycle,
     String billId,
     LocalDate firstDueOn,
+    Integer dueDayOfMonth,
     long periodAmountCents,
     String note) {
   public static RentalContractResult from(
-      RentalContract contract, String homeName, LocalDate firstDueOn) {
+      RentalContract contract, String homeName, FixedBill bill) {
     return new RentalContractResult(
         contract.id(),
         contract.homeId(),
@@ -31,7 +33,8 @@ public record RentalContractResult(
         contract.depositCents(),
         contract.cycle(),
         contract.billId(),
-        firstDueOn,
+        bill == null ? null : bill.firstDueOnOrAfter(contract.startsOn()),
+        bill == null ? null : bill.firstDueOn().getDayOfMonth(),
         contract.periodAmountCents(),
         contract.note());
   }

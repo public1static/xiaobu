@@ -12,6 +12,11 @@ public interface FixedBillRepository {
 
   Optional<FixedBill> findBill(String ledgerId, String billId);
 
+  void adoptForRental(FixedBill bill, String actorId);
+
+  RentalPageResult<RentalBillPlanResult> listRentalPlanCandidates(
+      String ledgerId, int cycleMonths, LocalDate startsOn, LocalDate endsOn, int page);
+
   void closePlan(String ledgerId, String billId, LocalDate stopMonth, String actorId);
 
   Optional<LocalDate> findLatestProtectedMonth(String billId);

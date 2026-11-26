@@ -2,6 +2,8 @@ package com.xiaobu.ledger.interfaces;
 
 import com.xiaobu.ledger.application.CreateRentalContractCommand;
 import com.xiaobu.ledger.application.GenerateRentalBillCommand;
+import com.xiaobu.ledger.application.LinkRentalBillCommand;
+import com.xiaobu.ledger.application.RentalBillPlanResult;
 import com.xiaobu.ledger.application.RentalContractResult;
 import com.xiaobu.ledger.application.RentalHomeResult;
 import com.xiaobu.ledger.application.SaveRentalHomeCommand;
@@ -18,6 +20,11 @@ interface RentalWebMapper {
 
   GenerateRentalBillCommand toCommand(
       String ledgerId, String actorId, String contractId, GenerateRentalBillRequest body);
+
+  LinkRentalBillCommand toCommand(
+      String ledgerId, String actorId, String contractId, LinkRentalBillRequest body);
+
+  RentalBillPlanResponse toResponse(RentalBillPlanResult result);
 
   RentalHomeResponse toResponse(RentalHomeResult result);
 

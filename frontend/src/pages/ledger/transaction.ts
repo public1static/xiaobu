@@ -117,3 +117,9 @@ export function shiftLedgerMonth(month: string, offset: number) {
   const index = year * 12 + monthNumber - 1 + offset;
   return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
 }
+
+export function clampLedgerDueOn(month: string, dueDayOfMonth: number) {
+  const [year, number] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(year, number, 0)).getUTCDate();
+  return month + '-' + String(Math.min(last, dueDayOfMonth)).padStart(2, '0');
+}

@@ -17,7 +17,8 @@ public record FixedBill(
     String accountId,
     LocalDate stopMonth,
     int cycleMonths,
-    LocalDate lastDueOn) {
+    LocalDate lastDueOn,
+    LocalDate rentalStartsOn) {
   public FixedBill {
     name = name == null ? "" : name.strip();
     if (name.isEmpty()
@@ -41,7 +42,7 @@ public record FixedBill(
       long amountCents,
       String categoryCode,
       String accountId) {
-    this(id, ledgerId, name, firstDueOn, amountCents, categoryCode, accountId, null, 1, null);
+    this(id, ledgerId, name, firstDueOn, amountCents, categoryCode, accountId, null, 1, null, null);
   }
 
   public boolean covers(YearMonth month) {
@@ -49,7 +50,31 @@ public record FixedBill(
     return offset >= 0
         && offset % cycleMonths == 0
         && (stopMonth == null || month.atDay(1).isBefore(stopMonth))
-        && (lastDueOn == null || !dueOn(month).isAfter(lastDueOn));
+        && (lastDueOn == null || !dueOn(month).isAfter(lastDueOn))
+        && (rentalStartsOn == null || !dueOn(month).isBefore(rentalStartsOn));
+  }
+
+  public LocalDate firstDueOnOrAfter(LocalDate start) {
+    var anchor = YearMonth.from(firstDueOn);
+    var offset = Math.max(0, ChronoUnit.MONTHS.between(anchor, YearMonth.from(start)));
+    var next = anchor.plusMonths(((offset + cycleMonths - 1) / cycleMonths) * cycleMonths);
+    if (dueOn(next).isBefore(start)) next = next.plusMonths(cycleMonths);
+    return dueOn(next);
+  }
+
+  public FixedBill adoptForRental(LocalDate start, LocalDate end, long amountCents) {
+    return new FixedBill(
+        id,
+        ledgerId,
+        name,
+        firstDueOn,
+        amountCents,
+        categoryCode,
+        accountId,
+        stopMonth,
+        cycleMonths,
+        end,
+        start);
   }
 
   public LocalDate earliestRevision(YearMonth currentMonth, LocalDate latestProtected) {

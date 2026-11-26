@@ -2,6 +2,7 @@ package com.xiaobu.ledger.application;
 
 import com.xiaobu.ledger.domain.RentalContract;
 import com.xiaobu.ledger.domain.RentalHome;
+import java.time.LocalDate;
 import java.util.Optional;
 
 public interface RentalRepository {
@@ -22,6 +23,11 @@ public interface RentalRepository {
   Optional<RentalContract> findContract(String ledgerId, String contractId);
 
   void linkBill(String ledgerId, String contractId, String billId, String actorId);
+
+  boolean hasOverlappingRentalBill(
+      String ledgerId, String homeId, String contractId, LocalDate startsOn, LocalDate endsOn);
+
+  boolean hasContractForBill(String billId);
 
   void addContract(RentalContract contract, String actorId);
 }
