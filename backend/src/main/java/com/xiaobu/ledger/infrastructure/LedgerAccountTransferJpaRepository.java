@@ -1,6 +1,7 @@
 package com.xiaobu.ledger.infrastructure;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
@@ -25,4 +26,10 @@ interface LedgerAccountTransferJpaRepository
       from LedgerAccountTransferEntity t where t.ledgerId = :ledgerId group by t.targetAccountId
       """)
   List<LedgerAccountBalanceRow> findIncomingTotals(@Param("ledgerId") String ledgerId);
+
+  // 通过账本和主键限制访问范围。
+  Optional<LedgerAccountTransferEntity> findByLedgerIdAndId(String ledgerId, String id);
+
+  // 删除当前账本中已确认撤销的转账。
+  void deleteByLedgerIdAndId(String ledgerId, String id);
 }

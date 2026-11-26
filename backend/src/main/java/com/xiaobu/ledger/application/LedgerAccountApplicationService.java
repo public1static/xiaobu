@@ -42,14 +42,20 @@ public class LedgerAccountApplicationService {
             ids.next(ACCOUNT_PREFIX),
             command.ledgerId(),
             command.name(),
-            command.openingBalanceCents());
+            command.openingBalanceCents(),
+            command.type(),
+            true,
+            command.balanceKnown());
     accounts.add(account);
     return new LedgerAccountResult(
         account.id(),
         account.name(),
         account.openingBalanceCents(),
         0,
-        account.openingBalanceCents());
+        account.openingBalanceCents(),
+        account.type(),
+        account.active(),
+        account.balanceKnown());
   }
 
   @Transactional(readOnly = true)
@@ -63,13 +69,24 @@ public class LedgerAccountApplicationService {
           long balance =
               account.openingBalanceCents() + recorded + transferNet.getOrDefault(account.id(), 0L);
           return new LedgerAccountResult(
-              account.id(), account.name(), account.openingBalanceCents(), recorded, balance);
+              account.id(),
+              account.name(),
+              account.openingBalanceCents(),
+              recorded,
+              balance,
+              account.type(),
+              account.active(),
+              account.balanceKnown());
         })
         .toList();
   }
 
   public void requireAccountInLedger(String ledgerId, String accountId) {
-    if (accountId != null && !accounts.existsByLedgerAndId(ledgerId, accountId)) {
+    if (accountId != null
+        && !accounts
+            .findByLedgerAndId(ledgerId, accountId)
+            .map(LedgerAccount::active)
+            .orElse(false)) {
       throw new FoundationException(ACCOUNT_UNAVAILABLE, "请选择当前账本的账户");
     }
   }
@@ -77,5 +94,59 @@ public class LedgerAccountApplicationService {
   String findAccountName(String ledgerId, String accountId) {
     if (accountId == null) return null;
     return accounts.findByLedgerAndId(ledgerId, accountId).map(LedgerAccount::name).orElse(null);
+  }
+
+  // 按用户核对的当前余额反推期初，已发生的收支与转账仍然保留。
+  @Transactional
+  public void updateLedgerAccount(
+      String ledgerId,
+      String actorId,
+      String accountId,
+      String name,
+      String type,
+      boolean active,
+      Long currentBalanceCents,
+      boolean preserveBalance) {
+    ledgers.lockLedger(ledgerId);
+    ledgers.requireOwnership(ledgerId, actorId);
+    var previous =
+        accounts
+            .findByLedgerAndId(ledgerId, accountId)
+            .orElseThrow(() -> new FoundationException(ACCOUNT_UNAVAILABLE, "账户不存在"));
+    if (preserveBalance) {
+      accounts.update(
+          new LedgerAccount(
+              accountId,
+              ledgerId,
+              name,
+              previous.openingBalanceCents(),
+              type,
+              active,
+              previous.balanceKnown()));
+      return;
+    }
+    long movement =
+        accounts.findRecordedBalancesByLedger(ledgerId).getOrDefault(accountId, 0L)
+            + transfers.findNetByLedger(ledgerId).getOrDefault(accountId, 0L);
+    long opening =
+        currentBalanceCents == null ? 0 : Math.subtractExact(currentBalanceCents, movement);
+    accounts.update(
+        new LedgerAccount(
+            accountId, ledgerId, name, opening, type, active, currentBalanceCents != null));
+  }
+
+  // 账户流水采用账本权限，停用账户仍可读取。
+  @Transactional(readOnly = true)
+  public List<LedgerAccountHistoryResult> listAccountHistory(
+      String ledgerId, String actorId, String accountId) {
+    ledgers.requireReadAccess(ledgerId, actorId);
+    requireExistingAccount(ledgerId, accountId);
+    return accounts.findHistory(ledgerId, accountId, actorId);
+  }
+
+  // 将账户编号限定在当前账本内。
+  private void requireExistingAccount(String ledgerId, String accountId) {
+    if (!accounts.existsByLedgerAndId(ledgerId, accountId))
+      throw new FoundationException(ACCOUNT_UNAVAILABLE, "账户不存在");
   }
 }

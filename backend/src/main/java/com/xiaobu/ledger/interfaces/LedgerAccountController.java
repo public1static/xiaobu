@@ -8,11 +8,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -51,6 +54,40 @@ public class LedgerAccountController {
                     ledgerId,
                     actor.actorId(),
                     input.name(),
-                    input.openingBalanceCents() == null ? 0 : input.openingBalanceCents()))));
+                    input.openingBalanceCents() == null ? 0 : input.openingBalanceCents(),
+                    input.type(),
+                    !Boolean.FALSE.equals(input.balanceKnown())))));
+  }
+
+  // 保存当前账户的名称、用途、余额及可用状态。
+  @PutMapping("/{accountId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void updateLedgerAccount(
+      @PathVariable String ledgerId,
+      @PathVariable String accountId,
+      @Valid @RequestBody UpdateLedgerAccountRequest input,
+      HttpServletRequest request) {
+    accounts.updateLedgerAccount(
+        ledgerId,
+        LedgerSessionContext.require(request).actorId(),
+        accountId,
+        input.name(),
+        input.type(),
+        input.active(),
+        input.currentBalanceCents(),
+        input.preserveBalance());
+  }
+
+  // 详情展示当前账本中该账户全部有效资金变动。
+  @GetMapping("/{accountId}/history")
+  public ApiResponse<List<LedgerAccountHistoryResponse>> listAccountHistory(
+      @PathVariable String ledgerId, @PathVariable String accountId, HttpServletRequest request) {
+    return ApiResponse.success(
+        accounts
+            .listAccountHistory(
+                ledgerId, LedgerSessionContext.require(request).actorId(), accountId)
+            .stream()
+            .map(mapper::toResponse)
+            .toList());
   }
 }

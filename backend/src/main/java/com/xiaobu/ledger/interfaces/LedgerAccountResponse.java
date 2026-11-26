@@ -5,4 +5,7 @@ record LedgerAccountResponse(
     String name,
     long openingBalanceCents,
     long recordedBalanceCents,
-    long balanceCents) {}
+    long balanceCents,
+    String type,
+    boolean active,
+    boolean balanceKnown) {}

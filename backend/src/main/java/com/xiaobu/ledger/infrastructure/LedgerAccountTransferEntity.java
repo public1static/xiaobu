@@ -1,6 +1,7 @@
 package com.xiaobu.ledger.infrastructure;
 
 import com.aegisid.foundation.data.jpa.AuditableEntity;
+import com.xiaobu.ledger.domain.LedgerAccountTransfer;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -22,19 +23,19 @@ public class LedgerAccountTransferEntity extends AuditableEntity implements Pers
   @Column(name = "ledger_id", nullable = false, length = 48, updatable = false)
   private String ledgerId;
 
-  @Column(name = "source_account_id", nullable = false, length = 48, updatable = false)
+  @Column(name = "source_account_id", nullable = false, length = 48)
   private String sourceAccountId;
 
-  @Column(name = "target_account_id", nullable = false, length = 48, updatable = false)
+  @Column(name = "target_account_id", nullable = false, length = 48)
   private String targetAccountId;
 
-  @Column(name = "amount_cents", nullable = false, updatable = false)
+  @Column(name = "amount_cents", nullable = false)
   private long amountCents;
 
-  @Column(name = "booked_on", nullable = false, updatable = false)
+  @Column(name = "booked_on", nullable = false)
   private LocalDate bookedOn;
 
-  @Column(nullable = false, length = 100, updatable = false)
+  @Column(nullable = false, length = 100)
   private String note;
 
   @Column(name = "created_by", nullable = false, length = 48, updatable = false)
@@ -105,5 +106,14 @@ public class LedgerAccountTransferEntity extends AuditableEntity implements Pers
   @PostPersist
   void markNotNew() {
     newEntity = false;
+  }
+
+  // 修改资金方向与数额时保留转账主键和原创建人。
+  void revise(LedgerAccountTransfer transfer) {
+    sourceAccountId = transfer.sourceAccountId();
+    targetAccountId = transfer.targetAccountId();
+    amountCents = transfer.amountCents();
+    bookedOn = transfer.bookedOn();
+    note = transfer.note();
   }
 }

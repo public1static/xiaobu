@@ -186,6 +186,9 @@ class WechatPreviewMySqlTest {
         data(send("POST", accounts, "{\"name\":\"现金\",\"openingBalanceCents\":10000}", owner))
             .get("id")
             .asText();
+    assertEquals(
+        200,
+        send("POST", accounts, "{\"name\":\"待填账户\",\"balanceKnown\":false}", owner).statusCode());
     String card = data(send("POST", accounts, "{\"name\":\"银行卡\"}", owner)).get("id").asText();
     for (String[] row : List.of(new String[] {"09", "1000"}, new String[] {"10", "2500"})) {
       var transfer =
@@ -250,9 +253,10 @@ class WechatPreviewMySqlTest {
     assertTrue(
         askAnalytics(messages, reader, 2, "statement", "rank", "netExpenseCents", "CATEGORY", true)
             .contains("买菜 · 68.00 元"));
-    assertTrue(
-        askAnalytics(messages, reader, 3, "accounts", "rank", "balanceCents", "name", false)
-            .contains("现金 · 64.49 元"));
+    String ranking =
+        askAnalytics(messages, reader, 3, "accounts", "rank", "balanceCents", "name", false);
+    assertTrue(ranking.contains("现金 · 64.49 元"));
+    assertTrue(ranking.contains("另有 1 个账户余额待填"));
     assertTrue(
         askAnalytics(messages, reader, 4, "categories", "list", "entryCount", null, false)
             .contains("当前快照"));
