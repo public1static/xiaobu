@@ -17,6 +17,7 @@ import com.xiaobu.ledger.application.EditLedgerTransactionCommand;
 import com.xiaobu.ledger.application.LedgerAccountApplicationService;
 import com.xiaobu.ledger.application.LedgerCategoryApplicationService;
 import com.xiaobu.ledger.application.LedgerCategoryResult;
+import com.xiaobu.ledger.application.LedgerStatementFilter;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
 import com.xiaobu.ledger.application.LedgerTransactionResult;
 import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
@@ -372,6 +373,44 @@ class LedgerTransactionPersistenceMySqlTest {
       result.entries().forEach(item -> actual.add(item.id()));
     }
     assertEquals(ordered, actual);
+
+    // 分组覆盖全部匹配记录；翻页大小只影响来源明细。
+    var categorized =
+        expenses.listLedgerTransactions(
+            new ListLedgerTransactionsQuery(
+                ledgerId,
+                actor,
+                payment,
+                received,
+                tag,
+                0,
+                1,
+                LedgerStatementFilter.ALL,
+                ListLedgerTransactionsQuery.GroupBy.CATEGORY));
+    assertEquals(1, categorized.entries().size());
+    assertEquals(2, categorized.groups().size());
+    var dining = categorized.groups().getFirst();
+    assertEquals("DINING", dining.groupKey());
+    assertEquals(1500, dining.grossExpenseCents());
+    assertEquals(600, dining.refundCents());
+    assertEquals(900, dining.netExpenseCents());
+    assertEquals(2, dining.entryCount());
+    var drillDown =
+        expenses.listLedgerTransactions(
+            new ListLedgerTransactionsQuery(
+                ledgerId,
+                actor,
+                received,
+                received,
+                tag,
+                0,
+                10,
+                new LedgerStatementFilter(
+                    "DINING", null, TransactionDirection.EXPENSE, true, null, false),
+                ListLedgerTransactionsQuery.GroupBy.DAY));
+    assertEquals(List.of(refund.id()), drillDown.entries().stream().map(row -> row.id()).toList());
+    assertEquals(-600, drillDown.groups().getFirst().netExpenseCents());
+    assertEquals(received.toString(), drillDown.groups().getFirst().groupKey());
   }
 
   @Test

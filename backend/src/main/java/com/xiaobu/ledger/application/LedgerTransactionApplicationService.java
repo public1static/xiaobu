@@ -79,6 +79,7 @@ public class LedgerTransactionApplicationService {
     return LedgerTransactionResult.from(transaction);
   }
 
+  // 在同一只读事务内取明细与完整汇总，申请分组时才执行排行查询。
   @Transactional(readOnly = true)
   public LedgerStatementPageResult listLedgerTransactions(ListLedgerTransactionsQuery query) {
     ledgers.requireReadAccess(query.ledgerId(), query.actorId());
@@ -96,7 +97,15 @@ public class LedgerTransactionApplicationService {
             ? statements.findPage(query)
             : List.<LedgerTransactionResult>of();
     return new LedgerStatementPageResult(
-        entries, days, income, expense, income - expense, count, query.page(), query.pageSize());
+        entries,
+        days,
+        income,
+        expense,
+        income - expense,
+        count,
+        query.page(),
+        query.pageSize(),
+        query.groupBy() == null ? List.of() : statements.summarizeByGroup(query));
   }
 
   @Transactional(readOnly = true)

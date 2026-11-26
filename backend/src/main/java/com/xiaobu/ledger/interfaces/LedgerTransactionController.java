@@ -2,11 +2,14 @@ package com.xiaobu.ledger.interfaces;
 
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
+import com.aegisid.foundation.web.api.ApiErrorResponse;
 import com.aegisid.foundation.web.api.ApiResponse;
+import com.aegisid.foundation.web.request.RequestIds;
 import com.xiaobu.identity.interfaces.LedgerSessionContext;
 import com.xiaobu.identity.interfaces.LocalPreviewAccount;
 import com.xiaobu.ledger.application.ChangeLedgerTransactionStateCommand;
 import com.xiaobu.ledger.application.EditLedgerTransactionCommand;
+import com.xiaobu.ledger.application.LedgerStatementFilter;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
 import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
 import com.xiaobu.ledger.application.RecordLedgerRefundCommand;
@@ -17,9 +20,12 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Map;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestController
 @Profile("local-expense | wechat-preview")
@@ -50,6 +57,7 @@ public class LedgerTransactionController {
     this.extensions = extensions;
   }
 
+  // 页面与助手共用此入口，服务端从会话解析“本人”。
   @GetMapping
   public ApiResponse<LedgerStatementPageResponse> listLedgerTransactions(
       @PathVariable("ledgerId") String ledgerId,
@@ -57,6 +65,13 @@ public class LedgerTransactionController {
       @RequestParam(name = "from", required = false) String from,
       @RequestParam(name = "through", required = false) String through,
       @RequestParam(name = "keyword", defaultValue = "") String keyword,
+      @RequestParam(required = false) String categoryCode,
+      @RequestParam(required = false) String accountId,
+      @RequestParam(required = false) TransactionDirection direction,
+      @RequestParam(defaultValue = "false") boolean recordedByMe,
+      @RequestParam(required = false) String recorderId,
+      @RequestParam(defaultValue = "false") boolean unassignedAccount,
+      @RequestParam(required = false) ListLedgerTransactionsQuery.GroupBy groupBy,
       @RequestParam(name = "page", defaultValue = "0") int page,
       @RequestParam(
               name = "pageSize",
@@ -64,7 +79,19 @@ public class LedgerTransactionController {
           int pageSize,
       HttpServletRequest request) {
     var actor = LedgerSessionContext.require(request);
-    var query = toQuery(ledgerId, actor.actorId(), month, from, through, keyword, page, pageSize);
+    var query =
+        toQuery(
+            ledgerId,
+            actor.actorId(),
+            month,
+            from,
+            through,
+            keyword,
+            page,
+            pageSize,
+            new LedgerStatementFilter(
+                categoryCode, accountId, direction, recordedByMe, recorderId, unassignedAccount),
+            groupBy);
     return ApiResponse.success(mapper.toResponse(transactions.listLedgerTransactions(query)));
   }
 
@@ -185,6 +212,18 @@ public class LedgerTransactionController {
             ledgerId, actor.actorId(), transactionId, input.version()));
   }
 
+  // 无效的分组、方向或分页参数返回可修正的客户端错误。
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  ResponseEntity<ApiErrorResponse> invalidParameter(MethodArgumentTypeMismatchException error) {
+    return ResponseEntity.badRequest()
+        .body(
+            ApiErrorResponse.failure(
+                "XIAOBU_INVALID_TRANSACTION_PARAMETER",
+                "流水查询参数格式无效",
+                RequestIds.currentOrGenerate(),
+                Map.of("field", error.getName())));
+  }
+
   private static long parseVersion(String value) {
     try {
       long version = Long.parseLong(value);
@@ -195,6 +234,7 @@ public class LedgerTransactionController {
     throw new FoundationException(new ErrorCode("XIAOBU_INVALID_VERSION"), "请提供有效流水版本");
   }
 
+  // 将月度与自定义日期两种入口归一化，保留组合条件。
   private static ListLedgerTransactionsQuery toQuery(
       String ledgerId,
       String actorId,
@@ -203,11 +243,21 @@ public class LedgerTransactionController {
       String through,
       String keyword,
       int page,
-      int pageSize) {
+      int pageSize,
+      LedgerStatementFilter filter,
+      ListLedgerTransactionsQuery.GroupBy groupBy) {
     if (month != null && from == null && through == null) {
       YearMonth selected = parseMonth(month);
       return new ListLedgerTransactionsQuery(
-          ledgerId, actorId, selected.atDay(1), selected.atEndOfMonth(), keyword, page, pageSize);
+          ledgerId,
+          actorId,
+          selected.atDay(1),
+          selected.atEndOfMonth(),
+          keyword,
+          page,
+          pageSize,
+          filter,
+          groupBy);
     }
     if (month != null || from == null || through == null) {
       throw invalidRange();
@@ -220,7 +270,9 @@ public class LedgerTransactionController {
           LocalDate.parse(through),
           keyword,
           page,
-          pageSize);
+          pageSize,
+          filter,
+          groupBy);
     } catch (DateTimeParseException ex) {
       throw invalidRange();
     }
