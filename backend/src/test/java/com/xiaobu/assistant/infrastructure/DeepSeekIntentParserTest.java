@@ -29,8 +29,18 @@ class DeepSeekIntentParserTest {
         {"plan":{"from":"2026-11-01","through":"2026-11-26","category":"餐饮","account":null,
         "direction":"EXPENSE","recordedByMe":false,"keyword":null}}
         """;
+    String analysis =
+        """
+        {"plan":{"from":null,"through":null,"category":null,"account":null,"direction":null,
+        "recordedByMe":false,"keyword":null,"analysis":{"dataset":"accounts","metric":"balanceCents",
+        "operation":"rank","groupBy":"name","limit":3,"baselineFrom":null,"baselineThrough":null,"filters":{}}}}
+        """;
     for (var content :
-        List.of(plan, plan.replace("\"keyword\":null", "\"keyword\":null,\"unknownFilter\":1"))) {
+        List.of(
+            plan,
+            plan.replace("\"keyword\":null", "\"keyword\":null,\"unknownFilter\":1"),
+            analysis,
+            analysis.replace("\"limit\":3", "\"limit\":3.5"))) {
       var reply =
           Map.of(
               "id",
@@ -59,6 +69,10 @@ class DeepSeekIntentParserTest {
     assertEquals("餐饮", result.category());
     assertEquals(today, result.through());
     assertNull(parser.parse("另一个条件", result, today));
+    var ranked = parser.parse("有哪些账户余额排前三", null, today);
+    assertEquals("accounts", ranked.analysis().dataset());
+    assertEquals(3, ranked.analysis().limit());
+    assertNull(parser.parse("不合法的个数", ranked, today));
     server.verify();
   }
 }

@@ -125,6 +125,7 @@ class WechatPreviewMySqlTest {
     String members = "/ledgers/" + book + "/members";
     var member = data(send("GET", members, null, alpha)).get(0).get("memberId").asText();
     verifyExpenseDraft(book, id, members + "/" + member + "/role", alpha, beta);
+    verifyAnalytics(book, alpha, beta);
     assertEquals(204, send("DELETE", members + "/" + member, null, alpha).statusCode());
     assertEquals(403, send("GET", messages, null, beta).statusCode());
     assertEquals(403, send("GET", messages + "/1/entries", null, beta).statusCode());
@@ -172,6 +173,145 @@ class WechatPreviewMySqlTest {
     assertEquals(10000, rows.get("expenseCents").asInt());
   }
 
+  // 通过正式对话入口执行合成计划，覆盖不同数据源、基期与权限。
+  private void verifyAnalytics(String book, String owner, String reader) throws Exception {
+    String root = "/ledgers/" + book;
+    String accounts = root + "/accounts";
+    String cash =
+        data(send("POST", accounts, "{\"name\":\"现金\",\"openingBalanceCents\":10000}", owner))
+            .get("id")
+            .asText();
+    String card = data(send("POST", accounts, "{\"name\":\"银行卡\"}", owner)).get("id").asText();
+    for (String[] row :
+        java.util.List.of(new String[] {"09", "1000"}, new String[] {"10", "2500"})) {
+      var transfer =
+          java.util.Map.of(
+              "sourceAccountId",
+              cash,
+              "targetAccountId",
+              card,
+              "amountCents",
+              row[1],
+              "bookedOn",
+              "2026-" + row[0] + "-03",
+              "note",
+              "互转夹具");
+      assertEquals(
+          200,
+          send("POST", root + "/account-transfers", json.writeValueAsString(transfer), owner)
+              .statusCode());
+    }
+    // 放入最近五十条之外的基期，用于发现基于首页做统计的回归。
+    for (int i = 0; i < 51; i++) {
+      var transfer =
+          java.util.Map.of(
+              "sourceAccountId",
+              cash,
+              "targetAccountId",
+              card,
+              "amountCents",
+              1,
+              "bookedOn",
+              "2026-11-01",
+              "note",
+              "分页夹具");
+      assertEquals(
+          200,
+          send("POST", root + "/account-transfers", json.writeValueAsString(transfer), owner)
+              .statusCode());
+    }
+    String gift =
+        """
+        {"direction":"INCOME","amountCents":7500,"bookedOn":"2026-10-06","categoryCode":"GIFT_RECEIVED","note":"礼金夹具","extensions":[{"type":"GIFT","operation":"UPSERT","detail":{"personName":"小陈","reason":"婚礼"}}]}
+        """;
+    var saved = send("POST", root + "/transactions", gift, owner);
+    assertEquals(200, saved.statusCode(), saved.body());
+    assertTrue(
+        send("GET", root + "/assistant/query-catalog", null, owner)
+            .body()
+            .contains("\"name\":\"members\""));
+    assertFalse(
+        send("GET", root + "/assistant/query-catalog", null, reader)
+            .body()
+            .contains("\"name\":\"members\""));
+    String conversations = root + "/assistant/conversations";
+    String chat = data(send("POST", conversations, null, reader)).get("id").asText();
+    String messages = conversations + "/" + chat + "/messages";
+    assertTrue(
+        askAnalytics(messages, reader, 0, "transfers", "compare", "amountCents", null, true)
+            .contains("差额（本期减基期）15.00 元"));
+    assertTrue(
+        askAnalytics(messages, reader, 1, "giftActivities", "rank", "incomeCents", "person", true)
+            .contains("小陈 · 75.00 元"));
+    assertTrue(
+        askAnalytics(messages, reader, 2, "statement", "rank", "netExpenseCents", "CATEGORY", true)
+            .contains("买菜 · 68.00 元"));
+    assertTrue(
+        askAnalytics(messages, reader, 3, "accounts", "rank", "balanceCents", "name", false)
+            .contains("现金 · 64.49 元"));
+    assertTrue(
+        askAnalytics(messages, reader, 4, "categories", "list", "entryCount", null, false)
+            .contains("当前快照"));
+    assertTrue(
+        askAnalytics(messages, reader, 5, "members", "total", "entryCount", null, false)
+            .contains("无法"));
+    assertTrue(
+        askAnalytics(messages, reader, 6, "accounts", "compare", "balanceCents", null, true)
+            .contains("无法"));
+    assertTrue(
+        askAnalytics(messages, reader, 7, "giftBooks", "total", "entryCount", null, false)
+            .contains("没有匹配记录"));
+    assertTrue(
+        askAnalytics(messages, reader, 8, "giftContacts", "total", "entryCount", null, false)
+            .contains("当前快照"));
+  }
+
+  // 固定模型输出，将金额计算及授权验证与供应商语义评测分开。
+  private String askAnalytics(
+      String path,
+      String token,
+      int revision,
+      String dataset,
+      String op,
+      String metric,
+      String group,
+      boolean dated)
+      throws Exception {
+    var from = dated ? java.time.LocalDate.of(2026, 10, 1) : null;
+    var plan =
+        new com.xiaobu.assistant.application.AssistantQueryPlan(
+            from,
+            dated ? from.plusDays(30) : null,
+            null,
+            null,
+            null,
+            false,
+            null,
+            new com.xiaobu.assistant.application.AssistantQueryPlan.Analysis(
+                dataset,
+                op,
+                metric,
+                group,
+                op.equals("rank") ? 3 : null,
+                op.equals("compare") ? from.minusMonths(1) : null,
+                op.equals("compare") ? from.minusDays(1) : null,
+                dataset.equals("transfers")
+                    ? java.util.Map.of("source", "现金")
+                    : java.util.Map.of()));
+    var mapper = JsonMapper.builder().findAndAddModules().build();
+    var body =
+        java.util.Map.of(
+            "question",
+            mapper.writeValueAsString(plan),
+            "revision",
+            revision,
+            "clientId",
+            java.util.UUID.randomUUID());
+    var reply = send("POST", path, json.writeValueAsString(body), token);
+    assertEquals(200, reply.statusCode(), reply.body());
+    return data(reply).at("/answer/text").asText();
+  }
+
   private JsonNode signIn(String code) throws Exception {
     var response = send("POST", "/wechat-session", "{\"code\":\"" + code + "\"}", null);
     assertEquals(200, response.statusCode());
@@ -202,14 +342,19 @@ class WechatPreviewMySqlTest {
     @Primary
     com.xiaobu.assistant.application.AssistantIntentParser fixtureParser() {
       return (question, previous, today) ->
-          new com.xiaobu.assistant.application.AssistantQueryPlan(
-              java.time.LocalDate.of(2026, 10, 1),
-              java.time.LocalDate.of(2026, 10, 31),
-              "餐饮",
-              null,
-              com.xiaobu.ledger.domain.TransactionDirection.EXPENSE,
-              false,
-              null);
+          question.startsWith("{")
+              ? JsonMapper.builder()
+                  .findAndAddModules()
+                  .build()
+                  .readValue(question, com.xiaobu.assistant.application.AssistantQueryPlan.class)
+              : new com.xiaobu.assistant.application.AssistantQueryPlan(
+                  java.time.LocalDate.of(2026, 10, 1),
+                  java.time.LocalDate.of(2026, 10, 31),
+                  "餐饮",
+                  null,
+                  com.xiaobu.ledger.domain.TransactionDirection.EXPENSE,
+                  false,
+                  null);
     }
 
     @Bean

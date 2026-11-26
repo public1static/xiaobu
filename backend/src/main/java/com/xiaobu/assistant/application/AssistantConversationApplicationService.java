@@ -29,6 +29,7 @@ public class AssistantConversationApplicationService {
   private final LedgerCategoryApplicationService categories;
   private final LedgerAccountApplicationService accounts;
   private final AssistantConversationRepository conversations;
+  private final AssistantAnalyticsApplicationService analytics;
   private final AssistantIntentParser parser;
   private final EntityIdGenerator ids;
   private final JsonMapper json;
@@ -40,6 +41,7 @@ public class AssistantConversationApplicationService {
       LedgerCategoryApplicationService categories,
       LedgerAccountApplicationService accounts,
       AssistantConversationRepository conversations,
+      AssistantAnalyticsApplicationService analytics,
       AssistantIntentParser parser,
       EntityIdGenerator ids,
       JsonMapper json) {
@@ -48,6 +50,7 @@ public class AssistantConversationApplicationService {
     this.categories = categories;
     this.accounts = accounts;
     this.conversations = conversations;
+    this.analytics = analytics;
     this.parser = parser;
     this.ids = ids;
     this.json = json;
@@ -138,7 +141,7 @@ public class AssistantConversationApplicationService {
               dining ? TransactionDirection.EXPENSE : null,
               false,
               null);
-    } else if (text.equals("那上个月呢") && previous != null) {
+    } else if (text.equals("那上个月呢") && previous != null && previous.plan().analysis() == null) {
       var last = today.withDayOfMonth(1).minusDays(1);
       var p = previous.plan();
       var updated =
@@ -155,9 +158,14 @@ public class AssistantConversationApplicationService {
               previous.accountId());
       return summarize(ledger, actor, updated);
     } else {
-      plan = parser.parse(text, previous == null ? null : previous.plan(), today);
+      plan =
+          parser.parse(
+              text,
+              previous == null ? null : previous.plan(),
+              today,
+              AssistantDataset.catalog(ledgers.isOwner(ledger, actor)));
     }
-    if (plan == null) return new Answer("请说明要查看的流水期间、分类或账户。", previous, null, null);
+    if (plan == null) return new Answer("请说明要查的数据、筛选条件或统计指标。", previous, null, null);
     return executePlan(ledger, actor, plan, previous);
   }
 
@@ -179,14 +187,7 @@ public class AssistantConversationApplicationService {
                         (c.direction() == TransactionDirection.INCOME ? "收入" : "支出")
                             + " · "
                             + c.name(),
-                        new AssistantQueryPlan(
-                            plan.from(),
-                            plan.through(),
-                            c.name(),
-                            plan.account(),
-                            c.direction(),
-                            plan.recordedByMe(),
-                            plan.keyword())))
+                        plan.resolved(c.name(), plan.account(), c.direction())))
                 .toList();
         return new Answer("请选择分类的收支方向。", previous, null, null, choices);
       }
@@ -204,20 +205,20 @@ public class AssistantConversationApplicationService {
                 .map(a ->
                     new Choice(
                         "账户 · " + a.name(),
-                        new AssistantQueryPlan(
-                            plan.from(),
-                            plan.through(),
-                            plan.category(),
-                            a.name(),
-                            plan.direction(),
-                            plan.recordedByMe(),
-                            plan.keyword())))
+                        plan.resolved(plan.category(), a.name(), plan.direction())))
                 .toList();
         return new Answer("没有匹配到该账户，请核对名称或选择本账本账户。", previous, null, null, choices);
       }
       account = matches.getFirst().id();
     }
-    return summarize(ledger, actor, new Scope(plan, category, account));
+    var scope = new Scope(plan, category, account);
+    if (plan.analysis() != null) {
+      var result = analytics.evaluate(ledger, actor, plan, category, account);
+      return result
+          .map(text -> new Answer(text, scope, null, null))
+          .orElseGet(() -> new Answer("当前目录无法按这些条件查询，请核对数据、指标、期间与筛选条件。", previous, null, null));
+    }
+    return summarize(ledger, actor, scope);
   }
 
   // 读取业务服务给出的完整期间汇总与有序第一页。
