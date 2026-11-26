@@ -37,6 +37,40 @@ public class GiftDirectoryApplicationService {
     this.ids = ids;
   }
 
+  // 未自定义账本使用原型中的常用事由顺序。
+  private static final List<String> DEFAULT_REASONS =
+      List.of(
+          "婚礼", "生日", "满月", "乔迁", "升学", "节日", "探望", "订婚", "百日", "周岁", "寿宴", "开业", "毕业", "慰问", "丧事");
+
+  // 已有记录保留各自的事由文字，目录仅供新录入时选用。
+  @Transactional(readOnly = true)
+  public List<String> listGiftReasons(String ledgerId, String actorId) {
+    ledgers.requireReadAccess(ledgerId, actorId);
+    return currentReasons(ledgerId);
+  }
+
+  // 在账本写锁下比较修改前的目录，避免覆盖另一成员的新增或排序。
+  @Transactional
+  public List<String> saveGiftReasons(SaveGiftReasonsCommand command) {
+    ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
+    var current = currentReasons(command.ledgerId());
+    var names = command.names().stream().map(n -> validateText(n, true)).toList();
+    if (names.stream().map(n -> n.toLowerCase(java.util.Locale.ROOT)).distinct().count()
+        != names.size()) throw invalid("已有同名事由");
+    if (names.equals(current)) return current;
+    if (!current.equals(command.previous())) throw conflict("事由目录已更新，请重新选择");
+    if (!names.containsAll(current) || names.size() > current.size() + 1)
+      throw invalid("请逐项新增或调整已有事由顺序");
+    directory.saveReasons(command.ledgerId(), names);
+    return names;
+  }
+
+  // 首次写入之前只读取默认目录。
+  private List<String> currentReasons(String ledgerId) {
+    var names = directory.findReasons(ledgerId);
+    return names.isEmpty() ? DEFAULT_REASONS : names;
+  }
+
   @Transactional(readOnly = true)
   public List<GiftBookResult> listGiftBooks(String ledgerId, String actorId) {
     ledgers.requireReadAccess(ledgerId, actorId);

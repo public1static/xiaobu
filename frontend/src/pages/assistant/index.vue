@@ -408,42 +408,13 @@ onUnload(hide);
                 }}</text
               >
               <text>结余 ¥{{ formatCents(m.answer.statement.balanceCents) }}</text>
-              <text
-                class="caption"
-                v-for="(entry, index) in m.answer.statement.entries.slice(0, 2)"
-                :key="entry.id"
-              >
-                第 {{ index + 1 }} 笔 · {{ entry.bookedOn }} ·
-                {{
-                  entry.originalTransactionId
-                    ? '退款'
-                    : entry.direction === 'INCOME'
-                      ? '收入'
-                      : '支出'
-                }}
-                ¥{{ formatCents(entry.amountCents) }}
-              </text>
-              <button :disabled="busy" @click="entries(m.sequence)">
-                查看 {{ m.answer.statement.totalCount }} 笔来源 ›
-              </button>
               <button
+                v-if="m.answer.statement.totalCount"
+                class="answer-details"
                 :disabled="busy"
-                @click="
-                  reference = m.sequence;
-                  send('那上个月呢');
-                "
+                @click="entries(m.sequence)"
               >
-                那上个月呢
-              </button>
-              <button
-                v-if="m.answer.statement.entries.length > 1"
-                :disabled="busy"
-                @click="
-                  reference = m.sequence;
-                  send('看第二笔');
-                "
-              >
-                看第二笔
+                查看 {{ m.answer.statement.totalCount }} 笔明细 ›
               </button>
             </template>
             <button
@@ -480,7 +451,9 @@ onUnload(hide);
     </ChatScroll>
     <text v-if="error" class="error" role="alert">{{ error }}</text>
     <view v-if="!result && !denied" class="composer"
-      ><text class="caption">自由提问会将问题和必要的查询条件发送给 DeepSeek。</text>
+      ><text v-if="input.trim()" class="caption"
+        >自由提问会将问题和必要的查询条件发送给 DeepSeek。</text
+      >
       <view
         ><input
           v-model="input"
@@ -757,5 +730,10 @@ button::after {
 .error {
   color: #993b33;
   padding: 8px 16px;
+}
+.answer .answer-details {
+  padding: 4px 0;
+  text-align: left;
+  color: #176a57;
 }
 </style>

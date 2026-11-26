@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import GiftReasonPicker from './GiftReasonPicker.vue';
 import LedgerPicker from '../../components/LedgerPicker.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import {
@@ -31,7 +32,7 @@ const error = ref('');
 const query = computed(() => String(props.detail.personName ?? ''));
 const distinction = computed(() => String(props.detail.distinction ?? ''));
 const matching = computed(() =>
-  (contacts.value ?? []).filter((item) => item.name.includes(query.value.trim())).slice(0, 8),
+  (contacts.value ?? []).filter((item) => item.name === query.value.trim()),
 );
 const eligible = computed(() => [
   dailyGiftBook(props.direction),
@@ -44,24 +45,6 @@ const title = computed(() => {
     String(props.detail.bookName ?? '活动礼单')
   );
 });
-// 常用事由与原型一致，自定义文字仍写入当前流水。
-const reasons = [
-  '婚礼',
-  '生日',
-  '满月',
-  '乔迁',
-  '升学',
-  '节日',
-  '探望',
-  '订婚',
-  '百日',
-  '周岁',
-  '寿宴',
-  '开业',
-  '毕业',
-  '慰问',
-  '丧事',
-];
 const personLabel = computed(() => (props.direction === 'EXPENSE' ? '随礼对象' : '送礼人'));
 
 function change(values: TransactionExtensionDetail) {
@@ -174,37 +157,65 @@ onMounted(load);
         ><text>›</text></view
       ></LedgerPicker
     >
-    <view class="gift-field">
+    <view class="gift-field contact-field">
       <text>{{ personLabel }}<text v-if="quick" class="gift-required">*</text></text>
-      <input
-        :value="query"
-        :aria-label="personLabel"
-        :maxlength="60"
-        :disabled="disabled"
-        @focus="focused = true"
-        @input="updateName($event.detail.value)"
-      />
+      <view class="contact-input"
+        ><input
+          :value="query"
+          placeholder="输入姓名"
+          role="combobox"
+          :aria-expanded="focused && matching.length > 1 && !detail.contactId && !detail.sameName"
+          :aria-label="personLabel"
+          :maxlength="60"
+          :disabled="disabled"
+          @focus="focused = true"
+          @blur="focused = false"
+          @input="
+            focused = true;
+            updateName($event.detail.value);
+          "
+        />
+        <button
+          v-if="matching.some((p) => p.name === query.trim())"
+          :disabled="disabled"
+          class="same"
+          @click="detail.sameName ? updateName(query) : createSameName()"
+        >
+          {{ detail.sameName ? '取消新增' : '新增同名' }}
+        </button>
+        <button
+          v-if="query"
+          :disabled="disabled"
+          aria-label="清空对象"
+          @click="
+            updateName('');
+            focused = false;
+          "
+        >
+          ⊗
+        </button>
+        <view
+          v-if="focused && matching.length > 1 && !detail.contactId && !detail.sameName"
+          class="contact-panel"
+          role="listbox"
+        >
+          <button
+            v-for="item in matching"
+            :key="item.id"
+            role="option"
+            :aria-selected="item.id === detail.contactId"
+            @mousedown.prevent
+            @touchstart.stop.prevent="selectContact(item)"
+            @click="selectContact(item)"
+          >
+            {{ item.name }}<text>{{ item.distinction }}</text>
+          </button>
+        </view>
+      </view>
     </view>
-    <view
-      v-if="focused && query.trim() && matching.length && !detail.sameName"
-      class="gift-options"
-    >
-      <button
-        v-for="item in matching"
-        :key="item.id"
-        class="gift-option"
-        @click="selectContact(item)"
-      >
-        {{ [item.name, item.distinction].filter(Boolean).join(' · ') }}
-      </button>
-      <button
-        v-if="matching.some((item) => item.name === query.trim())"
-        class="gift-option"
-        @click="createSameName"
-      >
-        新增同名
-      </button>
-    </view>
+    <text v-if="detail.contactId && distinction" class="selected-distinction">{{
+      distinction
+    }}</text>
     <view v-if="detail.sameName" class="gift-field">
       <text>称呼或关系<text class="gift-required">*</text></text>
       <input
@@ -215,29 +226,12 @@ onMounted(load);
         @input="change({ distinction: $event.detail.value })"
       />
     </view>
-    <view class="gift-field">
-      <text>事由</text>
-      <input
-        :value="String(detail.reason ?? '')"
-        aria-label="事由"
-        placeholder="选择或填写事由"
-        :maxlength="60"
-        :disabled="disabled"
-        @input="change({ reason: $event.detail.value })"
-      />
-    </view>
-    <view class="reason-chips"
-      ><button
-        v-for="reason in reasons"
-        :key="reason"
-        :disabled="disabled"
-        :class="{ active: detail.reason === reason }"
-        :aria-pressed="detail.reason === reason"
-        @click="change({ reason: detail.reason === reason ? '' : reason })"
-      >
-        {{ reason }}
-      </button></view
-    >
+    <GiftReasonPicker
+      :ledger-id="ledgerId"
+      :value="String(detail.reason ?? '')"
+      :disabled="disabled"
+      @select="change({ reason: $event })"
+    />
     <view v-if="error" class="gift-options gift-required">
       <text>{{ error }}</text><button class="gift-option" @click="load">重试</button>
     </view>
@@ -292,28 +286,59 @@ onMounted(load);
 .gift-required {
   color: #a23832;
 }
-.reason-chips {
+.selected-distinction {
+  display: block;
+  margin: -4px 13px 8px 107px;
+  color: #536660;
+  font-size: 12px;
+}
+.contact-input {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 0 13px 10px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
-.reason-chips button {
+.contact-input input {
+  flex: 1;
+  min-width: 0;
+}
+.contact-input button {
+  flex: none;
   margin: 0;
-  padding: 4px 10px;
-  min-height: 30px;
-  line-height: 20px;
+  padding: 0 4px;
   font-size: 13px;
-  border-radius: 7px;
-  border: 1px solid transparent;
-  background: #f3f5f1;
+  line-height: 32px;
+  color: #176a57;
+  background: transparent;
 }
-.reason-chips button::after {
+.contact-input button::after {
   border: 0;
 }
-.reason-chips .active {
-  color: #176a57;
-  border-color: #176a57;
-  background: #e8f4eb;
+.contact-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  background: white;
+  border: 1px solid #dce6df;
+  border-radius: 10px;
+  max-height: 170px;
+  overflow: auto;
+  box-shadow: 0 4px 14px #18262320;
+}
+.contact-panel button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 10px;
+  text-align: left;
+  color: #182623;
+}
+.contact-panel text {
+  color: #536660;
+  font-size: 12px;
 }
 </style>
