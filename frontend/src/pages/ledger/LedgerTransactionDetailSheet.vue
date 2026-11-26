@@ -35,6 +35,7 @@ const confirming = ref(false);
 const deleting = ref(false);
 const refunding = ref(false);
 const unlinking = ref(false);
+const hasBillPayment = ref(false);
 const refundHistory = computed(() => detail.value?.refunds ?? []);
 const refundedCents = computed(() =>
   refundHistory.value.reduce((sum, refund) => sum + refund.amountCents, 0),
@@ -172,6 +173,7 @@ onMounted(load);
             :disabled="confirming || deleting"
             @unlinked="emit('billUnlinked')"
             @busy="unlinking = $event"
+            @linked="hasBillPayment = $event"
           />
           <view class="meta-row"
             ><text>记账日期</text><text>{{ detail.transaction.bookedOn }}</text></view
@@ -218,6 +220,7 @@ onMounted(load);
               ? '退款也会从流水移除，恢复时一并恢复。'
               : '删除后可在「最近删除」恢复。'
           }}</text>
+          <text v-if="hasBillPayment" class="preview-label">关联的账期会回到待付。</text>
           <button class="primary danger-solid" :disabled="deleting" @click="completeDeletion">
             确认删除
           </button>

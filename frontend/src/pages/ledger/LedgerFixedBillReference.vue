@@ -17,7 +17,7 @@ const props = defineProps<{
   writable: boolean;
   disabled: boolean;
 }>();
-const emit = defineEmits<{ unlinked: []; busy: [value: boolean] }>();
+const emit = defineEmits<{ unlinked: []; busy: [value: boolean]; linked: [value: boolean] }>();
 const reference = ref<FixedBillPaymentReference>();
 const loading = ref(false);
 const saving = ref(false);
@@ -31,6 +31,7 @@ async function load() {
   loadError.value = false;
   try {
     reference.value = await findFixedBillPaymentReference(props.ledgerId, props.transactionId);
+    emit('linked', Boolean(reference.value));
   } catch {
     loadError.value = true;
   } finally {

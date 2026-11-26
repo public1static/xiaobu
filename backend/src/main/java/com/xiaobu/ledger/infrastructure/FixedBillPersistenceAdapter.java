@@ -52,6 +52,35 @@ class FixedBillPersistenceAdapter implements FixedBillRepository {
   }
 
   @Override
+  public Optional<FixedBillPayment> findActivePaymentForTransaction(
+      String ledgerId, String transactionId) {
+    return payments
+        .findActiveBySource(ledgerId, transactionId)
+        .map(FixedBillPaymentEntity::toDomain);
+  }
+
+  @Override
+  public Optional<FixedBillPayment> findSuspendedPaymentForTransaction(
+      String ledgerId, String transactionId) {
+    return payments
+        .findSuspendedBySource(ledgerId, transactionId)
+        .map(FixedBillPaymentEntity::toDomain);
+  }
+
+  @Override
+  public void suspendPayment(String paymentId, String actorId) {
+    payments.findByIdAndDeletedFalse(paymentId).orElseThrow().suspendForSourceRestore(actorId);
+  }
+
+  @Override
+  public void finishSourceRestore(String paymentId, String actorId) {
+    payments
+        .findByIdAndAwaitingSourceRestoreTrue(paymentId)
+        .orElseThrow()
+        .finishSourceRestore(actorId);
+  }
+
+  @Override
   public void unlinkPayment(String paymentId, String actorId) {
     payments.findByIdAndDeletedFalse(paymentId).orElseThrow().markUnlinked(actorId);
   }

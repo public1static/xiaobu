@@ -572,6 +572,7 @@ function startEditing(detail: LedgerTransactionDetail) {
 function onTransactionDeleted() {
   transactionDetailId.value = '';
   savedMessage.value = '已移到最近删除';
+  fixedBillRevision.value++;
   refreshAfterTransactionChange();
 }
 const filtered = computed(() => Boolean(filter.value.from || filter.value.keyword));
