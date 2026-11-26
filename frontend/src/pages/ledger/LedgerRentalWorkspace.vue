@@ -23,6 +23,8 @@ import LedgerPicker from '../../components/LedgerPicker.vue';
 import LedgerIcon from '../../components/LedgerIcon.vue';
 import LedgerFixedBills from './LedgerFixedBills.vue';
 import LedgerRentalDeposits from './LedgerRentalDeposits.vue';
+import RentalLandlordField from './RentalLandlordField.vue';
+import { validateRentalLandlord, type RentalLandlordDraft } from './rental-landlord';
 import {
   formatCents,
   formatCentsForInput,
@@ -104,10 +106,13 @@ const issue = ref<{ field: string; message: string }>();
 let loadSequence = 0;
 const homeDraft = ref({ name: '', address: '', note: '' });
 const contractDraft = ref(emptyContract());
+const landlordDraft = ref<RentalLandlordDraft>({ name: '', contactId: null, distinction: '' });
+function landlordLabel(row: RentalContract) {
+  return [row.landlordName, row.landlordDistinction].filter(Boolean).join(' · ');
+}
 
 function emptyContract() {
   return {
-    landlordName: '',
     startsOn: today,
     endsOn: '',
     rent: '',
@@ -297,6 +302,7 @@ function showHomeForm(edit = false) {
 }
 function showContractForm() {
   renewalSource.value = undefined;
+  landlordDraft.value = { name: '', contactId: null, distinction: '' };
   contractOrigin.value = screen.value === 'home' ? 'home' : 'contracts';
   formHome.value = contractOrigin.value === 'home' ? home.value : undefined;
   selectedBill.value = undefined;
@@ -316,9 +322,13 @@ function startRenewal() {
   renewalSource.value = row;
   formHome.value = { id: row.homeId, name: row.homeName };
   selectedBill.value = undefined;
+  landlordDraft.value = {
+    name: row.landlordName,
+    contactId: row.landlordContactId ?? null,
+    distinction: row.landlordDistinction ?? '',
+  };
   contractDraft.value = {
     ...emptyContract(),
-    landlordName: row.landlordName,
     startsOn,
     firstDueOn: startsOn,
     rent: formatCentsForInput(row.monthlyRentCents),
@@ -548,7 +558,8 @@ async function save() {
       ? 0
       : parseCents(row.deposit);
   if (!formHome.value) return fail('home', '请选择房屋');
-  if (!row.landlordName.trim()) return fail('landlord', '请输入出租方');
+  const landlordError = validateRentalLandlord(landlordDraft.value);
+  if (landlordError) return fail('landlord', landlordError);
   if (renewalEarliest.value && row.startsOn < renewalEarliest.value)
     return fail('start', '续租须在原合同到期后开始。');
   if (!row.endsOn || row.endsOn < row.startsOn) return fail('end', '请选择不早于起租日的到期日');
@@ -564,7 +575,9 @@ async function save() {
   try {
     if (row.billMode === 1 && !(await confirmSeparateBill(row, 'contractForm'))) return;
     const terms = {
-      landlordName: row.landlordName,
+      landlordName: landlordDraft.value.name,
+      landlordContactId: landlordDraft.value.contactId,
+      landlordDistinction: landlordDraft.value.sameName ? landlordDraft.value.distinction : null,
       startsOn: row.startsOn,
       endsOn: row.endsOn,
       monthlyRentCents,
@@ -586,7 +599,9 @@ async function save() {
     emit('reminderChanged');
   } catch (error) {
     const code = error instanceof ApiRequestError ? error.code : undefined;
-    if (code === 'XIAOBU_RENTAL_RENEWAL_START') fail('start', '续租须在原合同到期后开始。');
+    if (code === 'XIAOBU_LEDGER_CONTACT_CONFLICT' || code === 'XIAOBU_LEDGER_CONTACT_INVALID')
+      fail('landlord', '联系人资料或同名称呼已变更，请重新选择或填写不同的称呼。');
+    else if (code === 'XIAOBU_RENTAL_RENEWAL_START') fail('start', '续租须在原合同到期后开始。');
     else if (code === 'XIAOBU_RENTAL_RENEWAL_OVERLAP') fail('end', '与该房屋已有合同的租期重叠。');
     else if (code === 'XIAOBU_RENTAL_ALREADY_RENEWED' || code === 'XIAOBU_RENTAL_RENEWAL_CHANGED')
       fail('', '原合同已变更或已续租，请重新打开合同核对。');
@@ -675,9 +690,9 @@ async function save() {
             @click="showContract(item)"
           >
             <view class="rental-row-main">
-              <text>{{ screen === 'home' ? item.landlordName : item.homeName }}</text>
+              <text>{{ screen === 'home' ? landlordLabel(item) : item.homeName }}</text>
               <text class="rental-secondary"
-                >{{ screen === 'home' ? '' : item.landlordName + ' · ' }}{{ item.startsOn }} 至
+                >{{ screen === 'home' ? '' : landlordLabel(item) + ' · ' }}{{ item.startsOn }} 至
                 {{ item.endsOn }}</text
               >
             </view>
@@ -734,7 +749,7 @@ async function save() {
             ></view
           >
           <view class="rental-row"
-            ><text>出租方</text><text>{{ contract.landlordName }}</text></view
+            ><text>出租方</text><text>{{ landlordLabel(contract) }}</text></view
           >
           <LedgerPicker
             v-if="writable"
@@ -943,14 +958,7 @@ async function save() {
             ><text class="rental-arrow">›</text>
           </button>
           <text v-if="issue?.field === 'home'" class="rental-error">{{ issue.message }}</text>
-          <view class="rental-field"
-            ><text>出租方<text class="rental-star">*</text></text
-            ><input
-              v-model="contractDraft.landlordName"
-              aria-label="出租方"
-              maxlength="40"
-              placeholder="输入姓名或单位"
-          /></view>
+          <RentalLandlordField v-model="landlordDraft" :ledger-id="ledgerId" :disabled="saving" />
           <text v-if="issue?.field === 'landlord'" class="rental-error">{{ issue.message }}</text>
           <LedgerPicker
             mode="date"

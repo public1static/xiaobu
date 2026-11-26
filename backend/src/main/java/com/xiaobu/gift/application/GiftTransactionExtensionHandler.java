@@ -17,11 +17,15 @@ class GiftTransactionExtensionHandler implements TransactionExtensionHandler<Gif
   private static final String TYPE = "GIFT";
   private final GiftDetailRepository details;
   private final GiftDirectoryApplicationService directory;
+  private final LedgerContactApplicationService contacts;
 
   GiftTransactionExtensionHandler(
-      GiftDetailRepository details, GiftDirectoryApplicationService directory) {
+      GiftDetailRepository details,
+      GiftDirectoryApplicationService directory,
+      LedgerContactApplicationService contacts) {
     this.details = details;
     this.directory = directory;
+    this.contacts = contacts;
   }
 
   @Override
@@ -88,9 +92,9 @@ class GiftTransactionExtensionHandler implements TransactionExtensionHandler<Gif
     }
     var contact =
         detail.contactId() != null
-            ? directory.requireContact(context.ledgerId(), detail.contactId())
+            ? contacts.selectGiftContact(context.ledgerId(), context.actorId(), detail.contactId())
             : Boolean.TRUE.equals(detail.createContact())
-                ? directory.registerContact(
+                ? contacts.registerGiftContact(
                     new CreateGiftContactCommand(
                         context.ledgerId(),
                         context.actorId(),

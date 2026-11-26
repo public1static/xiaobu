@@ -5,6 +5,7 @@ import com.aegisid.foundation.data.id.IdPrefix;
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
+import com.xiaobu.gift.application.LedgerContactApplicationService;
 import com.xiaobu.ledger.domain.FixedBill;
 import com.xiaobu.ledger.domain.LedgerCategoryDefaults;
 import com.xiaobu.ledger.domain.RentalContract;
@@ -30,18 +31,21 @@ public class RentalApplicationService {
   private final RentalRepository rentals;
   private final FixedBillRepository bills;
   private final EntityIdGenerator ids;
+  private final LedgerContactApplicationService contacts;
 
   RentalApplicationService(
       PersonalLedgerApplicationService ledgers,
       LedgerCategoryApplicationService categories,
       RentalRepository rentals,
       FixedBillRepository bills,
-      EntityIdGenerator ids) {
+      EntityIdGenerator ids,
+      LedgerContactApplicationService contacts) {
     this.ledgers = ledgers;
     this.categories = categories;
     this.rentals = rentals;
     this.bills = bills;
     this.ids = ids;
+    this.contacts = contacts;
   }
 
   @Transactional(readOnly = true)
@@ -128,7 +132,9 @@ public class RentalApplicationService {
             command.firstDueOn(),
             command.note(),
             command.existingBillId(),
-            command.remindDays()),
+            command.remindDays(),
+            command.landlordContactId(),
+            command.landlordDistinction()),
         home,
         previous.id());
   }
@@ -142,12 +148,19 @@ public class RentalApplicationService {
         command.existingBillId() != null
             ? command.existingBillId()
             : command.firstDueOn() == null ? null : ids.next(BILL_PREFIX);
+    var landlord =
+        contacts.resolveRentalContact(
+            home.ledgerId(),
+            command.actorId(),
+            command.landlordContactId(),
+            command.landlordName(),
+            command.landlordDistinction());
     var contract =
         new RentalContract(
             ids.next(CONTRACT_PREFIX),
             home.ledgerId(),
             home.id(),
-            command.landlordName(),
+            landlord.name(),
             command.startsOn(),
             command.endsOn(),
             command.monthlyRentCents(),
@@ -157,7 +170,9 @@ public class RentalApplicationService {
             command.note(),
             command.remindDays() == null ? RentalExpiryReminder.DEFAULT_DAYS : command.remindDays(),
             null,
-            previousContractId);
+            previousContractId,
+            landlord.id(),
+            landlord.distinction());
     if (rentals.hasOverlappingContract(
         contract.ledgerId(),
         contract.homeId(),

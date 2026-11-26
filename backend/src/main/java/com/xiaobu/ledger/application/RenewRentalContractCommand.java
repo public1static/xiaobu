@@ -17,4 +17,40 @@ public record RenewRentalContractCommand(
     LocalDate firstDueOn,
     String note,
     String existingBillId,
-    Integer remindDays) {}
+    Integer remindDays,
+    String landlordContactId,
+    String landlordDistinction) {
+  public RenewRentalContractCommand(
+      String ledgerId,
+      String actorId,
+      String contractId,
+      LocalDate expectedEndsOn,
+      String landlordName,
+      LocalDate startsOn,
+      LocalDate endsOn,
+      long monthlyRentCents,
+      long depositCents,
+      RentalPaymentCycle cycle,
+      LocalDate firstDueOn,
+      String note,
+      String existingBillId,
+      Integer remindDays) {
+    this(
+        ledgerId,
+        actorId,
+        contractId,
+        expectedEndsOn,
+        landlordName,
+        startsOn,
+        endsOn,
+        monthlyRentCents,
+        depositCents,
+        cycle,
+        firstDueOn,
+        note,
+        existingBillId,
+        remindDays,
+        null,
+        null);
+  }
+}

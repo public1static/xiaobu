@@ -28,7 +28,7 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
   @Column(name = "home_id", nullable = false, length = 48, updatable = false)
   private String homeId;
 
-  @Column(name = "landlord_name", nullable = false, length = 40, updatable = false)
+  @Column(name = "landlord_name", nullable = false, length = 60, updatable = false)
   private String landlordName;
 
   @Column(name = "starts_on", nullable = false, updatable = false)
@@ -71,6 +71,12 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
   @Column(name = "previous_contract_id", length = 48, updatable = false)
   private String previousContractId;
 
+  @Column(name = "landlord_contact_id", length = 48, updatable = false)
+  private String landlordContactId;
+
+  @Column(name = "landlord_distinction", length = 60, updatable = false)
+  private String landlordDistinction;
+
   @Transient private boolean newEntity = true;
 
   protected RentalContractEntity() {}
@@ -90,6 +96,8 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
     remindDays = row.remindDays();
     handledEnd = row.handledEnd();
     previousContractId = row.previousContractId();
+    landlordContactId = row.landlordContactId();
+    landlordDistinction = row.landlordDistinction();
     createdBy = actorId;
     updatedBy = actorId;
   }
@@ -124,7 +132,9 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
         note,
         remindDays,
         handledEnd,
-        previousContractId);
+        previousContractId,
+        landlordContactId,
+        landlordDistinction);
   }
 
   @Override

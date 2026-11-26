@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import GiftReasonPicker from './GiftReasonPicker.vue';
 import LedgerPicker from '../../components/LedgerPicker.vue';
+import { useLedgerContactMatches } from './ledger-contact-matches';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   dailyGiftBook,
   listGiftBooks,
-  listGiftContacts,
   type GiftBook,
   type GiftContact,
 } from '../../api/ledger-gifts';
@@ -25,15 +25,20 @@ const emit = defineEmits<{
 }>();
 
 const books = ref<GiftBook[]>([]);
-const contacts = ref<GiftContact[] | null>(null);
+const {
+  matches: matching,
+  count: matchCount,
+  pending: matchPending,
+  failure: matchError,
+  search: searchMatches,
+  retry: retryMatches,
+  more: moreMatches,
+} = useLedgerContactMatches(() => props.ledgerId);
 
 const focused = ref(false);
 const error = ref('');
 const query = computed(() => String(props.detail.personName ?? ''));
 const distinction = computed(() => String(props.detail.distinction ?? ''));
-const matching = computed(() =>
-  (contacts.value ?? []).filter((item) => item.name === query.value.trim()),
-);
 const eligible = computed(() => [
   dailyGiftBook(props.direction),
   ...books.value.filter((item) => item.direction === props.direction && !item.archived),
@@ -58,17 +63,11 @@ async function load() {
   const ledger = props.ledgerId;
   error.value = '';
   try {
-    const [activityBooks, people] = await Promise.all([
-      listGiftBooks(ledger),
-      listGiftContacts(ledger),
-    ]);
+    const activityBooks = await listGiftBooks(ledger);
     if (generation !== loadGeneration || ledger !== props.ledgerId) return;
     books.value = activityBooks;
-    contacts.value = people;
-    if (props.detail.needsContactLookup) updateName(query.value);
   } catch {
-    if (generation === loadGeneration && ledger === props.ledgerId)
-      error.value = '礼单或亲友暂未加载。';
+    if (generation === loadGeneration && ledger === props.ledgerId) error.value = '礼单暂未加载。';
   }
 }
 
@@ -97,28 +96,26 @@ function selectContact(item: GiftContact) {
 
 function updateName(name: string) {
   const clean = name.trim();
-  const exact = (contacts.value ?? []).filter((item) => item.name === clean);
-  if (clean && exact.length === 1) {
-    const item = exact[0];
-    change({
-      personName: name,
-      distinction: item.distinction,
-      contactId: item.id,
-      needsContactLookup: false,
-      ambiguous: false,
-      createContact: false,
-      sameName: false,
-    });
-    return;
-  }
   change({
     personName: name,
     contactId: null,
     distinction: '',
-    ambiguous: exact.length > 1,
-    needsContactLookup: Boolean(clean) && contacts.value === null,
-    createContact: Boolean(clean) && contacts.value !== null && exact.length === 0,
+    ambiguous: false,
+    needsContactLookup: !!clean,
+    createContact: false,
     sameName: false,
+  });
+  searchMatches(name, (result) => {
+    if (query.value.trim() !== clean || props.detail.sameName || props.detail.contactId) return;
+    const item = result.totalCount === 1 ? result.entries[0] : undefined;
+    change({
+      personName: name,
+      contactId: item?.id ?? null,
+      distinction: item?.distinction ?? '',
+      ambiguous: result.totalCount > 1,
+      needsContactLookup: false,
+      createContact: result.totalCount === 0,
+    });
   });
 }
 
@@ -146,9 +143,10 @@ watch(
   () => props.ledgerId,
   () => {
     books.value = [];
-    contacts.value = null;
     focused.value = false;
     void load();
+    if (props.detail.needsContactLookup) updateName(query.value);
+    else searchMatches(query.value);
   },
   { immediate: true },
 );
@@ -182,7 +180,7 @@ onBeforeUnmount(() => {
           :value="query"
           placeholder="输入姓名"
           role="combobox"
-          :aria-expanded="focused && matching.length > 1 && !detail.contactId && !detail.sameName"
+          :aria-expanded="focused && matchCount > 1 && !detail.contactId && !detail.sameName"
           :aria-label="personLabel"
           :maxlength="60"
           :disabled="disabled"
@@ -194,7 +192,7 @@ onBeforeUnmount(() => {
           "
         />
         <button
-          v-if="matching.some((p) => p.name === query.trim())"
+          v-if="matchCount > 0"
           :disabled="disabled"
           class="same"
           @click="detail.sameName ? updateName(query) : createSameName()"
@@ -213,7 +211,7 @@ onBeforeUnmount(() => {
           ⊗
         </button>
         <view
-          v-if="focused && matching.length > 1 && !detail.contactId && !detail.sameName"
+          v-if="focused && matchCount > 1 && !detail.contactId && !detail.sameName"
           class="contact-panel"
           role="listbox"
         >
@@ -226,7 +224,15 @@ onBeforeUnmount(() => {
             @touchstart.stop.prevent="selectContact(item)"
             @click="selectContact(item)"
           >
-            {{ item.name }}<text>{{ item.distinction }}</text>
+            {{ item.name }}<text>{{ item.distinction || '无称呼' }}</text>
+          </button>
+          <button
+            v-if="matching.length < matchCount"
+            :disabled="matchPending"
+            @mousedown.prevent
+            @click="moreMatches"
+          >
+            加载更多
           </button>
         </view>
       </view>
@@ -250,6 +256,9 @@ onBeforeUnmount(() => {
       :disabled="disabled"
       @select="change({ reason: $event })"
     />
+    <view v-if="matchError" class="gift-options gift-required">
+      <text>联系人查询失败。</text><button class="gift-option" @click="retryMatches">重试</button>
+    </view>
     <view v-if="error" class="gift-options gift-required">
       <text>{{ error }}</text><button class="gift-option" @click="load">重试</button>
     </view>

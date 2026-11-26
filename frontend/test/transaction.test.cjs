@@ -133,3 +133,13 @@ test('renewal starts on the next calendar day, including year-end and leap day',
   assert.equal(nextLedgerDay('2024-02-28'), '2024-02-29');
   assert.equal(nextLedgerDay('2025-02-28'), '2025-03-01');
 });
+
+test('rental rejects unresolved or unlabelled same-name contact drafts', async () => {
+  const { validateRentalLandlord } = await import('../src/pages/ledger/rental-landlord.ts');
+  const draft = { name: '张三', contactId: null, distinction: '' };
+  assert.equal(validateRentalLandlord(draft), '');
+  assert.notEqual(validateRentalLandlord({ ...draft, checking: true }), '');
+  assert.notEqual(validateRentalLandlord({ ...draft, ambiguous: true }), '');
+  assert.notEqual(validateRentalLandlord({ ...draft, sameName: true }), '');
+  assert.equal(validateRentalLandlord({ ...draft, sameName: true, distinction: '房东' }), '');
+});

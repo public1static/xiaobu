@@ -21,4 +21,6 @@ public record RentalContractResponse(
     int remindDays,
     LocalDate handledEnd,
     String previousContractId,
-    String nextContractId) {}
+    String nextContractId,
+    String landlordContactId,
+    String landlordDistinction) {}
