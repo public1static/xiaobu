@@ -1,0 +1,13 @@
+{
+  "pages": [
+    {
+      "path": "pages/ledger/index",
+      "style": { "navigationStyle": "custom", "navigationBarTitleText": "小簿" }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarBackgroundColor": "#f3f5f1",
+    "backgroundColor": "#f3f5f1"
+  }
+}

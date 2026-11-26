@@ -1,0 +1,49 @@
+server:
+  address: 127.0.0.1
+spring:
+  application:
+    name: xiaobu
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    clean-disabled: true
+---
+server:
+  servlet:
+    session:
+      tracking-modes: cookie
+      timeout: 30m
+      cookie:
+        name: XIAOBU_LOCAL_SESSION
+        http-only: true
+        same-site: strict
+spring:
+  config:
+    activate:
+      on-profile: local-expense
+  datasource:
+    url: ${XIAOBU_DEV_DB_URL}
+    username: ${XIAOBU_DEV_DB_USER}
+    password: ${XIAOBU_DEV_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 3
+---
+spring:
+  config:
+    activate:
+      on-profile: wechat-preview
+  datasource:
+    url: ${XIAOBU_DEV_DB_URL}
+    username: ${XIAOBU_DEV_DB_USER}
+    password: ${XIAOBU_DEV_DB_PASSWORD}
+xiaobu:
+  wechat:
+    app-id: ${XIAOBU_WECHAT_APP_ID:}
+    app-secret: ${XIAOBU_WECHAT_APP_SECRET:}
