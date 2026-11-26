@@ -9,6 +9,7 @@ import com.xiaobu.ledger.application.ChangeLedgerTransactionStateCommand;
 import com.xiaobu.ledger.application.EditLedgerTransactionCommand;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
 import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
+import com.xiaobu.ledger.application.RecordLedgerRefundCommand;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -86,7 +87,29 @@ public class LedgerTransactionController {
             name,
             result.accountName(),
             result.version(),
-            result.canModify()));
+            result.canModify(),
+            result.refunds().stream().map(mapper::toResponse).toList()));
+  }
+
+  @PostMapping("/{transactionId}/refunds")
+  @ResponseStatus(HttpStatus.CREATED)
+  public ApiResponse<LedgerRefundResponse> recordLedgerRefund(
+      @PathVariable("ledgerId") String ledgerId,
+      @PathVariable("transactionId") String transactionId,
+      @Valid @RequestBody RecordLedgerRefundRequest input,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    var result =
+        transactions.recordLedgerRefund(
+            new RecordLedgerRefundCommand(
+                ledgerId,
+                transactionId,
+                actor.actorId(),
+                input.version(),
+                input.amountCents(),
+                input.receivedOn(),
+                input.accountId()));
+    return ApiResponse.success(mapper.toResponse(result));
   }
 
   @GetMapping("/recently-deleted")

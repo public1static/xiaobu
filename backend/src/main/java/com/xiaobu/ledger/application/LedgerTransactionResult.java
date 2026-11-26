@@ -11,7 +11,8 @@ public record LedgerTransactionResult(
     LocalDate bookedOn,
     String categoryCode,
     String note,
-    String accountId) {
+    String accountId,
+    String originalTransactionId) {
 
   static LedgerTransactionResult from(LedgerTransaction transaction) {
     var details = transaction.details();
@@ -22,6 +23,19 @@ public record LedgerTransactionResult(
         details.bookedOn(),
         details.categoryCode(),
         details.note(),
-        details.accountId());
+        details.accountId(),
+        null);
+  }
+
+  static LedgerTransactionResult fromRefund(LedgerRefundActivity refund) {
+    return new LedgerTransactionResult(
+        refund.id(),
+        TransactionDirection.EXPENSE,
+        refund.amountCents(),
+        refund.receivedOn(),
+        refund.categoryCode(),
+        refund.note(),
+        refund.accountId(),
+        refund.transactionId());
   }
 }

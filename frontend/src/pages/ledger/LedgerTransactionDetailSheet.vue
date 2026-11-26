@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import {
   deleteLedgerTransaction,
   getLedgerTransaction,
   type LedgerTransactionDetail,
 } from '../../api/ledger-transactions';
 import { ApiRequestError } from '../../api/request';
-import { categoryLabel, formatCents } from './transaction';
+import LedgerRefundForm from './LedgerRefundForm.vue';
+import { categoryLabel, formatCents, localDay } from './transaction';
 
 const props = defineProps<{
   ledgerId: string;
@@ -17,12 +18,34 @@ const emit = defineEmits<{
   (event: 'close'): void;
   (event: 'edit', detail: LedgerTransactionDetail): void;
   (event: 'deleted'): void;
+  (event: 'refunded'): void;
 }>();
 const detail = ref<LedgerTransactionDetail | null>(null);
 const loading = ref(false);
 const error = ref('');
 const confirming = ref(false);
 const deleting = ref(false);
+const refunding = ref(false);
+const refundHistory = computed(() => detail.value?.refunds ?? []);
+const refundedCents = computed(() =>
+  refundHistory.value.reduce((sum, refund) => sum + refund.amountCents, 0),
+);
+const remainingCents = computed(
+  () => (detail.value?.transaction.amountCents ?? 0) - refundedCents.value,
+);
+const canRefund = computed(
+  () =>
+    detail.value?.canModify &&
+    detail.value.transaction.direction === 'EXPENSE' &&
+    remainingCents.value > 0 &&
+    detail.value.transaction.bookedOn <= localDay(),
+);
+
+async function onRefundSaved() {
+  refunding.value = false;
+  emit('refunded');
+  await load();
+}
 
 async function load() {
   loading.value = true;
@@ -67,14 +90,33 @@ onMounted(load);
 
 <template>
   <view class="overlay">
-    <view class="sheet login-sheet" role="dialog" aria-label="流水详情" aria-modal="true">
+    <view
+      class="sheet login-sheet"
+      role="dialog"
+      :aria-label="refunding ? '登记退款' : '流水详情'"
+      aria-modal="true"
+    >
       <view class="sheet-head">
-        <text>流水详情</text>
-        <button class="close" aria-label="关闭详情" :disabled="deleting" @click="emit('close')">
+        <text>{{ refunding ? '登记退款' : '流水详情' }}</text>
+        <button
+          v-if="!refunding"
+          class="close"
+          aria-label="关闭详情"
+          :disabled="deleting"
+          @click="emit('close')"
+        >
           ×
         </button>
       </view>
       <text v-if="loading" class="preview-label" role="status">正在加载详情</text>
+      <LedgerRefundForm
+        v-else-if="refunding && detail"
+        :ledger-id="ledgerId"
+        :detail="detail"
+        :remaining-cents="remainingCents"
+        @cancel="refunding = false"
+        @saved="onRefundSaved"
+      />
       <template v-else-if="detail">
         <view class="detail-caption"
           ><text>{{
@@ -84,9 +126,20 @@ onMounted(load);
         >
         <text class="detail-amount" :class="{ income: detail.transaction.direction === 'INCOME' }">
           {{ detail.transaction.direction === 'INCOME' ? '+' : '−' }}¥{{
-            formatCents(detail.transaction.amountCents)
+            formatCents(remainingCents)
           }}
         </text>
+        <view v-if="refundHistory.length" class="refund-summary">
+          <view
+            ><text>原付</text><text>¥{{ formatCents(detail.transaction.amountCents) }}</text></view
+          >
+          <view
+            ><text>已退</text><text>¥{{ formatCents(refundedCents) }}</text></view
+          >
+          <view
+            ><text>实付</text><text>¥{{ formatCents(remainingCents) }}</text></view
+          >
+        </view>
         <view class="meta">
           <view class="meta-row"
             ><text>记账日期</text><text>{{ detail.transaction.bookedOn }}</text></view
@@ -101,12 +154,33 @@ onMounted(load);
             ><text>备注</text><text>{{ detail.transaction.note || '无' }}</text></view
           >
         </view>
+        <view v-if="refundHistory.length" class="meta refund-history">
+          <text class="detail-caption">退款记录</text>
+          <view v-for="receipt in refundHistory" :key="receipt.id" class="meta-row">
+            <view class="refund-history-info"
+              ><text>{{ receipt.receivedOn }}</text
+              ><text>{{ receipt.accountName || '未选择账户' }}</text></view
+            >
+            <text>+¥{{ formatCents(receipt.amountCents) }}</text>
+          </view>
+        </view>
+        <button
+          v-if="canRefund && !confirming"
+          class="primary secondary refund-open"
+          @click="refunding = true"
+        >
+          登记退款
+        </button>
         <view v-if="detail.canModify && !confirming" class="detail-actions">
           <button class="primary secondary" @click="confirming = true">删除这笔</button>
           <button class="primary" @click="emit('edit', detail)">编辑</button>
         </view>
         <view v-if="confirming" class="detail-confirm">
-          <text class="preview-label">删除后可在「最近删除」恢复。</text>
+          <text class="preview-label">{{
+            refundHistory.length
+              ? '退款也会从流水移除，恢复时一并恢复。'
+              : '删除后可在「最近删除」恢复。'
+          }}</text>
           <button class="primary" :disabled="deleting" @click="completeDeletion">确认删除</button>
           <button class="primary secondary" :disabled="deleting" @click="confirming = false">
             取消
@@ -121,6 +195,39 @@ onMounted(load);
 
 <style scoped src="./ledger.css"></style>
 <style scoped>
+.refund-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 12px;
+  border-radius: 12px;
+  background: #f5f7fa;
+}
+.refund-summary view,
+.refund-history-info {
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.refund-summary view {
+  text-align: center;
+  padding: 0 2px;
+}
+.refund-summary text:first-child,
+.refund-history-info text:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+.refund-summary text:last-child {
+  font-weight: 650;
+}
+.refund-open {
+  margin: 0;
+  width: 100%;
+}
+.refund-history > .detail-caption {
+  display: block;
+  padding: 10px 12px 0;
+}
 .detail-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

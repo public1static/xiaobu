@@ -10,6 +10,7 @@ import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
 import com.xiaobu.ledger.application.ChangeLedgerCategoryOrderCommand;
 import com.xiaobu.ledger.application.ChangeLedgerCategoryStatusCommand;
+import com.xiaobu.ledger.application.ChangeLedgerTransactionStateCommand;
 import com.xiaobu.ledger.application.CreateLedgerAccountCommand;
 import com.xiaobu.ledger.application.CreateLedgerCategoryCommand;
 import com.xiaobu.ledger.application.EditLedgerTransactionCommand;
@@ -20,6 +21,7 @@ import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
 import com.xiaobu.ledger.application.LedgerTransactionResult;
 import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
 import com.xiaobu.ledger.application.PersonalLedgerApplicationService;
+import com.xiaobu.ledger.application.RecordLedgerRefundCommand;
 import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
 import com.xiaobu.ledger.domain.LedgerTransaction;
 import com.xiaobu.ledger.domain.LedgerTransactionDetails;
@@ -371,6 +373,114 @@ class LedgerTransactionPersistenceMySqlTest {
     categories.changeLedgerCategoryStatus(
         new ChangeLedgerCategoryStatusCommand(alpha, "alice", created.code(), true));
     assertEquals(created.code(), expenses.recordLedgerTransaction(command).categoryCode());
+  }
+
+  @Test
+  void refundsAreProjectedOnReceiptDateAndFollowLogicalDeletionOfOriginal() {
+    String ledgerId = newLedgerId();
+    var paymentDate = LocalDate.of(2026, 8, 31);
+    var receiptDate = paymentDate.plusDays(1);
+    var payer =
+        accounts.createLedgerAccount(new CreateLedgerAccountCommand(ledgerId, "alice", "原付款卡"));
+    var receiver =
+        accounts.createLedgerAccount(new CreateLedgerAccountCommand(ledgerId, "alice", "收退款卡"));
+    var original =
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledgerId,
+                "alice",
+                TransactionDirection.EXPENSE,
+                4000,
+                paymentDate,
+                "DINING",
+                "午饭",
+                payer.id()));
+    var partial =
+        expenses.recordLedgerRefund(
+            new RecordLedgerRefundCommand(
+                ledgerId, original.id(), "alice", 0, 1000, receiptDate, receiver.id()));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            expenses.recordLedgerRefund(
+                new RecordLedgerRefundCommand(
+                    ledgerId, original.id(), "alice", 0, 3001, receiptDate, null)));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            expenses.editLedgerTransaction(
+                new EditLedgerTransactionCommand(
+                    ledgerId,
+                    "alice",
+                    original.id(),
+                    0,
+                    TransactionDirection.EXPENSE,
+                    999,
+                    paymentDate,
+                    "DINING",
+                    "午饭",
+                    payer.id())));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            expenses.editLedgerTransaction(
+                new EditLedgerTransactionCommand(
+                    ledgerId,
+                    "alice",
+                    original.id(),
+                    0,
+                    TransactionDirection.EXPENSE,
+                    4000,
+                    receiptDate.plusDays(1),
+                    "DINING",
+                    "午饭",
+                    payer.id())));
+    expenses.recordLedgerRefund(
+        new RecordLedgerRefundCommand(
+            ledgerId, original.id(), "alice", 0, 3000, receiptDate, null));
+
+    var originalMonth =
+        new ListLedgerTransactionsQuery(ledgerId, "alice", YearMonth.from(paymentDate));
+    var refundMonth =
+        new ListLedgerTransactionsQuery(ledgerId, "alice", YearMonth.from(receiptDate));
+    assertEquals(List.of(original), expenses.listLedgerTransactions(originalMonth));
+    var refundRows = expenses.listLedgerTransactions(refundMonth);
+    assertEquals(2, refundRows.size());
+    for (var row : refundRows) {
+      assertEquals(original.id(), row.originalTransactionId());
+      assertEquals(TransactionDirection.EXPENSE, row.direction());
+      assertEquals(receiptDate, row.bookedOn());
+    }
+    var detail = expenses.getLedgerTransaction(ledgerId, "alice", original.id());
+    assertEquals(
+        List.of(1000L, 3000L),
+        detail.refunds().stream().map(refund -> refund.amountCents()).sorted().toList());
+    assertEquals(4000, detail.transaction().amountCents());
+    assertEquals(
+        "alice",
+        jdbc.queryForObject(
+            "SELECT updated_by FROM ledger_refunds WHERE id = ?", String.class, partial.id()));
+    assertEquals(-4000, recordedBalance(ledgerId, payer.id()));
+    assertEquals(1000, recordedBalance(ledgerId, receiver.id()));
+
+    expenses.deleteLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledgerId, "alice", original.id(), 0));
+    assertTrue(expenses.listLedgerTransactions(refundMonth).isEmpty());
+    assertEquals(0, recordedBalance(ledgerId, payer.id()));
+    assertEquals(0, recordedBalance(ledgerId, receiver.id()));
+    entityManager.clear();
+    expenses.restoreLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledgerId, "alice", original.id(), 1));
+    assertEquals(refundRows, expenses.listLedgerTransactions(refundMonth));
+    assertEquals(1000, recordedBalance(ledgerId, receiver.id()));
+  }
+
+  private long recordedBalance(String ledgerId, String accountId) {
+    return accounts.listLedgerAccounts(ledgerId, "alice").stream()
+        .filter(account -> account.id().equals(accountId))
+        .findFirst()
+        .orElseThrow()
+        .recordedBalanceCents();
   }
 
   private String newLedgerId() {
