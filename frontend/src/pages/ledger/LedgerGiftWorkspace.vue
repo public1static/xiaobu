@@ -324,7 +324,7 @@ onBeforeUnmount(() => {
       "
       aria-modal="true"
     >
-      <view class="workspace-head">
+      <view class="workspace-head sheet-child">
         <button
           v-if="contactForm || creating || currentBook || currentContact"
           class="text-button"
@@ -374,7 +374,7 @@ onBeforeUnmount(() => {
       </view>
       <view
         v-if="!creating && !currentBook && !currentContact && !contactForm"
-        class="workspace-tabs"
+        class="workspace-tabs sheet-child"
       >
         <button
           class="text-button"
@@ -400,7 +400,7 @@ onBeforeUnmount(() => {
       </view>
 
       <template v-if="contactForm"
-        ><view class="meta"
+        ><view class="meta sheet-child"
           ><view class="form-row"
             ><text>姓名<text class="star">*</text></text
             ><input aria-label="亲友姓名" v-model="contactName" maxlength="60" /></view
@@ -410,10 +410,12 @@ onBeforeUnmount(() => {
               aria-label="称呼或关系"
               v-model="contactDistinction"
               maxlength="60" /></view></view
-        ><button class="primary" :disabled="busy" @click="saveContact">保存亲友</button></template
+        ><button class="primary sheet-child" :disabled="busy" @click="saveContact">
+          保存亲友
+        </button></template
       >
       <template v-else-if="creating">
-        <view class="meta">
+        <view class="meta sheet-child">
           <view class="workspace-field"
             ><text>收送方向<text class="star">*</text></text>
             <view class="direction-tabs">
@@ -446,6 +448,7 @@ onBeforeUnmount(() => {
             ><text>默认日期</text>
             <view class="clear-field"
               ><LedgerPicker
+                class="clear-field-value"
                 label="选择默认日期"
                 mode="date"
                 :value="defaultDate || tailToday"
@@ -470,11 +473,13 @@ onBeforeUnmount(() => {
             @select="defaultReason = $event"
           />
         </view>
-        <button class="primary save" :disabled="busy" @click="submitBook">创建礼单</button>
+        <button class="primary save sheet-child" :disabled="busy" @click="submitBook">
+          创建礼单
+        </button>
       </template>
 
       <template v-else-if="tab === 'books' && !currentBook">
-        <view class="meta">
+        <view class="meta sheet-child">
           <button
             v-for="book in displayedBooks"
             :key="book.id"
@@ -491,10 +496,10 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="tab === 'contacts' && !currentContact">
-        <view class="directory-search"
+        <view class="directory-search sheet-child"
           ><input v-model="query" placeholder="搜索姓名、称呼或拼音" aria-label="搜索亲友"
         /></view>
-        <scroll-view class="directory-list" scroll-y :scroll-into-view="scrollTarget">
+        <scroll-view class="directory-list sheet-child" scroll-y :scroll-into-view="scrollTarget">
           <template v-for="key in alphabet" :key="key"
             ><view
               v-if="groups[key]"
@@ -523,7 +528,7 @@ onBeforeUnmount(() => {
         >
         <view
           v-if="Object.keys(groups).length"
-          class="index-rail"
+          class="index-rail sheet-child"
           aria-label="亲友拼音索引"
           @touchmove.stop.prevent="slideIndex"
           ><button
@@ -540,10 +545,11 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else>
-        <view v-if="currentBook" class="workspace-book-subtitle">
+        <view v-if="currentBook" class="workspace-book-subtitle sheet-child">
           <text>{{ bookLabel(currentBook) }}</text>
           <LedgerPicker
             v-if="writable && !currentBook.daily"
+            class="workspace-book-action"
             label="礼单更多操作"
             :range="[currentBook.archived ? '重新开放' : '归档礼单']"
             :disabled="busy"
@@ -551,7 +557,7 @@ onBeforeUnmount(() => {
             ><text class="workspace-more">更多 ›</text></LedgerPicker
           >
         </view>
-        <view class="workspace-totals"
+        <view class="workspace-totals sheet-child"
           ><view v-if="currentContact" class="person-name"
             ><text>{{ currentContact.name }}</text
             ><text>{{ currentContact.distinction }}</text></view
@@ -569,10 +575,10 @@ onBeforeUnmount(() => {
             ></view
           >
         </view>
-        <view class="workspace-search"
+        <view class="workspace-search sheet-child"
           ><input v-model="query" placeholder="找人或备注" aria-label="找人或备注" :maxlength="100"
         /></view>
-        <view class="meta">
+        <view class="meta sheet-child">
           <button
             v-for="row in rows"
             :key="row.transactionId"
@@ -594,15 +600,17 @@ onBeforeUnmount(() => {
         </view>
         <button
           v-if="rows.length < summary.totalCount"
-          class="text-button"
+          class="text-button sheet-child"
           :disabled="loading"
           @click="loadRows(true)"
         >
           加载更多
         </button>
       </template>
-      <text v-if="error" class="error" role="alert">{{ error }}</text>
-      <button v-if="error && !creating" class="text-button" @click="refresh">重新加载</button>
+      <text v-if="error" class="error sheet-child" role="alert">{{ error }}</text>
+      <button v-if="error && !creating" class="text-button sheet-child" @click="refresh">
+        重新加载
+      </button>
     </view>
   </view>
 </template>
@@ -703,9 +711,6 @@ onBeforeUnmount(() => {
   max-height: 100dvh;
   border-radius: 0;
 }
-.gift-workspace > * {
-  flex-shrink: 0;
-}
 .workspace-head {
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr) 54px;
@@ -791,7 +796,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: #536660;
 }
-.workspace-book-subtitle > :last-child {
+.workspace-book-action {
   width: auto;
 }
 .workspace-more {

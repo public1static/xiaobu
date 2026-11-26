@@ -48,12 +48,13 @@ function apply() {
 <template>
   <view class="overlay">
     <view class="sheet login-sheet" role="dialog" aria-label="选择日期" aria-modal="true">
-      <view class="sheet-head">
+      <view class="sheet-head sheet-child">
         <text>选择日期</text>
         <button class="close" aria-label="关闭日期筛选" @click="emit('close')">×</button>
       </view>
       <!-- #ifdef H5 -->
       <VanCalendar
+        class="sheet-child"
         :poppable="false"
         type="range"
         switch-mode="year-month"
@@ -69,7 +70,7 @@ function apply() {
       />
       <!-- #endif -->
       <!-- #ifdef MP-WEIXIN -->
-      <view class="meta">
+      <view class="meta sheet-child">
         <picker
           mode="date"
           :value="from || today"
@@ -94,8 +95,8 @@ function apply() {
         </picker>
       </view>
       <!-- #endif -->
-      <text v-if="error" class="error" role="alert">{{ error }}</text>
-      <view class="record-actions">
+      <text v-if="error" class="error sheet-child" role="alert">{{ error }}</text>
+      <view class="record-actions sheet-child">
         <button
           class="primary secondary"
           @click="emit('apply', { from: '', through: '', keyword: props.filter.keyword })"

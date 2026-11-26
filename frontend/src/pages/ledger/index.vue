@@ -1142,22 +1142,24 @@ const entryDateLabel = computed(() => {
 
     <view v-if="ledgerPickerOpen && !incomingToken" class="overlay">
       <view class="sheet login-sheet" role="dialog" aria-label="切换账本" aria-modal="true">
-        <view class="sheet-head">
+        <view class="sheet-head sheet-child">
           <text>切换账本</text>
           <button class="close" aria-label="关闭账本列表" @click="ledgerPickerOpen = false">
             ×
           </button>
         </view>
-        <button class="primary secondary" @click="selectLedger(null)">我的个人账</button>
+        <button class="primary secondary sheet-child" @click="selectLedger(null)">
+          我的个人账
+        </button>
         <button
           v-for="joined in joinedLedgers"
           :key="joined.ledgerId"
-          class="primary secondary"
+          class="primary secondary sheet-child"
           @click="selectLedger(joined)"
         >
           {{ joined.inviterName }}的账本 · {{ joined.role === 'CAN_RECORD' ? '可记账' : '只读' }}
         </button>
-        <view v-if="!sharedLedger" class="book-menu">
+        <view v-if="!sharedLedger" class="book-menu sheet-child">
           <button
             @click="
               ledgerPickerOpen = false;
@@ -1175,7 +1177,7 @@ const entryDateLabel = computed(() => {
             邀请只读成员
           </button>
         </view>
-        <view v-if="session" class="book-menu">
+        <view v-if="session" class="book-menu sheet-child">
           <text>{{ session.displayName }}</text>
           <button
             :disabled="sessionBusy"
@@ -1187,7 +1189,7 @@ const entryDateLabel = computed(() => {
             退出登录
           </button>
         </view>
-        <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
+        <text v-if="inviteError" class="error sheet-child" role="alert">{{ inviteError }}</text>
       </view>
     </view>
 
@@ -1203,7 +1205,7 @@ const entryDateLabel = computed(() => {
 
     <view v-if="shareOpen && !incomingToken" class="overlay">
       <view class="sheet login-sheet" role="dialog" aria-label="邀请只读成员" aria-modal="true">
-        <view class="sheet-head">
+        <view class="sheet-head sheet-child">
           <text>邀请只读成员</text>
           <button
             class="close"
@@ -1214,28 +1216,38 @@ const entryDateLabel = computed(() => {
             ×
           </button>
         </view>
-        <text class="preview-label"
+        <text class="preview-label sheet-child"
           >对方接受后，可查看此账本的所有流水，但不能修改。链接仅供本地测试，24
           小时有效，只能加入一人。</text
         >
-        <view class="meta"
+        <view class="meta sheet-child"
           ><view class="meta-row"><text>加入后权限</text><text>只读</text></view></view
         >
         <input
           v-if="shareLink"
-          class="invitation-link"
+          class="invitation-link sheet-child"
           :value="shareLink"
           readonly
           aria-label="邀请链接"
         />
-        <button v-if="shareLink" class="primary" @click="copyInvitation">复制链接</button>
+        <button v-if="shareLink" class="primary sheet-child" @click="copyInvitation">
+          复制链接
+        </button>
         <!-- #ifdef MP-WEIXIN -->
-        <button v-if="shareToken" class="primary" open-type="share">邀请微信好友</button>
+        <button v-if="shareToken" class="primary sheet-child" open-type="share">
+          邀请微信好友
+        </button>
         <!-- #endif -->
-        <text v-if="inviteBusy" class="preview-label" role="status">正在生成邀请</text>
-        <text v-if="inviteFeedback" class="preview-label" role="status">{{ inviteFeedback }}</text>
-        <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
-        <button v-if="inviteError" class="primary secondary" @click="generateInviteLink">
+        <text v-if="inviteBusy" class="preview-label sheet-child" role="status">正在生成邀请</text>
+        <text v-if="inviteFeedback" class="preview-label sheet-child" role="status">{{
+          inviteFeedback
+        }}</text>
+        <text v-if="inviteError" class="error sheet-child" role="alert">{{ inviteError }}</text>
+        <button
+          v-if="inviteError"
+          class="primary secondary sheet-child"
+          @click="generateInviteLink"
+        >
           重新生成
         </button>
       </view>
@@ -1243,7 +1255,7 @@ const entryDateLabel = computed(() => {
 
     <view v-if="incomingToken && !loginOpen && !checkingSession" class="overlay">
       <view class="sheet login-sheet" role="dialog" aria-label="账本邀请" aria-modal="true">
-        <view class="sheet-head">
+        <view class="sheet-head sheet-child">
           <text>账本邀请</text>
           <button
             class="close"
@@ -1254,25 +1266,29 @@ const entryDateLabel = computed(() => {
             ×
           </button>
         </view>
-        <text v-if="inviteLoading" class="preview-label" role="status">正在查看邀请</text>
+        <text v-if="inviteLoading" class="preview-label sheet-child" role="status"
+          >正在查看邀请</text
+        >
         <template v-else-if="invitePreview">
-          <text class="guest-title">{{ invitePreview.inviterName }}的账本</text>
-          <view class="meta"
+          <text class="guest-title sheet-child">{{ invitePreview.inviterName }}的账本</text>
+          <view class="meta sheet-child"
             ><view class="meta-row"><text>加入后权限</text><text>只读</text></view></view
           >
-          <text class="preview-label">接受前看不到账本内容；加入后可随时切回个人账。</text>
-          <button class="primary" :disabled="inviteBusy" @click="joinInvitation">
+          <text class="preview-label sheet-child"
+            >接受前看不到账本内容；加入后可随时切回个人账。</text
+          >
+          <button class="primary sheet-child" :disabled="inviteBusy" @click="joinInvitation">
             {{ !session ? '登录后加入' : invitePreview.accepted ? '进入账本' : '接受邀请' }}
           </button>
         </template>
-        <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
+        <text v-if="inviteError" class="error sheet-child" role="alert">{{ inviteError }}</text>
       </view>
     </view>
 
     <!-- #ifdef H5 -->
     <view v-if="loginOpen" class="overlay">
       <view class="sheet login-sheet" role="dialog" aria-label="测试登录" aria-modal="true">
-        <view class="sheet-head">
+        <view class="sheet-head sheet-child">
           <text>测试登录</text>
           <button
             class="close"
@@ -1283,14 +1299,18 @@ const entryDateLabel = computed(() => {
             ×
           </button>
         </view>
-        <text class="preview-label">选择测试身份。两个身份各有独立的个人账本。</text>
-        <button class="primary" :disabled="sessionBusy" @click="signIn('alpha')">
+        <text class="preview-label sheet-child">选择测试身份。两个身份各有独立的个人账本。</text>
+        <button class="primary sheet-child" :disabled="sessionBusy" @click="signIn('alpha')">
           以测试甲登录
         </button>
-        <button class="primary secondary" :disabled="sessionBusy" @click="signIn('beta')">
+        <button
+          class="primary secondary sheet-child"
+          :disabled="sessionBusy"
+          @click="signIn('beta')"
+        >
           以测试乙登录
         </button>
-        <text v-if="sessionError" class="error" role="alert">{{ sessionError }}</text>
+        <text v-if="sessionError" class="error sheet-child" role="alert">{{ sessionError }}</text>
       </view>
     </view>
     <!-- #endif -->
@@ -1302,7 +1322,7 @@ const entryDateLabel = computed(() => {
         :aria-label="editing ? '编辑流水' : (entryPreset?.title ?? `记一笔${directionLabel}`)"
         aria-modal="true"
       >
-        <view class="sheet-head"
+        <view class="sheet-head sheet-child"
           ><text>{{ editing ? '编辑流水' : (entryPreset?.title ?? '记一笔') }}</text
           ><button
             class="close"
@@ -1313,7 +1333,7 @@ const entryDateLabel = computed(() => {
             ×
           </button></view
         >
-        <view v-if="!entryPreset" class="entry-direction">
+        <view v-if="!entryPreset" class="entry-direction sheet-child">
           <text>收支类型<text class="star">*</text></text>
           <view class="direction-tabs" role="group" aria-label="收支类型">
             <button
@@ -1337,6 +1357,7 @@ const entryDateLabel = computed(() => {
           </view>
         </view>
         <LedgerExtensionFields
+          class="sheet-child"
           v-for="capability in entryPreset ? editableCapabilities : []"
           :key="capability.type"
           :ledger-id="ledgerId!"
@@ -1348,7 +1369,7 @@ const entryDateLabel = computed(() => {
           @change="updateExtensionDraft(capability.type, $event)"
           @date-default="applyExtensionDateDefault"
         />
-        <view class="amount-field">
+        <view class="amount-field sheet-child">
           <text class="field-label">{{ directionLabel }}金额<text class="star">*</text></text>
           <view class="amount-line"
             ><text>¥</text
@@ -1363,7 +1384,7 @@ const entryDateLabel = computed(() => {
           /></view>
           <text v-if="fieldError.amount" class="error" role="alert">{{ fieldError.amount }}</text>
         </view>
-        <view v-if="!entryPreset" class="entry-categories">
+        <view v-if="!entryPreset" class="entry-categories sheet-child">
           <view class="category-head">
             <text>分类<text class="star">*</text></text>
             <button class="text-button" :disabled="saving" @click="categorySheetOpen = true">
@@ -1380,7 +1401,7 @@ const entryDateLabel = computed(() => {
             fieldError.category
           }}</text>
         </view>
-        <view class="meta">
+        <view class="meta sheet-child">
           <LedgerPicker
             label="选择记账日期"
             mode="date"
@@ -1404,7 +1425,7 @@ const entryDateLabel = computed(() => {
             <text>账户</text>
             <view class="clear-field">
               <button
-                class="text-button account-field"
+                class="text-button account-field clear-field-value"
                 :disabled="saving"
                 @click="accountView = 'select'"
               >
@@ -1425,18 +1446,19 @@ const entryDateLabel = computed(() => {
           <view class="meta-row"
             ><text>备注</text
             ><view class="clear-field"
-              ><input v-model="note" :maxlength="100" aria-label="备注" /><button
-                v-if="note"
-                aria-label="清除备注"
-                class="clear-control"
-                @click="note = ''"
-              >
+              ><input
+                class="clear-field-value"
+                v-model="note"
+                :maxlength="100"
+                aria-label="备注"
+              /><button v-if="note" aria-label="清除备注" class="clear-control" @click="note = ''">
                 ⊗
               </button></view
             ></view
           >
         </view>
         <LedgerExtensionFields
+          class="sheet-child"
           v-for="capability in entryPreset ? [] : editableCapabilities"
           :key="capability.type"
           :ledger-id="ledgerId!"
@@ -1448,8 +1470,8 @@ const entryDateLabel = computed(() => {
           @change="updateExtensionDraft(capability.type, $event)"
           @date-default="applyExtensionDateDefault"
         />
-        <text v-if="saveError" class="error" role="alert">{{ saveError }}</text>
-        <view v-if="entryPreset" class="quick-entry-actions">
+        <text v-if="saveError" class="error sheet-child" role="alert">{{ saveError }}</text>
+        <view v-if="entryPreset" class="quick-entry-actions sheet-child">
           <button class="primary secondary save" :disabled="saving || readOnly" @click="submit()">
             保存
           </button>
@@ -1459,7 +1481,7 @@ const entryDateLabel = computed(() => {
         </view>
         <button
           v-else
-          class="primary save"
+          class="primary save sheet-child"
           :disabled="saving || readOnly || editStale"
           @click="submit()"
         >

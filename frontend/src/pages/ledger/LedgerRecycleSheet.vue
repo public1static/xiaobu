@@ -53,15 +53,17 @@ onMounted(refresh);
 <template>
   <view class="overlay">
     <view class="sheet login-sheet" role="dialog" aria-label="最近删除" aria-modal="true">
-      <view class="sheet-head">
+      <view class="sheet-head sheet-child">
         <text>最近删除</text>
         <button class="close" aria-label="关闭最近删除" :disabled="busy" @click="emit('close')">
           ×
         </button>
       </view>
-      <text v-if="loading" class="preview-label" role="status">正在加载</text>
-      <text v-else-if="!items.length && !error" class="preview-label">最近没有删除的流水</text>
-      <view v-if="items.length" class="meta"
+      <text v-if="loading" class="preview-label sheet-child" role="status">正在加载</text>
+      <text v-else-if="!items.length && !error" class="preview-label sheet-child"
+        >最近没有删除的流水</text
+      >
+      <view v-if="items.length" class="meta sheet-child"
         ><view v-for="entry in items" :key="entry.transaction.id" class="meta-row recycle-row">
           <view class="recycle-label">
             <text
@@ -77,7 +79,7 @@ onMounted(refresh);
           </view>
           <button class="text-button" :disabled="busy" @click="restore(entry)">恢复</button>
         </view> </view
-      ><text v-if="error" class="error" role="alert">{{ error }}</text>
+      ><text v-if="error" class="error sheet-child" role="alert">{{ error }}</text>
     </view>
   </view>
 </template>

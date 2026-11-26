@@ -407,9 +407,6 @@
   padding-top: 8px;
   padding-bottom: max(13px, env(safe-area-inset-bottom));
 }
-.entry-sheet > * {
-  flex-shrink: 0;
-}
 .quick-entry-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -756,7 +753,7 @@ button::after {
   margin-top: 8px;
 }
 
-.sheet > * {
+.sheet-child {
   flex-shrink: 0;
 }
 .record-actions {
@@ -807,7 +804,7 @@ button::after {
   align-items: center;
   min-width: 0;
 }
-.clear-field > :first-child {
+.clear-field-value {
   flex: 1;
   min-width: 0;
 }

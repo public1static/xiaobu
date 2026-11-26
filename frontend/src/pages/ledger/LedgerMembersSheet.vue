@@ -69,15 +69,19 @@ onMounted(refresh);
 <template>
   <view class="overlay">
     <view class="sheet login-sheet" role="dialog" aria-label="成员管理" aria-modal="true">
-      <view class="sheet-head">
+      <view class="sheet-head sheet-child">
         <text>成员管理</text>
         <button class="close" aria-label="关闭成员管理" :disabled="busy" @click="emit('close')">
           ×
         </button>
       </view>
-      <text v-if="!loaded && busy" class="preview-label" role="status">正在加载成员</text>
-      <text v-if="loaded && !members.length" class="preview-label">还没有加入的成员</text>
-      <view v-for="member in members" :key="member.memberId" class="member-row">
+      <text v-if="!loaded && busy" class="preview-label sheet-child" role="status"
+        >正在加载成员</text
+      >
+      <text v-if="loaded && !members.length" class="preview-label sheet-child"
+        >还没有加入的成员</text
+      >
+      <view v-for="member in members" :key="member.memberId" class="member-row sheet-child">
         <view class="member-name">
           <text>{{ member.displayName }}</text>
           <text class="preview-label">{{ member.role === 'CAN_RECORD' ? '可记账' : '只读' }}</text>
@@ -95,7 +99,7 @@ onMounted(refresh);
           </button>
         </view>
       </view>
-      <view v-if="pendingRemoval" class="member-confirm">
+      <view v-if="pendingRemoval" class="member-confirm sheet-child">
         <text
           >移除{{ pendingRemoval.displayName }}后，对方无法继续查看本账本，已记流水会保留。</text
         >
@@ -104,11 +108,21 @@ onMounted(refresh);
           取消
         </button>
       </view>
-      <button v-if="!pendingRemoval" class="primary" :disabled="busy" @click="emit('invite')">
+      <button
+        v-if="!pendingRemoval"
+        class="primary sheet-child"
+        :disabled="busy"
+        @click="emit('invite')"
+      >
         邀请只读成员
       </button>
-      <text v-if="error" class="error" role="alert">{{ error }}</text>
-      <button v-if="error && !pendingRemoval" class="text-button" :disabled="busy" @click="refresh">
+      <text v-if="error" class="error sheet-child" role="alert">{{ error }}</text>
+      <button
+        v-if="error && !pendingRemoval"
+        class="text-button sheet-child"
+        :disabled="busy"
+        @click="refresh"
+      >
         刷新成员列表
       </button>
     </view>
