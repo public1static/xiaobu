@@ -17,4 +17,13 @@ defineProps<{ src: string }>();
   background-size: contain;
   background-repeat: no-repeat;
 }
+/* #ifdef MP-WEIXIN */
+:host {
+  display: inline-flex;
+}
+.ledger-icon {
+  width: 100%;
+  height: 100%;
+}
+/* #endif */
 </style>
