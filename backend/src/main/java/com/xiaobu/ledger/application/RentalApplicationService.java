@@ -8,6 +8,7 @@ import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.FixedBill;
 import com.xiaobu.ledger.domain.LedgerCategoryDefaults;
 import com.xiaobu.ledger.domain.RentalContract;
+import com.xiaobu.ledger.domain.RentalExpiryReminder;
 import com.xiaobu.ledger.domain.RentalHome;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import java.time.LocalDate;
@@ -75,6 +76,20 @@ public class RentalApplicationService {
     return rentals.listContracts(ledgerId, homeId, page);
   }
 
+  @Transactional(readOnly = true)
+  public RentalContractResult getRentalContract(
+      String ledgerId, String actorId, String contractId) {
+    ledgers.requireReadAccess(ledgerId, actorId);
+    return rentals
+        .findContractDetails(ledgerId, contractId)
+        .orElseThrow(() ->
+            new FoundationException(
+                new ErrorCode("XIAOBU_RENTAL_CONTRACT_INVALID"),
+                ErrorCategory.NOT_FOUND,
+                "找不到该合同",
+                Map.of()));
+  }
+
   @Transactional
   public RentalContractResult createRentalContract(CreateRentalContractCommand command) {
     ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
@@ -98,7 +113,9 @@ public class RentalApplicationService {
             command.depositCents(),
             command.cycle(),
             billId,
-            command.note());
+            command.note(),
+            command.remindDays() == null ? RentalExpiryReminder.DEFAULT_DAYS : command.remindDays(),
+            null);
     FixedBill bill = null;
     if (command.existingBillId() != null) {
       bill = adoptRentBill(contract, command.actorId());

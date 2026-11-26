@@ -15,10 +15,13 @@ public record RentalContract(
     long depositCents,
     RentalPaymentCycle cycle,
     String billId,
-    String note) {
+    String note,
+    int remindDays,
+    LocalDate handledEnd) {
   private static final long MAX_CENTS = 9_999_999_999L;
 
   public RentalContract {
+    RentalExpiryReminder.requireLeadDays(remindDays);
     landlordName = landlordName == null ? "" : landlordName.strip();
     note = note == null ? "" : note.strip();
     if (landlordName.isEmpty()
@@ -54,7 +57,9 @@ public record RentalContract(
         depositCents,
         cycle,
         billId,
-        note);
+        note,
+        remindDays,
+        handledEnd);
   }
 
   public FixedBill createRentBill(String homeName, LocalDate firstDueOn) {

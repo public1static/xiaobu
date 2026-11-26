@@ -62,6 +62,12 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
   @Column(nullable = false)
   private boolean deleted;
 
+  @Column(name = "remind_days", nullable = false)
+  private int remindDays;
+
+  @Column(name = "handled_end")
+  private LocalDate handledEnd;
+
   @Transient private boolean newEntity = true;
 
   protected RentalContractEntity() {}
@@ -78,12 +84,24 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
     cycle = row.cycle();
     billId = row.billId();
     note = row.note();
+    remindDays = row.remindDays();
+    handledEnd = row.handledEnd();
     createdBy = actorId;
     updatedBy = actorId;
   }
 
   void linkBill(String billId, String actorId) {
     this.billId = billId;
+    updatedBy = actorId;
+  }
+
+  void configureExpiryReminder(int days, String actorId) {
+    remindDays = days;
+    updatedBy = actorId;
+  }
+
+  void completeExpiryReminder(LocalDate endsOn, String actorId) {
+    handledEnd = endsOn;
     updatedBy = actorId;
   }
 
@@ -99,7 +117,9 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
         depositCents,
         cycle,
         billId,
-        note);
+        note,
+        remindDays,
+        handledEnd);
   }
 
   @Override

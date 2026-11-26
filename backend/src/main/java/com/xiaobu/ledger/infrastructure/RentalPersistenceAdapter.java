@@ -1,10 +1,12 @@
 package com.xiaobu.ledger.infrastructure;
 
 import com.xiaobu.ledger.application.RentalContractResult;
+import com.xiaobu.ledger.application.RentalExpiryReminderResult;
 import com.xiaobu.ledger.application.RentalHomeResult;
 import com.xiaobu.ledger.application.RentalPageResult;
 import com.xiaobu.ledger.application.RentalRepository;
 import com.xiaobu.ledger.domain.RentalContract;
+import com.xiaobu.ledger.domain.RentalExpiryReminder;
 import com.xiaobu.ledger.domain.RentalHome;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -67,11 +69,7 @@ class RentalPersistenceAdapter implements RentalRepository {
     return toResult(
         contracts
             .listContracts(ledgerId, homeId, PageRequest.of(page, PAGE_SIZE))
-            .map(row ->
-                RentalContractResult.from(
-                    row.getContract().toDomain(),
-                    row.getHomeName(),
-                    row.getBill() == null ? null : row.getBill().toDomain())));
+            .map(RentalPersistenceAdapter::toContractResult));
   }
 
   @Override
@@ -104,6 +102,51 @@ class RentalPersistenceAdapter implements RentalRepository {
   @Override
   public void addContract(RentalContract contract, String actorId) {
     contracts.save(new RentalContractEntity(contract, actorId));
+  }
+
+  @Override
+  public Optional<RentalContractResult> findContractDetails(String ledgerId, String contractId) {
+    return contracts
+        .findContractDetails(ledgerId, contractId)
+        .map(RentalPersistenceAdapter::toContractResult);
+  }
+
+  @Override
+  public void configureExpiryReminder(
+      String ledgerId, String contractId, int remindDays, String actorId) {
+    contracts
+        .findByLedgerIdAndIdAndDeletedFalse(ledgerId, contractId)
+        .orElseThrow()
+        .configureExpiryReminder(remindDays, actorId);
+  }
+
+  @Override
+  public void completeExpiryReminder(
+      String ledgerId, String contractId, LocalDate endsOn, String actorId) {
+    contracts
+        .findByLedgerIdAndIdAndDeletedFalse(ledgerId, contractId)
+        .orElseThrow()
+        .completeExpiryReminder(endsOn, actorId);
+  }
+
+  @Override
+  public RentalPageResult<RentalExpiryReminderResult> listExpiryReminders(
+      String ledgerId, LocalDate today, boolean completed, int page) {
+    return toResult(
+        contracts.listExpiryReminders(ledgerId, today, completed, PageRequest.of(page, PAGE_SIZE)));
+  }
+
+  @Override
+  public long countPendingExpiryReminders(String ledgerId, LocalDate today) {
+    return contracts.countPendingExpiryReminders(
+        ledgerId, today, today.plusDays(RentalExpiryReminder.DEFAULT_DAYS));
+  }
+
+  private static RentalContractResult toContractResult(
+      RentalContractJpaRepository.ContractRow row) {
+    var bill = row.getBill();
+    return RentalContractResult.from(
+        row.getContract().toDomain(), row.getHomeName(), bill == null ? null : bill.toDomain());
   }
 
   private static <T> RentalPageResult<T> toResult(Page<T> page) {

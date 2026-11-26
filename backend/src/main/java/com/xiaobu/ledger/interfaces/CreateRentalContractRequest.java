@@ -18,4 +18,5 @@ public record CreateRentalContractRequest(
     @NotNull RentalPaymentCycle cycle,
     LocalDate firstDueOn,
     @Size(max = 100) String note,
-    @Size(max = 48) String existingBillId) {}
+    @Size(max = 48) String existingBillId,
+    Integer remindDays) {}

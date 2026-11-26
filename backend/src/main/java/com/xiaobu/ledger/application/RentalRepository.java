@@ -29,5 +29,16 @@ public interface RentalRepository {
 
   boolean hasContractForBill(String billId);
 
+  Optional<RentalContractResult> findContractDetails(String ledgerId, String contractId);
+
+  void configureExpiryReminder(String ledgerId, String contractId, int remindDays, String actorId);
+
+  void completeExpiryReminder(String ledgerId, String contractId, LocalDate endsOn, String actorId);
+
+  RentalPageResult<RentalExpiryReminderResult> listExpiryReminders(
+      String ledgerId, LocalDate today, boolean completed, int page);
+
+  long countPendingExpiryReminders(String ledgerId, LocalDate today);
+
   void addContract(RentalContract contract, String actorId);
 }

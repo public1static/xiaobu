@@ -19,7 +19,9 @@ public record RentalContractResult(
     LocalDate firstDueOn,
     Integer dueDayOfMonth,
     long periodAmountCents,
-    String note) {
+    String note,
+    int remindDays,
+    LocalDate handledEnd) {
   public static RentalContractResult from(
       RentalContract contract, String homeName, FixedBill bill) {
     return new RentalContractResult(
@@ -36,6 +38,8 @@ public record RentalContractResult(
         bill == null ? null : bill.firstDueOnOrAfter(contract.startsOn()),
         bill == null ? null : bill.firstDueOn().getDayOfMonth(),
         contract.periodAmountCents(),
-        contract.note());
+        contract.note(),
+        contract.remindDays(),
+        contract.handledEnd());
   }
 }

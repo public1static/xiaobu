@@ -3,12 +3,14 @@ import { exampleDetails, exampleStatement } from './example-ledger';
 import LedgerIcon from '../../components/LedgerIcon.vue';
 import LedgerPicker from '../../components/LedgerPicker.vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { onLoad, onShareAppMessage } from '@dcloudio/uni-app';
+import { onHide, onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app';
 import { closeWechatSession, getWechatSession, openWechatSession } from '../../api/wechat-session';
 import { setWechatSessionToken, wechatPreviewApiBase } from '../../api/preview-transport';
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerFixedBills from './LedgerFixedBills.vue';
 import LedgerRentalWorkspace from './LedgerRentalWorkspace.vue';
+import LedgerRentalReminders from './LedgerRentalReminders.vue';
+import { countRentalExpiryReminders } from '../../api/rentals';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerCategoriesSheet from './LedgerCategoriesSheet.vue';
 import LedgerGiftWorkspace from './LedgerGiftWorkspace.vue';
@@ -63,6 +65,7 @@ import {
   hasNextStatementPage,
   sameStatementDays,
   localDay,
+  ledgerToday,
   parseCents,
   resolveLedgerMonth,
   shiftLedgerMonth,
@@ -157,6 +160,58 @@ const accountView = ref<'manage' | 'select' | null>(null);
 const ledgerHubOpen = ref(false);
 const fixedBillsOpen = ref(false);
 const rentalsOpen = ref(false);
+const remindersOpen = ref(false);
+const reminderContractId = ref('');
+const reminderCount = ref(0);
+const reminderRevision = ref(0);
+const reminderDay = ref(ledgerToday());
+let reminderSequence = 0;
+let reminderTimer: ReturnType<typeof setInterval> | undefined;
+function openRentalWorkspace(contractId = '') {
+  reminderContractId.value = contractId;
+  rentalsOpen.value = true;
+}
+function closeRentalWorkspace() {
+  rentalsOpen.value = false;
+  reminderContractId.value = '';
+}
+async function refreshReminderCount() {
+  const book = ledgerId.value;
+  const sequence = ++reminderSequence;
+  if (!book) {
+    reminderCount.value = 0;
+    return;
+  }
+  try {
+    const result = await countRentalExpiryReminders(book);
+    if (sequence === reminderSequence && ledgerId.value === book)
+      reminderCount.value = result.pendingCount;
+  } catch {
+    // The agenda can retry visibly; do not show an error badge on the ledger.
+  }
+}
+function refreshExpiryReminders() {
+  reminderRevision.value++;
+  void refreshReminderCount();
+}
+function stopReminderTimer() {
+  if (reminderTimer != null) clearInterval(reminderTimer);
+  reminderTimer = undefined;
+}
+function refreshReminderDay() {
+  const next = ledgerToday();
+  if (next === reminderDay.value) return;
+  reminderDay.value = next;
+  refreshExpiryReminders();
+}
+onShow(() => {
+  reminderDay.value = ledgerToday();
+  refreshExpiryReminders();
+  stopReminderTimer();
+  reminderTimer = setInterval(refreshReminderDay, 60000);
+});
+onHide(stopReminderTimer);
+onUnmounted(stopReminderTimer);
 const fixedBillRevision = ref(0);
 const giftWorkspaceOpen = ref(false);
 const giftRevision = ref(0);
@@ -236,6 +291,8 @@ const sharedLedger = ref<JoinedLedger | null>(null);
 const joinedLedgers = ref<JoinedLedger[]>([]);
 const ledgerId = computed(() => sharedLedger.value?.ledgerId ?? session.value?.ledgerId);
 watch(ledgerId, async (target) => {
+  reminderCount.value = 0;
+  void refreshReminderCount();
   categoryCatalog.value = null;
   categorySheetOpen.value = false;
   if (!target) return;
@@ -435,7 +492,8 @@ function resetSession(next: LocalSession | null) {
   ++generation;
   ++membershipGeneration;
   fixedBillsOpen.value = false;
-  rentalsOpen.value = false;
+  closeRentalWorkspace();
+  remindersOpen.value = false;
   ledgerHubOpen.value = false;
   giftWorkspaceOpen.value = false;
   sharedLedger.value = null;
@@ -961,6 +1019,8 @@ const showFloatingEntry = computed(
       recycleOpen.value ||
       categorySheetOpen.value ||
       giftWorkspaceOpen.value ||
+      remindersOpen.value ||
+      rentalsOpen.value ||
       ledgerHubOpen.value
     ),
 );
@@ -981,14 +1041,26 @@ const entryDateLabel = computed(() => {
       <button v-else class="book-entry" :disabled="checkingSession" @click="beginSignIn()">
         <text class="brand-dot" />示例账本<text aria-hidden="true">⌄</text>
       </button>
-      <button
-        v-if="session && !readOnly"
-        class="recycle-button"
-        aria-label="最近删除"
-        @click="recycleOpen = true"
-      >
-        <LedgerIcon class="page-icon" src="/static/assistant/history.svg" />
-      </button>
+      <view v-if="session" class="head-actions">
+        <button
+          class="recycle-button reminder-bell"
+          aria-label="待办"
+          @click="remindersOpen = true"
+        >
+          <LedgerIcon class="page-icon" src="/static/assistant/bell.svg" />
+          <text v-if="reminderCount" class="reminder-badge">{{
+            reminderCount > 99 ? '99+' : reminderCount
+          }}</text>
+        </button>
+        <button
+          v-if="!readOnly"
+          class="recycle-button"
+          aria-label="最近删除"
+          @click="recycleOpen = true"
+        >
+          <LedgerIcon class="page-icon" src="/static/assistant/history.svg" />
+        </button>
+      </view>
     </view>
 
     <view v-show="!ledgerHubOpen" class="main">
@@ -1177,7 +1249,7 @@ const entryDateLabel = computed(() => {
             ><text>固定账单</text><text class="preview-label">周期付款与流水关联</text></view
           ><text>›</text>
         </button>
-        <button class="hub-link" @click="rentalsOpen = true">
+        <button class="hub-link" @click="openRentalWorkspace()">
           <LedgerIcon class="page-icon" src="/static/ledger/vant/HOUSING.svg" /><view
             ><text>租房</text><text class="preview-label">房屋 · 合同 · 房租账期</text></view
           ><text>›</text>
@@ -1637,6 +1709,16 @@ const entryDateLabel = computed(() => {
       @saved="refreshAfterTransactionChange"
       @detail="transactionDetailId = $event"
     />
+    <LedgerRentalReminders
+      v-if="remindersOpen && ledgerId"
+      v-show="!rentalsOpen"
+      :key="ledgerId"
+      :ledger-id="ledgerId"
+      :revision="reminderRevision"
+      @close="remindersOpen = false"
+      @select="openRentalWorkspace"
+      @count="reminderCount = $event"
+    />
     <LedgerRentalWorkspace
       v-if="rentalsOpen && ledgerId"
       :key="ledgerId"
@@ -1644,7 +1726,10 @@ const entryDateLabel = computed(() => {
       :writable="!readOnly"
       :revision="fixedBillRevision"
       :covered="Boolean(open || transactionDetailId)"
-      @close="rentalsOpen = false"
+      :initial-contract-id="reminderContractId"
+      :reminder-day="reminderDay"
+      @close="closeRentalWorkspace"
+      @reminder-changed="refreshExpiryReminders"
       @saved="refreshAfterTransactionChange"
       @detail="transactionDetailId = $event"
     />

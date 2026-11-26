@@ -87,6 +87,14 @@ class RentalController {
             mapper::toResponse));
   }
 
+  @GetMapping("/contracts/{contractId}")
+  public ApiResponse<RentalContractResponse> getRentalContract(
+      @PathVariable String ledgerId, @PathVariable String contractId, HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(rentals.getRentalContract(ledgerId, actor.actorId(), contractId)));
+  }
+
   @PostMapping("/contracts")
   public ApiResponse<RentalContractResponse> createRentalContract(
       @PathVariable String ledgerId,

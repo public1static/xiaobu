@@ -857,3 +857,27 @@ button::after {
 .hub-link > text:last-child {
   color: var(--muted);
 }
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reminder-bell {
+  position: relative;
+}
+.reminder-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 10px;
+  border: 1px solid #fff;
+  box-sizing: border-box;
+  background: #ac4634;
+  color: white;
+  line-height: 15px;
+  font-size: 11px;
+  text-align: center;
+}

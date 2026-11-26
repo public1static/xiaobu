@@ -2,6 +2,9 @@
 import { computed, ref, watch } from 'vue';
 import {
   createRentalContract,
+  completeRentalExpiryReminder,
+  configureRentalExpiryReminder,
+  getRentalContract,
   generateRentalBill,
   linkRentalBill,
   listRentalBillPlans,
@@ -20,6 +23,12 @@ import LedgerIcon from '../../components/LedgerIcon.vue';
 import LedgerFixedBills from './LedgerFixedBills.vue';
 import LedgerRentalDeposits from './LedgerRentalDeposits.vue';
 import { formatCents, ledgerToday, parseCents } from './transaction';
+import {
+  DEFAULT_RENTAL_EXPIRY_DAYS,
+  isRentalExpiryPending,
+  rentalExpiryOptionIndex,
+  rentalExpiryOptions,
+} from './rental-expiry';
 
 // #ifdef H5
 import { showConfirmDialog } from 'vant';
@@ -31,8 +40,10 @@ const props = defineProps<{
   writable: boolean;
   covered: boolean;
   revision: number;
+  initialContractId?: string;
+  reminderDay?: string;
 }>();
-const emit = defineEmits<{ close: []; saved: []; detail: [id: string] }>();
+const emit = defineEmits<{ close: []; saved: []; detail: [id: string]; reminderChanged: [] }>();
 const today = ledgerToday();
 const workspaceStyle: Record<string, string> = {};
 // #ifdef MP-WEIXIN
@@ -51,7 +62,10 @@ type Screen =
   | 'depositForm'
   | 'configureBill'
   | 'periods';
-const screen = ref<Screen>('homes');
+const screen = ref<Screen>(props.initialContractId ? 'contract' : 'homes');
+const initialLoadError = ref(false);
+const initialLoading = ref(false);
+const reminderLabels = rentalExpiryOptions.map((item) => item.name);
 const contractOrigin = ref<'home' | 'contracts'>('contracts');
 const home = ref<RentalHome>();
 const contract = ref<RentalContract>();
@@ -88,6 +102,7 @@ function emptyContract() {
     cycle: 'MONTHLY' as RentalCycle,
     firstDueOn: today,
     billMode: 0,
+    remindDays: DEFAULT_RENTAL_EXPIRY_DAYS,
     note: '',
   };
 }
@@ -183,7 +198,65 @@ async function load(page = 0) {
     if (seq === loadSequence) listState.value = { ...listState.value, loading: false, error: true };
   }
 }
-void load();
+if (props.initialContractId) void loadInitialContract();
+else void load();
+
+async function loadInitialContract() {
+  if (!props.initialContractId) return;
+  initialLoading.value = true;
+  initialLoadError.value = false;
+  try {
+    contract.value = await getRentalContract(props.ledgerId, props.initialContractId);
+  } catch {
+    initialLoadError.value = true;
+  } finally {
+    initialLoading.value = false;
+  }
+}
+
+const reminderPending = computed(() => {
+  const row = contract.value;
+  return (
+    !!row &&
+    isRentalExpiryPending(row.endsOn, row.handledEnd, row.remindDays, props.reminderDay || today)
+  );
+});
+
+async function updateExpiryReminder(index: number) {
+  const row = contract.value;
+  const option = rentalExpiryOptions[index];
+  if (!row || !option || !props.writable || saving.value || option.days === row.remindDays) return;
+  saving.value = true;
+  issue.value = undefined;
+  try {
+    contract.value = await configureRentalExpiryReminder(props.ledgerId, row.id, option.days);
+    emit('reminderChanged');
+  } catch {
+    fail('reminder', '提醒设置未确认，请重新打开合同核对。');
+  } finally {
+    saving.value = false;
+  }
+}
+async function completeExpiryReminder() {
+  const row = contract.value;
+  if (!row || !props.writable || saving.value || !reminderPending.value) return;
+  saving.value = true;
+  issue.value = undefined;
+  try {
+    contract.value = await completeRentalExpiryReminder(props.ledgerId, row.id, row.endsOn);
+    emit('reminderChanged');
+    if (props.initialContractId) emit('close');
+  } catch (failure) {
+    fail(
+      'reminder',
+      failure instanceof ApiRequestError && failure.status === 409
+        ? '合同或提醒日期已变更，请返回待办重新打开。'
+        : '未确认是否处理，请返回待办核对。',
+    );
+  } finally {
+    saving.value = false;
+  }
+}
 
 function showHome(row: RentalHome) {
   home.value = row;
@@ -222,6 +295,7 @@ function back() {
   if (saving.value || depositBusy.value) return;
   if (screen.value === 'home') go('homes');
   else if (screen.value === 'homeForm') go(formHomeEdit.value ? 'home' : 'homes');
+  else if (screen.value === 'contract' && props.initialContractId) emit('close');
   else if (screen.value === 'contractForm' || screen.value === 'contract') go(contractOrigin.value);
   else if (screen.value === 'chooseHome') go('contractForm');
   else if (screen.value === 'configureBill' || screen.value === 'depositForm') go('contract');
@@ -444,6 +518,7 @@ async function save() {
       monthlyRentCents,
       depositCents,
       cycle: row.cycle,
+      remindDays: row.remindDays,
       firstDueOn: row.billMode === 1 ? row.firstDueOn : null,
       ...(row.billMode === 2 && selectedBill.value
         ? { existingBillId: selectedBill.value.billId }
@@ -451,6 +526,7 @@ async function save() {
       note: row.note,
     });
     go('contract');
+    emit('reminderChanged');
   } catch (error) {
     if (row.billMode) saveBillFailure(error);
     else fail('', '未确认合同保存，请返回合同列表核对。');
@@ -567,6 +643,14 @@ async function save() {
         </button>
       </template>
 
+      <text v-if="screen === 'contract' && initialLoading" class="rental-empty">加载合同…</text>
+      <button
+        v-if="screen === 'contract' && initialLoadError"
+        class="rental-more"
+        @click="loadInitialContract"
+      >
+        合同加载失败，点击重试
+      </button>
       <template v-if="screen === 'contract' && contract">
         <view class="rental-summary">
           <text>{{ leaseStatus(contract) }} · {{ contract.homeName }}</text>
@@ -588,6 +672,40 @@ async function save() {
           <view class="rental-row"
             ><text>出租方</text><text>{{ contract.landlordName }}</text></view
           >
+          <LedgerPicker
+            v-if="writable"
+            label="到期提醒"
+            :value="rentalExpiryOptionIndex(contract.remindDays)"
+            :range="reminderLabels"
+            :disabled="saving"
+            @change="updateExpiryReminder(Number($event.detail.value))"
+          >
+            <view class="rental-row"
+              ><text>到期提醒</text
+              ><view class="rental-reminder-value"
+                ><text>{{ reminderLabels[rentalExpiryOptionIndex(contract.remindDays)] }}</text
+                ><text class="rental-arrow">›</text></view
+              ></view
+            >
+          </LedgerPicker>
+          <view v-else class="rental-row"
+            ><text>到期提醒</text
+            ><text>{{ reminderLabels[rentalExpiryOptionIndex(contract.remindDays)] }}</text></view
+          >
+          <view v-if="contract.handledEnd === contract.endsOn" class="rental-row">
+            <text>本次到期提醒</text><text class="rental-secondary">已处理</text>
+          </view>
+          <button
+            v-else-if="writable && reminderPending"
+            class="rental-row expiry-complete"
+            :disabled="saving"
+            @click="completeExpiryReminder"
+          >
+            <text>标记本次已处理</text><text class="rental-arrow">›</text>
+          </button>
+          <text v-if="issue?.field === 'reminder'" class="rental-error" role="alert">{{
+            issue.message
+          }}</text>
           <view v-if="contract.note" class="rental-row"
             ><text>备注</text><text>{{ contract.note }}</text></view
           >
@@ -851,6 +969,20 @@ async function save() {
           <text v-else-if="contractDraft.billMode === 2" class="rental-help"
             >保留原付款记录，租期内待付金额按合同计算。</text
           >
+          <LedgerPicker
+            label="到期提醒"
+            :value="rentalExpiryOptionIndex(contractDraft.remindDays)"
+            :range="reminderLabels"
+            @change="
+              contractDraft.remindDays = rentalExpiryOptions[Number($event.detail.value)].days
+            "
+          >
+            <view class="rental-field"
+              ><text>到期提醒</text
+              ><text>{{ reminderLabels[rentalExpiryOptionIndex(contractDraft.remindDays)] }}</text
+              ><text class="rental-arrow">›</text></view
+            >
+          </LedgerPicker>
           <view class="rental-field"
             ><text>备注</text
             ><input
@@ -974,6 +1106,14 @@ async function save() {
 .rental-heading,
 .rental-row {
   justify-content: space-between;
+}
+.rental-reminder-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rental-workspace .expiry-complete {
+  color: #176a57;
 }
 .rental-heading {
   margin: 8px 0 2px;
