@@ -10,6 +10,7 @@ import { listLedgerAccounts, type LedgerAccount } from '../../api/ledger-account
 import { listLedgerCategories, type LedgerCategory } from '../../api/ledger-categories';
 import LedgerPicker from '../../components/LedgerPicker.vue';
 import LedgerCategoryGrid from './LedgerCategoryGrid.vue';
+import LedgerFixedBillLink from './LedgerFixedBillLink.vue';
 import {
   FIRST_LEDGER_MONTH,
   formatCents,
@@ -27,13 +28,14 @@ workspaceStyle.paddingTop = uni.getMenuButtonBoundingClientRect().bottom + 'px';
 // #endif
 const month = ref(today.slice(0, 7));
 const paid = ref(false);
-const view = ref<'list' | 'create' | 'period'>('list');
+const view = ref<'list' | 'create' | 'period' | 'link'>('list');
 const selected = ref<FixedBillPeriod>();
 const rows = ref<FixedBillPeriod[]>([]);
 const page = ref(0);
 const total = ref(0);
 const loading = ref(false);
 const saving = ref(false);
+const linking = ref(false);
 const error = ref('');
 const catalogError = ref(false);
 const catalogLoading = ref(false);
@@ -66,6 +68,23 @@ const accountIndex = computed(() =>
 const selectedCategory = computed(
   () => categories.value.find((row) => row.code === selected.value?.categoryCode)?.name,
 );
+
+const categoryNames = computed(() =>
+  Object.fromEntries(categories.value.map((category) => [category.code, category.name])),
+);
+
+function openLink() {
+  error.value = '';
+  view.value = 'link';
+}
+
+function onLinked(result: FixedBillPeriod) {
+  selected.value = result;
+  view.value = 'list';
+  if (paid.value) void load();
+  else paid.value = true;
+  uni.showToast({ title: '已关联流水', icon: 'none' });
+}
 
 async function load(next = 0) {
   const sequence = ++loadNumber;
@@ -141,8 +160,9 @@ function openPeriod(row: FixedBillPeriod) {
 }
 
 function back() {
-  if (saving.value) return;
-  if (view.value === 'list') emit('close');
+  if (saving.value || linking.value) return;
+  if (view.value === 'link') view.value = 'period';
+  else if (view.value === 'list') emit('close');
   else {
     error.value = '';
     view.value = 'list';
@@ -203,7 +223,13 @@ async function save() {
     <view class="bill-header">
       <button aria-label="返回" class="bill-header-action bill-back" @click="back">‹</button>
       <text>{{
-        view === 'create' ? '新增固定账单' : view === 'period' ? '本期账单' : '固定账单'
+        view === 'create'
+          ? '新增固定账单'
+          : view === 'period'
+            ? '本期账单'
+            : view === 'link'
+              ? '关联已有流水'
+              : '固定账单'
       }}</text>
       <button
         v-if="view === 'list' && writable"
@@ -251,11 +277,20 @@ async function save() {
       </button>
     </view>
     <view v-else class="bill-content">
-      <view v-if="view === 'period' && selected" class="bill-summary">
+      <view v-if="(view === 'period' || view === 'link') && selected" class="bill-summary">
         <text>{{ month }} · 每月</text><text>{{ selected.name }}</text>
         <text>{{ selected.dueOn }} 到期{{ selectedCategory ? ' · ' + selectedCategory : '' }}</text>
       </view>
-      <view v-if="selected?.transactionId && view === 'period'" class="bill-form">
+      <LedgerFixedBillLink
+        v-if="view === 'link' && selected"
+        :ledger-id="ledgerId"
+        :bill-id="selected.billId"
+        :month="month"
+        :category-names="categoryNames"
+        @linked="onLinked"
+        @busy="linking = $event"
+      />
+      <view v-else-if="selected?.transactionId && view === 'period'" class="bill-form">
         <view class="bill-field"
           ><text>实际金额</text><text>¥{{ formatCents(selected.paidAmountCents ?? 0) }}</text></view
         >
@@ -333,12 +368,20 @@ async function save() {
         账户和分类加载失败，重试
       </button>
       <button
-        v-if="writable && (view === 'create' || !selected?.transactionId)"
+        v-if="writable && (view === 'create' || (view === 'period' && !selected?.transactionId))"
         class="bill-submit"
         :disabled="saving || catalogError || catalogLoading"
         @click="save"
       >
         {{ saving ? '正在保存…' : view === 'create' ? '保存' : '记为已付' }}
+      </button>
+      <button
+        v-if="view === 'period' && writable && selected && !selected.transactionId"
+        class="bill-submit bill-link"
+        :disabled="saving"
+        @click="openLink"
+      >
+        关联已有流水
       </button>
     </view>
   </view>
@@ -532,6 +575,12 @@ async function save() {
   border: 0;
   border-radius: 999px;
   font-size: 15px;
+}
+.bill-link {
+  margin-top: 10px;
+  background: white;
+  color: #176a57;
+  border: 1px solid #dce8e1;
 }
 .bill-submit[disabled] {
   opacity: 0.55;

@@ -2,14 +2,19 @@ package com.xiaobu.ledger.application;
 
 import com.aegisid.foundation.data.id.EntityIdGenerator;
 import com.aegisid.foundation.data.id.IdPrefix;
+import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.FixedBill;
 import com.xiaobu.ledger.domain.FixedBillPayment;
 import com.xiaobu.ledger.domain.TransactionDirection;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +30,7 @@ public class FixedBillApplicationService {
   private final LedgerAccountApplicationService accounts;
   private final LedgerCategoryApplicationService categories;
   private final LedgerTransactionApplicationService transactions;
+  private final LedgerTransactionRepository transactionRepository;
   private final EntityIdGenerator ids;
   private final TransactionExtensionRegistry extensions;
 
@@ -34,6 +40,7 @@ public class FixedBillApplicationService {
       LedgerAccountApplicationService accounts,
       LedgerCategoryApplicationService categories,
       LedgerTransactionApplicationService transactions,
+      LedgerTransactionRepository transactionRepository,
       EntityIdGenerator ids,
       TransactionExtensionRegistry extensions) {
     this.bills = bills;
@@ -41,6 +48,7 @@ public class FixedBillApplicationService {
     this.accounts = accounts;
     this.categories = categories;
     this.transactions = transactions;
+    this.transactionRepository = transactionRepository;
     this.ids = ids;
     this.extensions = extensions;
   }
@@ -80,12 +88,7 @@ public class FixedBillApplicationService {
   public FixedBillPeriodResult payFixedBill(PayFixedBillCommand command) {
     // 和记账、成员权限变更共用账本锁，同时串行化同一账期的确认。
     ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
-    requirePeriod(command.month());
-    var bill =
-        bills
-            .findBill(command.ledgerId(), command.billId())
-            .filter(row -> !row.firstDueOn().isAfter(command.month().atEndOfMonth()))
-            .orElseThrow(() -> invalid("找不到该账期"));
+    var bill = requireBillPeriod(command.ledgerId(), command.billId(), command.month());
     var existing = bills.findPayment(bill.id(), command.month());
     if (existing.isPresent())
       return FixedBillPeriodResult.from(bill, command.month(), existing.get());
@@ -101,16 +104,106 @@ public class FixedBillApplicationService {
                 bill.categoryCode(),
                 bill.name(),
                 command.accountId()));
+    return recordPayment(
+        bill,
+        command.month(),
+        transaction.id(),
+        command.paidOn(),
+        command.amountCents(),
+        command.actorId());
+  }
+
+  @Transactional(readOnly = true)
+  public FixedBillCandidatePageResult listFixedBillCandidates(ListFixedBillCandidatesQuery query) {
+    ledgers.requireReadAccess(query.ledgerId(), query.actorId());
+    var bill = requireBillPeriod(query.ledgerId(), query.billId(), query.month());
+    if (bills.findPayment(bill.id(), query.month()).isPresent()) throw conflict("本期账单已付");
+    String term = query.keyword().strip().toLowerCase(Locale.ROOT);
+    var matchingCategories =
+        categories.listLedgerCategories(query.ledgerId(), query.actorId()).stream()
+            .filter(category -> category.direction() == TransactionDirection.EXPENSE)
+            .filter(category -> categoryLabel(category).toLowerCase(Locale.ROOT).contains(term))
+            .map(LedgerCategoryResult::code)
+            .toList();
+    return bills.listCandidates(
+        bill,
+        query.month(),
+        LocalDate.now(LEDGER_ZONE),
+        term,
+        toSearchCents(term),
+        matchingCategories.isEmpty() ? List.of("") : matchingCategories,
+        query.page());
+  }
+
+  @Transactional
+  public FixedBillPeriodResult linkFixedBillPayment(LinkFixedBillPaymentCommand command) {
+    ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
+    var bill = requireBillPeriod(command.ledgerId(), command.billId(), command.month());
+    var existing = bills.findPayment(bill.id(), command.month());
+    if (existing.isPresent()) {
+      if (existing.get().transactionId().equals(command.transactionId()))
+        return FixedBillPeriodResult.from(bill, command.month(), existing.get());
+      throw conflict("本期账单已付");
+    }
+    var transaction =
+        transactionRepository
+            .findActiveByLedgerAndId(bill.ledgerId(), command.transactionId())
+            .filter(item -> item.details().direction() == TransactionDirection.EXPENSE)
+            .filter(item -> !item.details().bookedOn().isAfter(LocalDate.now(LEDGER_ZONE)))
+            .orElseThrow(() -> conflict("该支出已不可关联"));
+    if (transaction.version() != command.version()
+        || bills.hasPaymentForTransaction(transaction.id())) throw conflict("该支出已变更或被其它账期关联，请重新选择");
+    return recordPayment(
+        bill,
+        command.month(),
+        transaction.id(),
+        transaction.details().bookedOn(),
+        transaction.details().amountCents(),
+        command.actorId());
+  }
+
+  private FixedBillPeriodResult recordPayment(
+      FixedBill bill,
+      YearMonth month,
+      String transactionId,
+      LocalDate paidOn,
+      long amountCents,
+      String actorId) {
     var payment =
         new FixedBillPayment(
             ids.next(PAYMENT_PREFIX),
             bill.id(),
-            command.month().atDay(1),
-            transaction.id(),
-            command.paidOn(),
-            command.amountCents());
-    bills.addPayment(payment, command.actorId());
-    return FixedBillPeriodResult.from(bill, command.month(), payment);
+            month.atDay(1),
+            transactionId,
+            paidOn,
+            amountCents);
+    bills.addPayment(payment, actorId);
+    return FixedBillPeriodResult.from(bill, month, payment);
+  }
+
+  private FixedBill requireBillPeriod(String ledgerId, String billId, YearMonth month) {
+    requirePeriod(month);
+    return bills
+        .findBill(ledgerId, billId)
+        .filter(row -> !row.firstDueOn().isAfter(month.atEndOfMonth()))
+        .orElseThrow(() -> invalid("找不到该账期"));
+  }
+
+  private static String categoryLabel(LedgerCategoryResult category) {
+    return category.code().equals("OTHER") ? "其它" : category.name();
+  }
+
+  private static Long toSearchCents(String term) {
+    if (!term.matches("[0-9]{1,8}(?:[.][0-9]{1,2})?")) return null;
+    return new BigDecimal(term).movePointRight(2).longValueExact();
+  }
+
+  private static FoundationException conflict(String message) {
+    return new FoundationException(
+        new ErrorCode("XIAOBU_FIXED_BILL_LINK_CONFLICT"),
+        ErrorCategory.CONFLICT,
+        message,
+        Map.of());
   }
 
   private static void requirePeriod(YearMonth month) {
