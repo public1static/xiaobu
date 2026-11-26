@@ -6,6 +6,12 @@ import { setWechatSessionToken, wechatPreviewApiBase } from '../../api/preview-t
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerCategoriesSheet from './LedgerCategoriesSheet.vue';
+import LedgerExtensionFields from './LedgerExtensionFields.vue';
+import { extensionDraft, supportsTransactionExtension } from './transaction-extension-ui';
+import type {
+  TransactionExtensionChange,
+  TransactionExtensionDetail,
+} from '../../api/transaction-extensions';
 import LedgerCategoryGrid from './LedgerCategoryGrid.vue';
 import { listLedgerCategories, type LedgerCategory } from '../../api/ledger-categories';
 import LedgerSearchSheet from './LedgerSearchSheet.vue';
@@ -90,6 +96,19 @@ const directionCategories = computed<[string, string][]>(() => {
   return choices.map(({ code, name }) => [code, name]);
 });
 const category = ref<CategoryCode | ''>('');
+const extensionDrafts = ref<Record<string, TransactionExtensionDetail>>({});
+const capabilitySelection = computed(
+  () =>
+    categoryCatalog.value?.find(
+      (item) => item.code === category.value && item.direction === direction.value,
+    )?.capabilities ?? [],
+);
+const editableCapabilities = computed(() =>
+  capabilitySelection.value.filter((capability) => supportsTransactionExtension(capability.type)),
+);
+function updateExtensionDraft(type: string, detail: TransactionExtensionDetail) {
+  extensionDrafts.value = { ...extensionDrafts.value, [type]: detail };
+}
 const note = ref('');
 const account = ref<Pick<LedgerAccount, 'id' | 'name'> | null>(null);
 const accountView = ref<'manage' | 'select' | null>(null);
@@ -437,6 +456,11 @@ function startEditing(detail: LedgerTransactionDetail) {
   const row = detail.transaction;
   transactionDetailId.value = '';
   editing.value = detail;
+  extensionDrafts.value = Object.fromEntries(
+    (detail.extensions ?? [])
+      .filter(({ type }) => supportsTransactionExtension(type))
+      .map(({ type, detail: value }) => [type, extensionDraft(type, value)]),
+  );
   editStale.value = false;
   direction.value = row.direction;
   amount.value = (row.amountCents / 100).toFixed(2);
@@ -546,6 +570,7 @@ function startTransaction() {
 
 function openTransactionForm() {
   editing.value = null;
+  extensionDrafts.value = {};
   editStale.value = false;
   today.value = localDay();
   date.value = today.value;
@@ -571,6 +596,18 @@ function closeTransactionForm() {
   if (!saving.value) open.value = false;
 }
 
+function confirmExtensionRemoval(): Promise<boolean> {
+  return new Promise((resolve) => {
+    uni.showModal({
+      title: '移除业务关联？',
+      content: '新分类不支持这笔流水已有的业务明细。继续将移除关联，不会删除这笔流水。',
+      confirmText: '移除',
+      success: (result) => resolve(result.confirm),
+      fail: () => resolve(false),
+    });
+  });
+}
+
 async function submit() {
   const targetLedgerId = ledgerId.value;
   if (saving.value || !targetLedgerId || readOnly.value || editStale.value) return;
@@ -581,6 +618,28 @@ async function submit() {
     category: selected ? '' : '请选择分类',
   };
   if (cents === null || !selected) return;
+  const previousExtensions = editing.value?.extensions ?? [];
+  if (previousExtensions.length && categoryCatalog.value === null) {
+    saveError.value = '分类未加载，请退出后重新打开，原业务明细不会被移除。';
+    return;
+  }
+  const supported = new Set(capabilitySelection.value.map(({ type }) => type));
+  const remove = previousExtensions.filter(({ type }) => !supported.has(type));
+  if (
+    capabilitySelection.value.some(
+      ({ type, required }) => required && !supportsTransactionExtension(type),
+    )
+  ) {
+    saveError.value = '当前版本不支持这项业务，升级后再试。';
+    return;
+  }
+  const changes: TransactionExtensionChange[] = editableCapabilities.value
+    .filter(({ type, required }) => required || extensionDrafts.value[type])
+    .map(({ type }) => ({
+      type,
+      operation: 'UPSERT',
+      detail: extensionDrafts.value[type] ?? extensionDraft(type),
+    }));
   const payload = {
     direction: direction.value,
     amountCents: cents,
@@ -588,11 +647,17 @@ async function submit() {
     bookedOn: date.value,
     note: note.value.trim(),
     accountId: account.value?.id ?? null,
+    extensions: changes,
   };
   // A transport failure does not prove the server did not save this entry.
   saving.value = true;
   saveError.value = '';
   try {
+    if (remove.length) {
+      const confirmed = await confirmExtensionRemoval();
+      if (!confirmed) return;
+      changes.push(...remove.map(({ type }) => ({ type, operation: 'REMOVE' as const })));
+    }
     if (editing.value) {
       const target = editing.value;
       await editLedgerTransaction(targetLedgerId, target.transaction.id, target.version, payload);
@@ -1116,6 +1181,15 @@ const entryDateLabel = computed(() => {
             ><text>备注</text><input v-model="note" :maxlength="100" aria-label="备注"
           /></view>
         </view>
+        <LedgerExtensionFields
+          v-for="capability in editableCapabilities"
+          :key="capability.type"
+          :type="capability.type"
+          :detail="extensionDrafts[capability.type] ?? {}"
+          :direction="direction"
+          :disabled="saving"
+          @change="updateExtensionDraft(capability.type, $event)"
+        />
         <text v-if="saveError" class="error" role="alert">{{ saveError }}</text>
         <button class="primary save" :disabled="saving || readOnly || editStale" @click="submit">
           {{ saving ? '保存中…' : '保存账目' }}

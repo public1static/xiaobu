@@ -8,4 +8,5 @@ public record LedgerTransactionDetailResult(
     String accountName,
     long version,
     boolean canModify,
-    List<LedgerRefundResult> refunds) {}
+    List<LedgerRefundResult> refunds,
+    List<TransactionExtensionResult> extensions) {}

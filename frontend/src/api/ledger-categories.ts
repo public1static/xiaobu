@@ -1,3 +1,4 @@
+import type { TransactionCapability } from './transaction-extensions';
 import { request } from './request';
 import type { TransactionDirection } from '../pages/ledger/transaction';
 
@@ -6,6 +7,7 @@ export interface LedgerCategory {
   direction: TransactionDirection;
   name: string;
   active: boolean;
+  capabilities?: TransactionCapability[];
 }
 
 const path = (ledgerId: string) => '/ledgers/' + encodeURIComponent(ledgerId) + '/categories';

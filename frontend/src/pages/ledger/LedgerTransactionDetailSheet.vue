@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LedgerExtensionDetail from './LedgerExtensionDetail.vue';
 import { computed, onMounted, ref } from 'vue';
 import {
   deleteLedgerTransaction,
@@ -154,6 +155,12 @@ onMounted(load);
             ><text>备注</text><text>{{ detail.transaction.note || '无' }}</text></view
           >
         </view>
+        <LedgerExtensionDetail
+          v-for="extension in detail.extensions ?? []"
+          :key="extension.type"
+          :extension="extension"
+          :direction="detail.transaction.direction"
+        />
         <view v-if="refundHistory.length" class="meta refund-history">
           <text class="detail-caption">退款记录</text>
           <view v-for="receipt in refundHistory" :key="receipt.id" class="meta-row">

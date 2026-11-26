@@ -29,6 +29,7 @@ export function categoriesFor(direction: TransactionDirection): readonly Categor
 
 export function categoryLabel(code: string, direction: TransactionDirection) {
   return (
+    ({ GIFT_SENT: '随礼', GIFT_RECEIVED: '收礼' } as Readonly<Record<string, string>>)[code] ??
     categoriesFor(direction).find(([key]) => key === code)?.[1] ??
     (direction === 'INCOME' ? '其他收入' : '其他支出')
   );

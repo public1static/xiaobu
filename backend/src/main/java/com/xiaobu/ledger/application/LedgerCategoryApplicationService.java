@@ -146,14 +146,30 @@ public class LedgerCategoryApplicationService {
 
   private List<LedgerCategory> catalog(String ledgerId) {
     var rows = new HashMap<String, LedgerCategory>();
-    LedgerCategoryDefaults.forLedger(ledgerId).forEach(row -> rows.put(row.code(), row));
     categories.findByLedger(ledgerId).forEach(row -> rows.put(row.code(), row));
+    for (var row : LedgerCategoryDefaults.forLedger(ledgerId)) {
+      if (rows.containsKey(row.code())) continue;
+      String name = row.name();
+      for (int suffix = 1; nameTaken(rows, row.direction(), name); suffix++) {
+        name = row.name() + (suffix == 1 ? "（系统）" : "（系统" + suffix + "）");
+      }
+      rows.put(
+          row.code(),
+          new LedgerCategory(
+              null, ledgerId, row.code(), row.direction(), name, row.displayOrder(), row.active()));
+    }
     return rows.values().stream()
         .sorted(
             Comparator.comparing(LedgerCategory::direction)
                 .thenComparingInt(LedgerCategory::displayOrder)
                 .thenComparing(LedgerCategory::code))
         .toList();
+  }
+
+  private static boolean nameTaken(
+      Map<String, LedgerCategory> rows, TransactionDirection direction, String name) {
+    return rows.values().stream()
+        .anyMatch(row -> row.direction() == direction && row.name().equalsIgnoreCase(name));
   }
 
   private void saveConfigured(LedgerCategory row, int order, boolean active) {

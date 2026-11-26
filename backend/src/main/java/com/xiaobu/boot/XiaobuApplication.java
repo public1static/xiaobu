@@ -11,8 +11,16 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @SpringBootApplication(scanBasePackages = "com.xiaobu")
-@EntityScan({"com.xiaobu.ledger.infrastructure", "com.xiaobu.identity.infrastructure"})
-@EnableJpaRepositories({"com.xiaobu.ledger.infrastructure", "com.xiaobu.identity.infrastructure"})
+@EntityScan({
+  "com.xiaobu.ledger.infrastructure",
+  "com.xiaobu.identity.infrastructure",
+  "com.xiaobu.gift.infrastructure"
+})
+@EnableJpaRepositories({
+  "com.xiaobu.ledger.infrastructure",
+  "com.xiaobu.identity.infrastructure",
+  "com.xiaobu.gift.infrastructure"
+})
 @Import(GlobalExceptionHandler.class)
 public class XiaobuApplication {
 

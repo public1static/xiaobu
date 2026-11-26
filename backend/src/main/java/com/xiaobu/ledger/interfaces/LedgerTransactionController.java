@@ -39,11 +39,15 @@ public class LedgerTransactionController {
 
   private final LedgerTransactionApplicationService transactions;
   private final LedgerTransactionWebMapper mapper;
+  private final TransactionExtensionWebMapper extensions;
 
   LedgerTransactionController(
-      LedgerTransactionApplicationService transactions, LedgerTransactionWebMapper mapper) {
+      LedgerTransactionApplicationService transactions,
+      LedgerTransactionWebMapper mapper,
+      TransactionExtensionWebMapper extensions) {
     this.transactions = transactions;
     this.mapper = mapper;
+    this.extensions = extensions;
   }
 
   @GetMapping
@@ -66,7 +70,9 @@ public class LedgerTransactionController {
       @Valid @RequestBody RecordLedgerTransactionRequest request,
       HttpServletRequest httpRequest) {
     var actor = LedgerSessionContext.require(httpRequest);
-    var command = mapper.toCommand(request, ledgerId, actor.actorId());
+    var command =
+        mapper.toCommand(
+            request, ledgerId, actor.actorId(), extensions.toChanges(request.extensions()));
     return ApiResponse.success(mapper.toResponse(transactions.recordLedgerTransaction(command)));
   }
 
@@ -88,7 +94,8 @@ public class LedgerTransactionController {
             result.accountName(),
             result.version(),
             result.canModify(),
-            result.refunds().stream().map(mapper::toResponse).toList()));
+            result.refunds().stream().map(mapper::toResponse).toList(),
+            result.extensions()));
   }
 
   @PostMapping("/{transactionId}/refunds")
@@ -144,7 +151,8 @@ public class LedgerTransactionController {
             draft.bookedOn(),
             draft.categoryCode(),
             draft.note(),
-            draft.accountId()));
+            draft.accountId(),
+            extensions.toChanges(draft.extensions())));
   }
 
   @DeleteMapping("/{transactionId}")
