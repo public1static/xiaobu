@@ -6,10 +6,14 @@ import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.assistant.application.AssistantDataset;
 import com.xiaobu.assistant.application.AssistantIntentParser;
 import com.xiaobu.assistant.application.AssistantQueryPlan;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -17,8 +21,10 @@ import org.springframework.ai.deepseek.DeepSeekChatModel;
 import org.springframework.ai.deepseek.DeepSeekChatOptions;
 import org.springframework.ai.deepseek.api.DeepSeekApi;
 import org.springframework.ai.deepseek.api.ResponseFormat;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.RetryTemplate;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -35,19 +41,14 @@ class DeepSeekIntentParser implements AssistantIntentParser {
   private final JsonMapper json;
 
   // 供应商地址固定在服务端，限制交互请求的连接与读取时长。
-  @org.springframework.beans.factory.annotation.Autowired
+  @Autowired
   DeepSeekIntentParser(
       JsonMapper json,
       @Value("${DEEPSEEK_API_KEY:}") String key,
       @Value("${XIAOBU_DEEPSEEK_MODEL:deepseek-v4-flash}") String name,
       @Value("classpath:assistant/statement-plan.txt") Resource prompt)
-      throws java.io.IOException {
-    this(
-        json,
-        key,
-        name,
-        prompt.getContentAsString(java.nio.charset.StandardCharsets.UTF_8),
-        httpClient());
+      throws IOException {
+    this(json, key, name, prompt.getContentAsString(StandardCharsets.UTF_8), httpClient());
   }
 
   // 为同步模型调用设置有限超时。
@@ -79,8 +80,7 @@ class DeepSeekIntentParser implements AssistantIntentParser {
         DeepSeekChatModel.builder()
             .deepSeekApi(api)
             .options(options)
-            .retryTemplate(
-                new RetryTemplate(org.springframework.core.retry.RetryPolicy.withMaxRetries(0)))
+            .retryTemplate(new RetryTemplate(RetryPolicy.withMaxRetries(0)))
             .build();
   }
 
@@ -112,14 +112,13 @@ class DeepSeekIntentParser implements AssistantIntentParser {
       var fields = node.get("plan");
       if (fields.isNull()) return null;
       var allowed =
-          java.util.Set.of(
-              "from", "through", "category", "account", "direction", "recordedByMe", "keyword");
+          Set.of("from", "through", "category", "account", "direction", "recordedByMe", "keyword");
       if (fields.has("analysis")) {
-        allowed = new java.util.HashSet<>(allowed);
+        allowed = new HashSet<>(allowed);
         allowed.add("analysis");
         var a = fields.get("analysis");
         if (!a.isObject()
-            || !java.util.Set.of(
+            || !Set.of(
                     "dataset",
                     "operation",
                     "metric",
@@ -128,7 +127,7 @@ class DeepSeekIntentParser implements AssistantIntentParser {
                     "baselineFrom",
                     "baselineThrough",
                     "filters")
-                .equals(java.util.Set.copyOf(a.propertyNames()))) return null;
+                .equals(Set.copyOf(a.propertyNames()))) return null;
         for (var k : List.of("dataset", "operation", "metric"))
           if (!a.get(k).isString()) return null;
         for (var k : List.of("groupBy", "baselineFrom", "baselineThrough"))
@@ -140,7 +139,7 @@ class DeepSeekIntentParser implements AssistantIntentParser {
           return null;
       }
       if (!fields.isObject()
-          || !java.util.Set.copyOf(fields.propertyNames()).equals(allowed)
+          || !Set.copyOf(fields.propertyNames()).equals(allowed)
           || !fields.get("recordedByMe").isBoolean()) return null;
       for (var name : List.of("category", "account", "direction", "keyword")) {
         var field = fields.get(name);

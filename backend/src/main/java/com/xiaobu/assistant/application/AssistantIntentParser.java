@@ -1,6 +1,7 @@
 package com.xiaobu.assistant.application;
 
 import java.time.LocalDate;
+import java.util.List;
 
 public interface AssistantIntentParser {
   // 返回完整查询条件；无法可靠表达的问题用空计划触发澄清。
@@ -11,7 +12,7 @@ public interface AssistantIntentParser {
       String q,
       AssistantQueryPlan previous,
       LocalDate today,
-      java.util.List<AssistantDataset.Definition> catalog) {
+      List<AssistantDataset.Definition> catalog) {
     return parse(q, previous, today);
   }
 }

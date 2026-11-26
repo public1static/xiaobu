@@ -57,7 +57,8 @@ public class AssistantConversationApplicationService {
   }
 
   // 同一账本的成员分别拥有独立会话。
-  public AssistantConversationRepository.Conversation create(String ledger, String actor) {
+  public AssistantConversationRepository.Conversation createConversation(
+      String ledger, String actor) {
     ledgers.requireReadAccess(ledger, actor);
     var id = ids.next(new IdPrefix("chat"));
     conversations.create(id, ledger, actor);
@@ -65,7 +66,7 @@ public class AssistantConversationApplicationService {
   }
 
   // 返回最近使用的会话，分页偏移不接受负数。
-  public List<AssistantConversationRepository.Conversation> list(
+  public List<AssistantConversationRepository.Conversation> listConversations(
       String ledger, String actor, int offset) {
     ledgers.requireReadAccess(ledger, actor);
     if (offset < 0) throw invalid("历史页码无效");
@@ -73,13 +74,13 @@ public class AssistantConversationApplicationService {
   }
 
   // 历史消息保存当时显示的金额与顺序。
-  public List<Message> history(String ledger, String actor, String id, long before) {
+  public List<Message> listMessages(String ledger, String actor, String id, long before) {
     requireConversation(ledger, actor, id);
     return conversations.history(id, before).stream().map(this::message).toList();
   }
 
   // 同一次请求重发时返回之前的消息；不同提问通过会话版本避免上下文串用。
-  public Message ask(
+  public Message askQuestion(
       String ledger,
       String actor,
       String id,
@@ -104,7 +105,7 @@ public class AssistantConversationApplicationService {
   }
 
   // 从选中卡片的原始条件钻取最新明细。
-  public LedgerStatementPageResult entries(
+  public LedgerStatementPageResult listMessageEntries(
       String ledger, String actor, String id, long sequence, int page) {
     requireConversation(ledger, actor, id);
     var card = answer(id, sequence);

@@ -12,7 +12,11 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 class AssistantAnalyticsPersistenceAdapter implements AssistantAnalyticsRepository {
-  // 所有字段表达式由服务端定义，用户提供的筛选值一律绑定。
+  /**
+   * 所有字段表达式由服务端定义，用户提供的筛选值一律绑定。
+   *
+   * @param dimensions 可供筛选或分组的逻辑名称与列表达式
+   */
   private record Projection(
       String from,
       Map<String, String> dimensions,
