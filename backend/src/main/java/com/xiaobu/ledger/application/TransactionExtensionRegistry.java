@@ -48,6 +48,10 @@ public class TransactionExtensionRegistry {
         .toList();
   }
 
+  public boolean allowsModification(TransactionExtensionContext context) {
+    return handlers.stream().allMatch(handler -> handler.allowsModification(context));
+  }
+
   public void apply(
       TransactionExtensionContext context,
       List<TransactionExtensionChange> changes,

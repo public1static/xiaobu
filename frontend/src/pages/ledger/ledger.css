@@ -236,6 +236,27 @@
   border-top: 1px solid var(--line);
   background: #fcfdfaf5;
 }
+.ledger-bottom-nav {
+  z-index: 1;
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 560px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 54px;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+.ledger-bottom-nav .is-current {
+  font-weight: 700;
+}
+.readonly-banner.with-nav {
+  bottom: calc(54px + env(safe-area-inset-bottom));
+}
 .floating-entry {
   position: fixed;
   z-index: 2;
@@ -333,6 +354,19 @@
 }
 .entry-sheet > * {
   flex-shrink: 0;
+}
+.quick-entry-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.quick-entry-actions button {
+  border-radius: 22px;
+}
+.quick-entry-actions .secondary {
+  background: #fff;
+  color: var(--green);
+  border: 1px solid var(--line);
 }
 .entry-sheet .close {
   border: 0;

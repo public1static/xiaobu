@@ -28,6 +28,15 @@ class GiftDetailEntity extends AuditableEntity implements Persistable<String> {
   @Column(name = "book_code", nullable = false, length = 24)
   private GiftBook book;
 
+  @Column(name = "book_id", length = 48)
+  private String bookId;
+
+  @Column(name = "contact_id", length = 48)
+  private String contactId;
+
+  @Column(name = "person_distinction", length = 60)
+  private String distinction;
+
   @Column(name = "person_name", length = 60)
   private String personName;
 
@@ -56,6 +65,9 @@ class GiftDetailEntity extends AuditableEntity implements Persistable<String> {
 
   void revise(String actorId, GiftDetail detail) {
     book = detail.book();
+    bookId = detail.bookId();
+    contactId = detail.contactId();
+    distinction = detail.distinction();
     personName = detail.personName();
     reason = detail.reason();
     deleted = false;
@@ -68,7 +80,7 @@ class GiftDetailEntity extends AuditableEntity implements Persistable<String> {
   }
 
   GiftDetail toDomain() {
-    return new GiftDetail(book, personName, reason);
+    return new GiftDetail(book, bookId, contactId, personName, distinction, reason);
   }
 
   @Override

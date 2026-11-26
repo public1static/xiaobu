@@ -6,8 +6,16 @@ import { setWechatSessionToken, wechatPreviewApiBase } from '../../api/preview-t
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerCategoriesSheet from './LedgerCategoriesSheet.vue';
+import LedgerGiftWorkspace from './LedgerGiftWorkspace.vue';
 import LedgerExtensionFields from './LedgerExtensionFields.vue';
-import { extensionDraft, supportsTransactionExtension } from './transaction-extension-ui';
+import {
+  extensionDraft,
+  extensionErrorMessage,
+  type TransactionEntryPreset,
+  extensionPayload,
+  supportsTransactionExtension,
+  validateExtensionDraft,
+} from './transaction-extension-ui';
 import type {
   TransactionExtensionChange,
   TransactionExtensionDetail,
@@ -112,6 +120,44 @@ function updateExtensionDraft(type: string, detail: TransactionExtensionDetail) 
 const note = ref('');
 const account = ref<Pick<LedgerAccount, 'id' | 'name'> | null>(null);
 const accountView = ref<'manage' | 'select' | null>(null);
+const ledgerHubOpen = ref(false);
+const giftWorkspaceOpen = ref(false);
+const giftRevision = ref(0);
+const entryPreset = ref<TransactionEntryPreset | null>(null);
+
+function openGiftWorkspace() {
+  ledgerHubOpen.value = false;
+  giftWorkspaceOpen.value = true;
+}
+
+function startPresetEntry(preset: TransactionEntryPreset) {
+  if (readOnly.value || !session.value) return;
+  const presetCategory = categoryCatalog.value?.find(
+    (item) =>
+      item.active &&
+      item.direction === preset.direction &&
+      item.capabilities?.some(({ type }) => type === preset.type),
+  );
+  if (!presetCategory) {
+    uni.showToast({ title: preset.unavailableMessage, icon: 'none' });
+    return;
+  }
+  openTransactionForm();
+  entryPreset.value = preset;
+  direction.value = preset.direction;
+  category.value = presetCategory.code;
+  extensionDrafts.value = { [preset.type]: { ...preset.detail } };
+  if (preset.defaultDate) applyExtensionDateDefault(preset.defaultDate);
+}
+
+function applyExtensionDateDefault(value: string) {
+  if (value > '1900-01-01' && value <= today.value) date.value = value;
+}
+
+function refreshAfterTransactionChange() {
+  giftRevision.value++;
+  void refresh();
+}
 
 function selectAccount(value: LedgerAccount | null) {
   account.value = value;
@@ -455,6 +501,7 @@ const recycleOpen = ref(false);
 function startEditing(detail: LedgerTransactionDetail) {
   const row = detail.transaction;
   transactionDetailId.value = '';
+  entryPreset.value = null;
   editing.value = detail;
   extensionDrafts.value = Object.fromEntries(
     (detail.extensions ?? [])
@@ -476,7 +523,7 @@ function startEditing(detail: LedgerTransactionDetail) {
 function onTransactionDeleted() {
   transactionDetailId.value = '';
   savedMessage.value = '已移到最近删除';
-  void refresh();
+  refreshAfterTransactionChange();
 }
 const filtered = computed(() => Boolean(filter.value.from || filter.value.keyword));
 
@@ -569,6 +616,7 @@ function startTransaction() {
 }
 
 function openTransactionForm() {
+  entryPreset.value = null;
   editing.value = null;
   extensionDrafts.value = {};
   editStale.value = false;
@@ -608,7 +656,7 @@ function confirmExtensionRemoval(): Promise<boolean> {
   });
 }
 
-async function submit() {
+async function submit(continueEntry = false) {
   const targetLedgerId = ledgerId.value;
   if (saving.value || !targetLedgerId || readOnly.value || editStale.value) return;
   const cents = parseCents(amount.value);
@@ -633,12 +681,21 @@ async function submit() {
     saveError.value = '当前版本不支持这项业务，升级后再试。';
     return;
   }
+  for (const capability of editableCapabilities.value) {
+    const issue = validateExtensionDraft(capability.type, extensionDrafts.value[capability.type], {
+      fromPreset: entryPreset.value?.type === capability.type,
+    });
+    if (issue) {
+      saveError.value = issue;
+      return;
+    }
+  }
   const changes: TransactionExtensionChange[] = editableCapabilities.value
     .filter(({ type, required }) => required || extensionDrafts.value[type])
     .map(({ type }) => ({
       type,
       operation: 'UPSERT',
-      detail: extensionDrafts.value[type] ?? extensionDraft(type),
+      detail: extensionPayload(type, extensionDrafts.value[type]),
     }));
   const payload = {
     direction: direction.value,
@@ -667,6 +724,7 @@ async function submit() {
       searchText.value = '';
       selectMonth(payload.bookedOn.slice(0, 7));
       savedMessage.value = '已更新流水';
+      giftRevision.value++;
       await refresh();
       return;
     }
@@ -682,13 +740,33 @@ async function submit() {
     );
     open.value = false;
     savedMessage.value = '已记一笔';
+    giftRevision.value++;
+    const continuation = continueEntry ? entryPreset.value : null;
+    if (continuation) {
+      startPresetEntry(continuation);
+      uni.showToast({ title: continuation.continuedMessage, icon: 'none' });
+    }
     await refresh();
   } catch (error) {
+    if (error instanceof ApiRequestError) {
+      const message = extensionErrorMessage(
+        [...previousExtensions.map(({ type }) => type), ...supported],
+        error.code,
+      );
+      if (message) {
+        saveError.value = message;
+        return;
+      }
+    }
     if (error instanceof ApiRequestError && error.code === 'XIAOBU_TRANSACTION_HAS_REFUNDS') {
       saveError.value = '已有退款：只能保留支出，原付不能低于已退，付款日期不能晚于退款。';
       return;
     }
-    if (error instanceof ApiRequestError && error.status === 409 && editing.value) {
+    if (
+      error instanceof ApiRequestError &&
+      error.code === 'XIAOBU_TRANSACTION_CHANGED' &&
+      editing.value
+    ) {
       editStale.value = true;
       saveError.value = '流水已变更，本次没有覆盖。请关闭后重新打开详情核对。';
       return;
@@ -758,7 +836,9 @@ const showFloatingEntry = computed(
       filterOpen.value ||
       transactionDetailId.value ||
       recycleOpen.value ||
-      categorySheetOpen.value
+      categorySheetOpen.value ||
+      giftWorkspaceOpen.value ||
+      ledgerHubOpen.value
     ),
 );
 const entryDateLabel = computed(() => {
@@ -943,7 +1023,38 @@ const entryDateLabel = computed(() => {
       </template>
     </view>
 
-    <view v-if="readOnly" class="dock readonly-banner">只读账本 · 不能新增或修改流水</view>
+    <view
+      v-if="session && !incomingToken && !giftWorkspaceOpen && !ledgerHubOpen"
+      class="ledger-bottom-nav"
+    >
+      <button class="text-button is-current" aria-current="page">流水</button>
+      <button class="text-button" @click="ledgerHubOpen = true">账本</button>
+    </view>
+    <view v-if="ledgerHubOpen && ledgerId" class="overlay">
+      <view class="sheet login-sheet" role="dialog" aria-label="账本管理" aria-modal="true">
+        <view class="sheet-head"
+          ><text>账本管理</text
+          ><button class="close" aria-label="关闭账本管理" @click="ledgerHubOpen = false">
+            ×
+          </button></view
+        >
+        <button class="primary secondary" @click="openGiftWorkspace">礼金往来</button>
+        <button
+          class="primary secondary"
+          @click="
+            ledgerHubOpen = false;
+            accountView = 'manage';
+          "
+        >
+          账户
+        </button>
+      </view>
+    </view>
+    <view
+      v-if="readOnly && !giftWorkspaceOpen && !ledgerHubOpen"
+      class="dock readonly-banner with-nav"
+      >只读账本 · 不能新增或修改流水</view
+    >
     <button
       v-else-if="showFloatingEntry"
       class="floating-entry"
@@ -1076,11 +1187,11 @@ const entryDateLabel = computed(() => {
       <view
         class="sheet entry-sheet"
         role="dialog"
-        :aria-label="editing ? '编辑流水' : `记一笔${directionLabel}`"
+        :aria-label="editing ? '编辑流水' : (entryPreset?.title ?? `记一笔${directionLabel}`)"
         aria-modal="true"
       >
         <view class="sheet-head"
-          ><text>{{ editing ? '编辑流水' : '记一笔' }}</text
+          ><text>{{ editing ? '编辑流水' : (entryPreset?.title ?? '记一笔') }}</text
           ><button
             class="close"
             aria-label="关闭记账"
@@ -1090,7 +1201,7 @@ const entryDateLabel = computed(() => {
             ×
           </button></view
         >
-        <view class="entry-direction">
+        <view v-if="!entryPreset" class="entry-direction">
           <text>收支类型<text class="star">*</text></text>
           <view class="direction-tabs" role="group" aria-label="收支类型">
             <button
@@ -1113,6 +1224,18 @@ const entryDateLabel = computed(() => {
             </button>
           </view>
         </view>
+        <LedgerExtensionFields
+          v-for="capability in entryPreset ? editableCapabilities : []"
+          :key="capability.type"
+          :ledger-id="ledgerId!"
+          :quick="Boolean(entryPreset)"
+          :type="capability.type"
+          :detail="extensionDrafts[capability.type] ?? {}"
+          :direction="direction"
+          :disabled="saving"
+          @change="updateExtensionDraft(capability.type, $event)"
+          @date-default="applyExtensionDateDefault"
+        />
         <view class="amount-field">
           <text class="field-label">{{ directionLabel }}金额 <text class="star">*</text></text>
           <view class="amount-line"
@@ -1128,7 +1251,7 @@ const entryDateLabel = computed(() => {
           /></view>
           <text v-if="fieldError.amount" class="error" role="alert">{{ fieldError.amount }}</text>
         </view>
-        <view class="entry-categories">
+        <view v-if="!entryPreset" class="entry-categories">
           <view class="category-head">
             <text>分类<text class="star">*</text></text>
             <button class="text-button" :disabled="saving" @click="categorySheetOpen = true">
@@ -1182,16 +1305,32 @@ const entryDateLabel = computed(() => {
           /></view>
         </view>
         <LedgerExtensionFields
-          v-for="capability in editableCapabilities"
+          v-for="capability in entryPreset ? [] : editableCapabilities"
           :key="capability.type"
+          :ledger-id="ledgerId!"
+          :quick="Boolean(entryPreset)"
           :type="capability.type"
           :detail="extensionDrafts[capability.type] ?? {}"
           :direction="direction"
           :disabled="saving"
           @change="updateExtensionDraft(capability.type, $event)"
+          @date-default="applyExtensionDateDefault"
         />
         <text v-if="saveError" class="error" role="alert">{{ saveError }}</text>
-        <button class="primary save" :disabled="saving || readOnly || editStale" @click="submit">
+        <view v-if="entryPreset" class="quick-entry-actions">
+          <button class="primary secondary save" :disabled="saving || readOnly" @click="submit()">
+            保存
+          </button>
+          <button class="primary save" :disabled="saving || readOnly" @click="submit(true)">
+            保存并记下一位
+          </button>
+        </view>
+        <button
+          v-else
+          class="primary save"
+          :disabled="saving || readOnly || editStale"
+          @click="submit()"
+        >
           {{ saving ? '保存中…' : '保存账目' }}
         </button>
       </view>
@@ -1221,14 +1360,24 @@ const entryDateLabel = computed(() => {
       @close="transactionDetailId = ''"
       @edit="startEditing"
       @deleted="onTransactionDeleted"
-      @refunded="refresh"
+      @refunded="refreshAfterTransactionChange"
     />
     <LedgerRecycleSheet
       v-if="recycleOpen && ledgerId"
       :ledger-id="ledgerId"
       @close="recycleOpen = false"
       :category-names="categoryNames"
-      @restored="refresh"
+      @restored="refreshAfterTransactionChange"
+    />
+    <LedgerGiftWorkspace
+      v-if="giftWorkspaceOpen && ledgerId"
+      :ledger-id="ledgerId"
+      :writable="!readOnly"
+      :revision="giftRevision"
+      :covered="Boolean(open || transactionDetailId)"
+      @close="giftWorkspaceOpen = false"
+      @quick="startPresetEntry"
+      @detail="transactionDetailId = $event"
     />
     <LedgerCategoriesSheet
       v-if="categorySheetOpen && ledgerId"

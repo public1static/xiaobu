@@ -16,9 +16,12 @@ import org.springframework.stereotype.Component;
 class GiftTransactionExtensionHandler implements TransactionExtensionHandler<GiftDetailDraft> {
   private static final String TYPE = "GIFT";
   private final GiftDetailRepository details;
+  private final GiftDirectoryApplicationService directory;
 
-  GiftTransactionExtensionHandler(GiftDetailRepository details) {
+  GiftTransactionExtensionHandler(
+      GiftDetailRepository details, GiftDirectoryApplicationService directory) {
     this.details = details;
+    this.directory = directory;
   }
 
   @Override
@@ -44,7 +47,22 @@ class GiftTransactionExtensionHandler implements TransactionExtensionHandler<Gif
   public Optional<GiftDetailResult> read(TransactionExtensionContext context) {
     return details
         .findActive(context.ledgerId(), context.transactionId())
-        .map(GiftDetailResult::from);
+        .map(detail ->
+            GiftDetailResult.from(
+                detail,
+                detail.bookId() == null
+                    ? detail.book().displayName()
+                    : directory.requireBook(context.ledgerId(), detail.bookId()).name()));
+  }
+
+  @Override
+  public boolean allowsModification(TransactionExtensionContext context) {
+    return details
+        .findActive(context.ledgerId(), context.transactionId())
+        .map(detail ->
+            detail.bookId() == null
+                || !directory.requireBook(context.ledgerId(), detail.bookId()).archived())
+        .orElse(true);
   }
 
   @Override
@@ -59,16 +77,45 @@ class GiftTransactionExtensionHandler implements TransactionExtensionHandler<Gif
 
   @Override
   public void upsert(TransactionExtensionContext context, GiftDetailDraft detail) {
+    String bookId = detail.bookId();
+    if (bookId != null) {
+      var book = directory.requireBook(context.ledgerId(), bookId);
+      if (book.direction() != context.direction()) throw invalid("请选择同方向的礼单");
+      if (book.archived()) throw invalid("礼单已归档，请重新开放后再登记");
+    }
+    if (detail.contactId() != null && Boolean.TRUE.equals(detail.createContact())) {
+      throw invalid("请在选择已有亲友和新增亲友之间选一种");
+    }
+    var contact =
+        detail.contactId() != null
+            ? directory.requireContact(context.ledgerId(), detail.contactId())
+            : Boolean.TRUE.equals(detail.createContact())
+                ? directory.registerContact(
+                    new CreateGiftContactCommand(
+                        context.ledgerId(),
+                        context.actorId(),
+                        detail.personName(),
+                        detail.distinction()))
+                : null;
     details.save(
         context.ledgerId(),
         context.transactionId(),
         context.actorId(),
         new GiftDetail(
-            GiftBook.dailyFor(context.direction()), detail.personName(), detail.reason()));
+            GiftBook.dailyFor(context.direction()),
+            bookId,
+            contact == null ? null : contact.id(),
+            contact == null ? detail.personName() : contact.name(),
+            contact == null ? null : contact.distinction(),
+            detail.reason()));
   }
 
   @Override
   public void remove(TransactionExtensionContext context) {
     details.remove(context.ledgerId(), context.transactionId(), context.actorId());
+  }
+
+  private static FoundationException invalid(String message) {
+    return new FoundationException(new ErrorCode("XIAOBU_GIFT_DETAIL_INVALID"), message);
   }
 }

@@ -19,6 +19,10 @@ public interface TransactionExtensionHandler<T extends TransactionExtensionData>
     return read(context);
   }
 
+  default boolean allowsModification(TransactionExtensionContext context) {
+    return true;
+  }
+
   default void validateRetained(
       TransactionExtensionContext context, TransactionExtensionData detail) {}
 
