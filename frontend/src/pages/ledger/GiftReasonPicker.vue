@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import LedgerCategoryTiles from './LedgerCategoryTiles.vue';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { listGiftReasons, saveGiftReasons } from '../../api/ledger-gifts';
 import { ApiRequestError } from '../../api/request';
 const props = defineProps<{
@@ -18,6 +18,7 @@ const names = ref<string[]>([]),
   busy = ref(false);
 // 忽略早于当前账本切换或保存操作开始的加载结果。
 let generation = 0;
+let ledgerGeneration = 0;
 const options = computed(() =>
   props.value && !names.value.includes(props.value) ? [...names.value, props.value] : names.value,
 );
@@ -35,32 +36,44 @@ async function load() {
 watch(
   () => props.ledgerId,
   () => {
+    ledgerGeneration++;
+    busy.value = false;
+    open.value = false;
     names.value = [];
     error.value = '';
     void load();
   },
   { immediate: true },
 );
+onBeforeUnmount(() => {
+  ledgerGeneration++;
+  generation++;
+});
 // 只有服务端确认后才回填或调整顺序。
 async function save(next: string[], selected?: string) {
   if (busy.value) return;
+  const ledger = props.ledgerId;
+  const current = ledgerGeneration;
   ++generation;
   busy.value = true;
   error.value = '';
   try {
-    names.value = await saveGiftReasons(props.ledgerId, names.value, next);
+    const updated = await saveGiftReasons(ledger, names.value, next);
+    if (current !== ledgerGeneration || ledger !== props.ledgerId) return;
+    names.value = updated;
     if (selected) {
       emit('select', selected);
       open.value = false;
     }
   } catch (e) {
+    if (current !== ledgerGeneration || ledger !== props.ledgerId) return;
     error.value =
       e instanceof ApiRequestError && e.status === 409
         ? '事由已更新，请按最新顺序重试。'
         : '未能保存事由，请重试。';
     await load();
   } finally {
-    busy.value = false;
+    if (current === ledgerGeneration) busy.value = false;
   }
 }
 // 校验名称后加入账本目录。

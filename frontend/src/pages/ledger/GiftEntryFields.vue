@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import GiftReasonPicker from './GiftReasonPicker.vue';
 import LedgerPicker from '../../components/LedgerPicker.vue';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   dailyGiftBook,
   listGiftBooks,
@@ -51,18 +51,24 @@ function change(values: TransactionExtensionDetail) {
   emit('change', { ...props.detail, ...values });
 }
 
+// 切换账本或离开表单后丢弃未完成的亲友和礼单请求。
+let loadGeneration = 0;
 async function load() {
+  const generation = ++loadGeneration;
+  const ledger = props.ledgerId;
   error.value = '';
   try {
     const [activityBooks, people] = await Promise.all([
-      listGiftBooks(props.ledgerId),
-      listGiftContacts(props.ledgerId),
+      listGiftBooks(ledger),
+      listGiftContacts(ledger),
     ]);
+    if (generation !== loadGeneration || ledger !== props.ledgerId) return;
     books.value = activityBooks;
     contacts.value = people;
     if (props.detail.needsContactLookup) updateName(query.value);
   } catch {
-    error.value = '礼单或亲友暂未加载。';
+    if (generation === loadGeneration && ledger === props.ledgerId)
+      error.value = '礼单或亲友暂未加载。';
   }
 }
 
@@ -136,7 +142,19 @@ watch(
     }
   },
 );
-onMounted(load);
+watch(
+  () => props.ledgerId,
+  () => {
+    books.value = [];
+    contacts.value = null;
+    focused.value = false;
+    void load();
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  loadGeneration++;
+});
 </script>
 
 <template>
