@@ -54,6 +54,15 @@ export function parseCents(input: string): number | null {
   return cents > 0 ? cents : null;
 }
 
+export function parseOpeningBalance(input: string): number | null {
+  const value = input.trim();
+  if (!value) return 0;
+  const unsigned = value.replace(/^[+-]/, '');
+  if (/^0{1,8}(?:\.0{1,2})?$/.test(unsigned)) return 0;
+  const cents = parseCents(unsigned);
+  return cents === null ? null : value.startsWith('-') ? -cents : cents;
+}
+
 export function formatCents(cents: number) {
   return (cents / 100).toFixed(2).replace(/\B(?=(\d{3})+\.)/g, ',');
 }

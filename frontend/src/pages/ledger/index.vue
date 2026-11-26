@@ -89,7 +89,7 @@ const directionCategories = computed<[string, string][]>(() => {
 });
 const category = ref<CategoryCode | ''>('');
 const note = ref('');
-const account = ref<LedgerAccount | null>(null);
+const account = ref<Pick<LedgerAccount, 'id' | 'name'> | null>(null);
 const accountView = ref<'manage' | 'select' | null>(null);
 
 function selectAccount(value: LedgerAccount | null) {
@@ -441,9 +441,7 @@ function startEditing(detail: LedgerTransactionDetail) {
   date.value = row.bookedOn;
   category.value = row.categoryCode;
   note.value = row.note;
-  account.value = row.accountId
-    ? { id: row.accountId, name: detail.accountName ?? '账户', recordedBalanceCents: 0 }
-    : null;
+  account.value = row.accountId ? { id: row.accountId, name: detail.accountName ?? '账户' } : null;
   fieldError.value = { amount: '', category: '' };
   saveError.value = '';
   open.value = true;
@@ -1092,6 +1090,7 @@ onShareAppMessage(() => ({
       v-if="accountView && ledgerId"
       :ledger-id="ledgerId"
       :allow-create="!sharedLedger"
+      :allow-transfer="!readOnly"
       :selectable="accountView === 'select'"
       @close="accountView = null"
       @select="selectAccount"
