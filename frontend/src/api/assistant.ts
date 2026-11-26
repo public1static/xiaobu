@@ -28,11 +28,46 @@ export interface Message {
   };
 }
 
+export interface DraftFields {
+  bookedOn: string;
+  amountCents: number | null;
+  categoryCode: string | null;
+  accountId: string | null;
+  note: string;
+}
+export interface ExpenseDraft {
+  id: string;
+  version: number;
+  status: 'PENDING' | 'CONFIRMED' | 'DISCARDED';
+  fields: DraftFields;
+  transactionId: string | null;
+}
+
 // 所有请求均携带当前账本，服务端同时核对会话归属。
 export function assistantApi(ledger: string) {
   const path = '/ledgers/' + encodeURIComponent(ledger) + '/assistant/conversations';
   const messages = (id: string) => path + '/' + encodeURIComponent(id) + '/messages';
+  const drafts = (id: string) => path + '/' + encodeURIComponent(id) + '/drafts';
   return {
+    draft: (chat: string, id?: string) =>
+      request<{ draft: ExpenseDraft | null }>(
+        drafts(chat) + (id ? '?id=' + encodeURIComponent(id) : ''),
+        'GET',
+      ),
+    editDraft: (c: Conversation, old: ExpenseDraft | null, question: string, fields: DraftFields) =>
+      request<ExpenseDraft>(drafts(c.id), 'PUT', {
+        revision: c.revision,
+        id: old?.id,
+        version: old?.version,
+        question,
+        fields,
+      }),
+    finishDraft: (chat: string, draft: ExpenseDraft, action: 'confirm' | 'discard') =>
+      request<ExpenseDraft>(
+        drafts(chat) + '/' + encodeURIComponent(draft.id) + '/' + action,
+        'POST',
+        { version: draft.version },
+      ),
     list: (offset = 0) => request<Conversation[]>(path + '?offset=' + offset, 'GET'),
     create: () => request<Conversation>(path, 'POST'),
     history: (id: string, before?: number) =>

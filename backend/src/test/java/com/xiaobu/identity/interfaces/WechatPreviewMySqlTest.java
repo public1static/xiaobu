@@ -124,9 +124,52 @@ class WechatPreviewMySqlTest {
     assertEquals(409, send("POST", messages, follow.replace("那上个月呢", "另一问题"), beta).statusCode());
     String members = "/ledgers/" + book + "/members";
     var member = data(send("GET", members, null, alpha)).get(0).get("memberId").asText();
+    verifyExpenseDraft(book, id, members + "/" + member + "/role", alpha, beta);
     assertEquals(204, send("DELETE", members + "/" + member, null, alpha).statusCode());
     assertEquals(403, send("GET", messages, null, beta).statusCode());
     assertEquals(403, send("GET", messages + "/1/entries", null, beta).statusCode());
+  }
+
+  // 只读、降权、旧版本及重复确认都不得产生额外流水。
+  private void verifyExpenseDraft(
+      String book, String chat, String role, String owner, String writer) throws Exception {
+    String drafts = "/ledgers/" + book + "/assistant/conversations/" + chat + "/drafts";
+    String fields =
+        """
+        {"question":"昨天买菜","revision":2,"fields":{"bookedOn":"2026-10-30","categoryCode":"GROCERIES","amountCents":null}}
+        """;
+    assertEquals(403, send("PUT", drafts, fields, writer).statusCode());
+    assertEquals(204, send("PUT", role, "{\"role\":\"CAN_RECORD\"}", owner).statusCode());
+    var proposed = send("PUT", drafts, fields, writer);
+    assertEquals(200, proposed.statusCode(), proposed.body());
+    String id = data(proposed).get("id").asText();
+    String confirm = drafts + "/" + id + "/confirm";
+    assertEquals(400, send("POST", confirm, "{\"version\":0}", writer).statusCode());
+    String update =
+        fields
+            .replace("昨天买菜", "六十八块")
+            .replace("\"revision\":2", "\"revision\":3,\"version\":0,\"id\":\"" + id + "\"")
+            .replace("Cents\":null", "Cents\":6800");
+    assertEquals(200, send("PUT", drafts, update, writer).statusCode());
+    assertEquals(404, send("GET", drafts + "?id=" + id, null, owner).statusCode());
+    String month = "/ledgers/" + book + "/transactions?month=2026-10";
+    assertEquals(3200, data(send("GET", month, null, writer)).get("expenseCents").asInt());
+    assertEquals(409, send("POST", confirm, "{\"version\":0}", writer).statusCode());
+    assertEquals(204, send("PUT", role, "{\"role\":\"READ_ONLY\"}", owner).statusCode());
+    assertEquals(403, send("POST", confirm, "{\"version\":1}", writer).statusCode());
+    assertEquals(204, send("PUT", role, "{\"role\":\"CAN_RECORD\"}", owner).statusCode());
+    var saved = send("POST", confirm, "{\"version\":1}", writer);
+    assertEquals(200, saved.statusCode(), saved.body());
+    String original = data(saved).get("transactionId").asText();
+    assertEquals(
+        original,
+        data(send("POST", confirm, "{\"version\":1}", writer)).get("transactionId").asText());
+    assertEquals(
+        original,
+        data(send("GET", drafts + "?id=" + id, null, writer)).at("/draft/transactionId").asText());
+    var rows = data(send("GET", month, null, owner));
+    assertEquals(2, rows.get("totalCount").asInt());
+    assertEquals(10000, rows.get("expenseCents").asInt());
   }
 
   private JsonNode signIn(String code) throws Exception {
