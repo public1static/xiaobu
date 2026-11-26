@@ -310,6 +310,10 @@ onBeforeUnmount(() => {
   color: #536660;
   font-size: 12px;
 }
+.contact-field {
+  padding-top: 0;
+  padding-bottom: 0;
+}
 .contact-input {
   position: relative;
   display: flex;
