@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
-import { listExpenses, saveExpense, type Expense } from '../../api/expenses';
+import {
+  listLedgerTransactions,
+  recordLedgerTransaction,
+  type LedgerTransaction,
+} from '../../api/ledger-transactions';
 import {
   closeLocalSession,
   getLocalSession,
@@ -19,7 +23,7 @@ import {
 } from '../../api/ledger-invitations';
 import { ApiRequestError } from '../../api/request';
 import {
-  CATEGORIES,
+  categoriesFor,
   FIRST_LEDGER_MONTH,
   categoryLabel,
   formatCents,
@@ -27,8 +31,10 @@ import {
   parseCents,
   resolveLedgerMonth,
   shiftLedgerMonth,
+  summarizeTransactions,
   type CategoryCode,
-} from './expense';
+  type TransactionDirection,
+} from './transaction';
 
 const MONTH_PREFERENCE_KEY = 'xiaobu.ledger.last-month';
 const today = ref(localDay());
@@ -46,7 +52,7 @@ const monthText = computed(() => {
   const [year, value] = month.value.split('-');
   return `${year}年${Number(value)}月`;
 });
-const items = ref<Expense[]>([]);
+const items = ref<LedgerTransaction[]>([]);
 const loading = ref(true);
 const listError = ref('');
 const savedMessage = ref('');
@@ -54,6 +60,9 @@ const open = ref(false);
 const saving = ref(false);
 const amount = ref('');
 const date = ref(today.value);
+const direction = ref<TransactionDirection>('EXPENSE');
+const directionLabel = computed(() => (direction.value === 'INCOME' ? '收入' : '支出'));
+const directionCategories = computed(() => categoriesFor(direction.value));
 const category = ref<CategoryCode | ''>('');
 const note = ref('');
 const fieldError = ref({ amount: '', category: '' });
@@ -276,7 +285,7 @@ async function signIn(account: PreviewAccount) {
     if (incomingToken.value) {
       await loadInvitePreview();
     } else {
-      openExpenseForm();
+      openTransactionForm();
     }
     await refresh();
   } catch {
@@ -300,21 +309,19 @@ async function signOut() {
   }
 }
 
-const total = computed(() =>
-  items.value.reduce((value, expense) => value + expense.amountCents, 0),
-);
+const summary = computed(() => summarizeTransactions(items.value));
 const showTotals = computed(() => !loading.value && !listError.value);
 const groups = computed(() => {
-  const dates = new Map<string, Expense[]>();
-  for (const expense of items.value) {
-    const list = dates.get(expense.bookedOn) ?? [];
-    list.push(expense);
-    dates.set(expense.bookedOn, list);
+  const dates = new Map<string, LedgerTransaction[]>();
+  for (const transaction of items.value) {
+    const list = dates.get(transaction.bookedOn) ?? [];
+    list.push(transaction);
+    dates.set(transaction.bookedOn, list);
   }
-  return [...dates].map(([day, expenses]) => ({
+  return [...dates].map(([day, transactions]) => ({
     day,
-    expenses,
-    total: expenses.reduce((value, expense) => value + expense.amountCents, 0),
+    transactions,
+    ...summarizeTransactions(transactions),
   }));
 });
 
@@ -326,7 +333,7 @@ async function refresh() {
   loading.value = true;
   listError.value = '';
   try {
-    const rows = await listExpenses(targetLedgerId, selectedMonth);
+    const rows = await listLedgerTransactions(targetLedgerId, selectedMonth);
     if (request === generation) items.value = rows;
   } catch (error) {
     if (request !== generation) return;
@@ -372,20 +379,21 @@ function changeMonth(offset: -1 | 1) {
   void refresh();
 }
 
-function newExpense() {
+function startTransaction() {
   if (checkingSession.value || sessionBusy.value || readOnly.value) return;
   if (!session.value) {
     loginOpen.value = true;
     sessionError.value = '';
     return;
   }
-  openExpenseForm();
+  openTransactionForm();
 }
 
-function openExpenseForm() {
+function openTransactionForm() {
   today.value = localDay();
   date.value = today.value;
   amount.value = '';
+  direction.value = 'EXPENSE';
   category.value = '';
   note.value = '';
   fieldError.value = { amount: '', category: '' };
@@ -394,7 +402,14 @@ function openExpenseForm() {
   open.value = true;
 }
 
-function closeExpense() {
+function selectDirection(value: TransactionDirection) {
+  if (saving.value || value === direction.value) return;
+  direction.value = value;
+  category.value = '';
+  fieldError.value.category = '';
+}
+
+function closeTransactionForm() {
   if (!saving.value) open.value = false;
 }
 
@@ -409,6 +424,7 @@ async function submit() {
   };
   if (cents === null || !selected) return;
   const payload = {
+    direction: direction.value,
     amountCents: cents,
     categoryCode: selected,
     bookedOn: date.value,
@@ -422,13 +438,13 @@ async function submit() {
   saving.value = true;
   saveError.value = '';
   try {
-    const stored = await saveExpense(targetLedgerId, payload);
+    const stored = await recordLedgerTransaction(targetLedgerId, payload);
     today.value = localDay();
     const nextMonth = stored.bookedOn.slice(0, 7);
     const current = nextMonth === month.value ? items.value : [];
     selectMonth(nextMonth);
-    items.value = [stored, ...current.filter((row) => row.id !== stored.id)].sort(
-      (a, b) => b.bookedOn.localeCompare(a.bookedOn) || b.id.localeCompare(a.id),
+    items.value = [stored, ...current.filter((row) => row.id !== stored.id)].sort((a, b) =>
+      b.bookedOn.localeCompare(a.bookedOn),
     );
     open.value = false;
     savedMessage.value = '已记一笔';
@@ -530,17 +546,20 @@ void restoreSession();
           </view>
           <view class="balance">
             <template v-if="showTotals">
-              <text class="yuan">{{ total ? '−¥' : '¥' }}</text>{{ formatCents(total) }}
+              <text class="yuan">{{ summary.balance < 0 ? '−¥' : '¥' }}</text>{{
+                formatCents(Math.abs(summary.balance))
+              }}
             </template>
             <text v-else aria-label="暂无汇总">···</text>
           </view>
           <view class="metrics">
             <view
-              ><text>收入</text><text>{{ showTotals ? '¥0.00' : '···' }}</text></view
+              ><text>收入</text
+              ><text>{{ showTotals ? `¥${formatCents(summary.income)}` : '···' }}</text></view
             >
             <view
               ><text>支出</text
-              ><text>{{ showTotals ? `¥${formatCents(total)}` : '···' }}</text></view
+              ><text>{{ showTotals ? `¥${formatCents(summary.expense)}` : '···' }}</text></view
             >
           </view>
         </view>
@@ -559,20 +578,25 @@ void restoreSession();
         <view v-else-if="loading && !items.length" class="empty">正在加载流水</view>
         <view v-else-if="!items.length" class="empty">这段时间还没有流水</view>
         <view v-for="group in groups" :key="group.day" class="day">
-          <view class="day-head"
-            ><text>{{ showDay(group.day) }}</text
-            ><text>支出 ¥{{ formatCents(group.total) }}</text></view
-          >
+          <view class="day-head">
+            <text>{{ showDay(group.day) }}</text>
+            <view class="day-totals">
+              <text v-if="group.income">收入 ¥{{ formatCents(group.income) }}</text>
+              <text v-if="group.expense">支出 ¥{{ formatCents(group.expense) }}</text>
+            </view>
+          </view>
           <view class="rows">
-            <view v-for="row in group.expenses" :key="row.id" class="row">
-              <view class="row-icon" aria-hidden="true"
-                ><image :src="`/static/ledger/${row.categoryCode}.svg`"
-              /></view>
-              <view class="row-copy"
-                ><text>{{ categoryLabel(row.categoryCode) }}</text
-                ><text v-if="row.note">{{ row.note }}</text></view
-              >
-              <text class="row-amount">−¥{{ formatCents(row.amountCents) }}</text>
+            <view v-for="row in group.transactions" :key="row.id" class="row">
+              <view class="row-icon" aria-hidden="true">
+                <image :src="`/static/ledger/${row.categoryCode}.svg`" />
+              </view>
+              <view class="row-copy">
+                <text>{{ categoryLabel(row.categoryCode, row.direction) }}</text>
+                <text v-if="row.note">{{ row.note }}</text>
+              </view>
+              <text class="row-amount" :class="{ income: row.direction === 'INCOME' }">
+                {{ row.direction === 'INCOME' ? '+' : '−' }}¥{{ formatCents(row.amountCents) }}
+              </text>
             </view>
           </view>
         </view>
@@ -582,7 +606,12 @@ void restoreSession();
     <!-- #ifdef H5 -->
     <view class="dock">
       <view v-if="readOnly" class="readonly-banner">只读账本 · 不能新增或修改流水</view>
-      <button v-else class="primary" :disabled="checkingSession || sessionBusy" @click="newExpense">
+      <button
+        v-else
+        class="primary"
+        :disabled="checkingSession || sessionBusy"
+        @click="startTransaction"
+      >
         ＋ 记一笔
       </button>
     </view>
@@ -701,16 +730,40 @@ void restoreSession();
     <!-- #endif -->
 
     <view v-if="open" class="overlay">
-      <view class="sheet" role="dialog" aria-label="记一笔支出" aria-modal="true">
+      <view class="sheet" role="dialog" :aria-label="`记一笔${directionLabel}`" aria-modal="true">
         <view class="sheet-head"
           ><text>记一笔</text
-          ><button class="close" aria-label="关闭记账" :disabled="saving" @click="closeExpense">
+          ><button
+            class="close"
+            aria-label="关闭记账"
+            :disabled="saving"
+            @click="closeTransactionForm"
+          >
             ×
           </button></view
         >
-        <view class="kind">支出</view>
+        <view class="direction-tabs" role="group" aria-label="收支类型">
+          <button
+            class="direction-tab"
+            :class="{ selected: direction === 'EXPENSE' }"
+            :aria-pressed="direction === 'EXPENSE'"
+            :disabled="saving"
+            @click="selectDirection('EXPENSE')"
+          >
+            支出
+          </button>
+          <button
+            class="direction-tab"
+            :class="{ selected: direction === 'INCOME' }"
+            :aria-pressed="direction === 'INCOME'"
+            :disabled="saving"
+            @click="selectDirection('INCOME')"
+          >
+            收入
+          </button>
+        </view>
         <view class="amount-field">
-          <text class="field-label">支出金额 <text class="star">*</text></text>
+          <text class="field-label">{{ directionLabel }}金额 <text class="star">*</text></text>
           <view class="amount-line"
             ><text>¥</text
             ><input
@@ -719,7 +772,7 @@ void restoreSession();
               :maxlength="11"
               placeholder="0.00"
               @input="fieldError.amount = ''"
-              aria-label="支出金额"
+              :aria-label="`${directionLabel}金额`"
           /></view>
           <text v-if="fieldError.amount" class="error" role="alert">{{ fieldError.amount }}</text>
         </view>
@@ -727,7 +780,7 @@ void restoreSession();
         <scroll-view scroll-x class="category-rail">
           <view class="category-inner">
             <button
-              v-for="item in CATEGORIES"
+              v-for="item in directionCategories"
               :key="item[0]"
               class="category"
               :class="{ selected: category === item[0] }"

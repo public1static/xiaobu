@@ -4,8 +4,8 @@ import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.aegisid.foundation.web.api.ApiResponse;
 import com.xiaobu.identity.interfaces.LocalSessionContext;
-import com.xiaobu.ledger.application.ExpenseApplicationService;
-import com.xiaobu.ledger.application.ListExpensesQuery;
+import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
+import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.YearMonth;
@@ -22,38 +22,39 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @Profile("local-expense")
-@RequestMapping("/api/v1/ledgers/{ledgerId}/expenses")
-public class ExpenseController {
+@RequestMapping("/api/v1/ledgers/{ledgerId}/transactions")
+public class LedgerTransactionController {
 
   private static final ErrorCode INVALID_MONTH = new ErrorCode("XIAOBU_INVALID_MONTH");
 
-  private final ExpenseApplicationService expenses;
-  private final ExpenseWebMapper mapper;
+  private final LedgerTransactionApplicationService transactions;
+  private final LedgerTransactionWebMapper mapper;
 
-  ExpenseController(ExpenseApplicationService expenses, ExpenseWebMapper mapper) {
-    this.expenses = expenses;
+  LedgerTransactionController(
+      LedgerTransactionApplicationService transactions, LedgerTransactionWebMapper mapper) {
+    this.transactions = transactions;
     this.mapper = mapper;
   }
 
   @GetMapping
-  public ApiResponse<List<ExpenseResponse>> listExpenses(
+  public ApiResponse<List<LedgerTransactionResponse>> listLedgerTransactions(
       @PathVariable("ledgerId") String ledgerId,
       @RequestParam("month") String month,
       HttpServletRequest request) {
     var actor = LocalSessionContext.require(request);
-    var query = new ListExpensesQuery(ledgerId, actor.actorId(), parseMonth(month));
+    var query = new ListLedgerTransactionsQuery(ledgerId, actor.actorId(), parseMonth(month));
     return ApiResponse.success(
-        expenses.listExpenses(query).stream().map(mapper::toResponse).toList());
+        transactions.listLedgerTransactions(query).stream().map(mapper::toResponse).toList());
   }
 
   @PostMapping
-  public ApiResponse<ExpenseResponse> recordExpense(
+  public ApiResponse<LedgerTransactionResponse> recordLedgerTransaction(
       @PathVariable("ledgerId") String ledgerId,
-      @Valid @RequestBody RecordExpenseRequest request,
+      @Valid @RequestBody RecordLedgerTransactionRequest request,
       HttpServletRequest httpRequest) {
     var actor = LocalSessionContext.require(httpRequest);
     var command = mapper.toCommand(request, ledgerId, actor.actorId());
-    return ApiResponse.success(mapper.toResponse(expenses.recordExpense(command)));
+    return ApiResponse.success(mapper.toResponse(transactions.recordLedgerTransaction(command)));
   }
 
   private static YearMonth parseMonth(String value) {

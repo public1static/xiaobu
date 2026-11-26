@@ -296,15 +296,45 @@
   font-size: 23px;
   line-height: 1;
 }
-.kind {
+.direction-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #edf2ee;
+}
+.direction-tab {
   display: grid;
   place-items: center;
-  min-height: 38px;
-  color: var(--green);
-  background: #eaf3ed;
-  border-radius: 11px;
+  width: 100%;
+  min-height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 650;
+}
+.direction-tab.selected {
+  border-color: var(--line);
+  background: white;
+  color: var(--green);
+  font-weight: 750;
+}
+.day-totals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.row-amount.income {
+  color: var(--green);
 }
 .amount-field {
   padding: 15px 16px 11px;

@@ -1,4 +1,4 @@
-package com.xiaobu.ledger.infrastructure;
+package com.xiaobu.ledger.domain;
 
 public enum TransactionDirection {
   EXPENSE,

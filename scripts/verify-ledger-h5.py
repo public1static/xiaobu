@@ -15,7 +15,7 @@ if port not in PORTS:
 endpoint = f"http://127.0.0.1:{port}/api/v1"
 date = datetime.date.today().isoformat()
 note = f"小簿验收-{uuid.uuid4().hex[:8]}"
-draft = {"amountCents": 1230, "bookedOn": date, "categoryCode": "DINING", "note": note}
+draft = {"direction": "EXPENSE", "amountCents": 1230, "bookedOn": date, "categoryCode": "DINING", "note": note}
 
 
 def client():
@@ -46,7 +46,7 @@ def sign_in(session, account):
     assert status == 200 and response["success"], status
     ledger = response["data"]["ledgerId"]
     assert call(session, "/local-session")[1]["data"]["ledgerId"] == ledger
-    return f"/ledgers/{ledger}/expenses"
+    return f"/ledgers/{ledger}/transactions"
 
 
 alpha, beta, guest = client(), client(), client()
@@ -66,13 +66,20 @@ status, saved = call(alpha, alpha_path, {**draft, "actorId": "user_preview_beta"
 assert status == 200 and saved["success"], status
 record = saved["data"]
 assert all(record[key] == value for key, value in draft.items())
+income_draft = {**draft, "direction": "INCOME", "categoryCode": "SALARY", "amountCents": 500000, "note": note + "-收入"}
+assert call(alpha, alpha_path, {**draft, "direction": "INCOME"})[0] == 400
+assert call(alpha, alpha_path, {**draft, "direction": 1})[0] == 400
+status, income = call(alpha, alpha_path, income_draft)
+assert status == 200 and income["data"]["amountCents"] == 500000
+assert income["data"]["direction"] == "INCOME"
 status, result = call(alpha, alpha_path + month)
 assert status == 200 and result["success"]
 assert [row for row in result["data"] if row["note"] == note] == [record]
+assert income["data"] in result["data"]
 status, result = call(beta, beta_path + month)
-assert status == 200 and all(row["note"] != note for row in result["data"])
+assert status == 200 and all(not row["note"].startswith(note) for row in result["data"])
 assert call(alpha, "/local-session", method="DELETE")[0] == 204
 assert call(alpha, alpha_path + month)[0] == 401
 assert sign_in(alpha, "alpha") == alpha_path
 assert record in call(alpha, alpha_path + month)[1]["data"]
-print(f"Expense persisted and isolated: {record['id']} | {date} | 1230 cents | {note}")
+print(f"Income and expense persisted and isolated: {record['id']} | {date} | 1230 cents | {note}")

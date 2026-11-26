@@ -7,13 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
-import com.xiaobu.ledger.application.ExpenseApplicationService;
-import com.xiaobu.ledger.application.ExpenseResult;
-import com.xiaobu.ledger.application.ListExpensesQuery;
+import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
+import com.xiaobu.ledger.application.LedgerTransactionResult;
+import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
 import com.xiaobu.ledger.application.PersonalLedgerApplicationService;
-import com.xiaobu.ledger.application.RecordExpenseCommand;
-import com.xiaobu.ledger.domain.Expense;
-import com.xiaobu.ledger.domain.ExpenseDetails;
+import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
+import com.xiaobu.ledger.domain.LedgerTransaction;
+import com.xiaobu.ledger.domain.LedgerTransactionDetails;
+import com.xiaobu.ledger.domain.TransactionDirection;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -39,10 +40,10 @@ import org.springframework.transaction.annotation.Transactional;
     webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("local-expense")
 @Transactional
-class ExpensePersistenceMySqlTest {
+class LedgerTransactionPersistenceMySqlTest {
 
-  @Autowired private ExpenseApplicationService expenses;
-  @Autowired private ExpensePersistenceAdapter expensePersistence;
+  @Autowired private LedgerTransactionApplicationService expenses;
+  @Autowired private LedgerTransactionPersistenceAdapter expensePersistence;
   @Autowired private PersonalLedgerApplicationService ledgers;
   @Autowired private EntityManager entityManager;
   @Autowired private JdbcTemplate jdbc;
@@ -75,14 +76,18 @@ class ExpensePersistenceMySqlTest {
   }
 
   @Test
-  void assignedIdConflictDoesNotUpdateAnExistingExpense() {
+  void assignedIdConflictDoesNotUpdateAnExistingLedgerTransaction() {
     String ledgerId = newLedgerId();
     var date = LocalDate.of(2026, 10, 31);
     var saved = record(ledgerId, "alice", date);
     entityManager.flush();
     entityManager.clear();
 
-    var conflict = new Expense(saved.id(), new ExpenseDetails(9900, date, "DINING", "冲突记录"));
+    var conflict =
+        new LedgerTransaction(
+            saved.id(),
+            new LedgerTransactionDetails(
+                TransactionDirection.EXPENSE, 9900, date, "DINING", "冲突记录"));
     assertThrows(
         ConstraintViolationException.class,
         () -> {
@@ -92,29 +97,48 @@ class ExpensePersistenceMySqlTest {
   }
 
   @Test
-  void findsOnlyActiveExpensesForTheOwnedLedgerAndInclusiveMonth() {
+  void findsOnlyActiveLedgerTransactionsForTheOwnedLedgerAndInclusiveMonth() {
     String ledgerId = newLedgerId();
     var october = YearMonth.of(2026, 10);
 
     var first = record(ledgerId, "alice", october.atDay(1));
     var last = record(ledgerId, "alice", october.atEndOfMonth());
     var deleted = record(ledgerId, "alice", october.atDay(3));
-    var income = record(ledgerId, "alice", october.atDay(5));
+    var income =
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledgerId,
+                "alice",
+                TransactionDirection.INCOME,
+                500000,
+                october.atDay(5),
+                "SALARY",
+                "工资"));
     record(ledgerId, "alice", october.atDay(1).minusDays(1));
     record(ledgerId, "alice", october.plusMonths(1).atDay(1));
     record(newLedgerId("bob"), "bob", october.atDay(5));
     entityManager.flush();
     jdbc.update("UPDATE ledger_transactions SET deleted = 1 WHERE id = ?", deleted.id());
-    jdbc.update("UPDATE ledger_transactions SET direction = 'INCOME' WHERE id = ?", income.id());
     entityManager.clear();
 
-    var found = expenses.listExpenses(new ListExpensesQuery(ledgerId, "alice", october));
-    assertEquals(List.of(last, first), found);
+    var found =
+        expenses.listLedgerTransactions(
+            new ListLedgerTransactionsQuery(ledgerId, "alice", october));
+    assertEquals(List.of(last, income, first), found);
+    assertEquals(
+        "INCOME",
+        jdbc.queryForObject(
+            "SELECT direction FROM ledger_transactions WHERE id = ?", String.class, income.id()));
+    assertEquals(
+        500000L,
+        jdbc.queryForObject(
+            "SELECT amount_cents FROM ledger_transactions WHERE id = ?", Long.class, income.id()));
   }
 
-  private ExpenseResult record(String ledgerId, String actorId, LocalDate date) {
-    return expenses.recordExpense(
-        new RecordExpenseCommand(ledgerId, actorId, 1230, date, "DINING", " 午饭 "));
+  private LedgerTransactionResult record(String ledgerId, String actorId, LocalDate date) {
+    return expenses.recordLedgerTransaction(
+        new RecordLedgerTransactionCommand(
+            ledgerId, actorId, TransactionDirection.EXPENSE, 1230, date, "DINING", " 午饭 "));
   }
 
   @Test
@@ -129,8 +153,8 @@ class ExpensePersistenceMySqlTest {
         assertThrows(
                 FoundationException.class,
                 () ->
-                    expenses.listExpenses(
-                        new ListExpensesQuery(ledgerId, "bob", YearMonth.from(date))))
+                    expenses.listLedgerTransactions(
+                        new ListLedgerTransactionsQuery(ledgerId, "bob", YearMonth.from(date))))
             .category());
     entityManager.flush();
     assertEquals(
