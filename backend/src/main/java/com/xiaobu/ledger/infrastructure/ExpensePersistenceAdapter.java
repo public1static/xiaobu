@@ -24,10 +24,10 @@ class ExpensePersistenceAdapter implements ExpenseRepository {
   }
 
   @Override
-  public List<Expense> findByMonthAndCreator(String ledgerId, String creatorId, YearMonth month) {
+  public List<Expense> findByLedgerAndMonth(String ledgerId, YearMonth month) {
     return transactions
-        .findActiveByCreatorAndDateRange(
-            ledgerId, creatorId, TransactionDirection.EXPENSE, month.atDay(1), month.atEndOfMonth())
+        .findActiveByLedgerAndDateRange(
+            ledgerId, TransactionDirection.EXPENSE, month.atDay(1), month.atEndOfMonth())
         .stream()
         .map(mapper::toDomain)
         .toList();

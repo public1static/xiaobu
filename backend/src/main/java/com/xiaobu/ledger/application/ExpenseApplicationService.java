@@ -17,14 +17,20 @@ public class ExpenseApplicationService {
 
   private final ExpenseRepository repository;
   private final EntityIdGenerator idGenerator;
+  private final PersonalLedgerApplicationService ledgers;
 
-  public ExpenseApplicationService(ExpenseRepository repository, EntityIdGenerator idGenerator) {
+  public ExpenseApplicationService(
+      ExpenseRepository repository,
+      EntityIdGenerator idGenerator,
+      PersonalLedgerApplicationService ledgers) {
     this.repository = repository;
     this.idGenerator = idGenerator;
+    this.ledgers = ledgers;
   }
 
   @Transactional
   public ExpenseResult recordExpense(RecordExpenseCommand command) {
+    ledgers.requireOwnership(command.ledgerId(), command.actorId());
     var details =
         new ExpenseDetails(
             command.amountCents(), command.bookedOn(), command.categoryCode(), command.note());
@@ -35,9 +41,8 @@ public class ExpenseApplicationService {
 
   @Transactional(readOnly = true)
   public List<ExpenseResult> listExpenses(ListExpensesQuery query) {
-    return repository
-        .findByMonthAndCreator(query.ledgerId(), query.creatorId(), query.month())
-        .stream()
+    ledgers.requireOwnership(query.ledgerId(), query.actorId());
+    return repository.findByLedgerAndMonth(query.ledgerId(), query.month()).stream()
         .map(ExpenseResult::from)
         .toList();
   }
