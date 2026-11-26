@@ -7,6 +7,7 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
+from urllib.parse import urlencode
 
 PORTS = {"18125", "18126", "5173", "4173"}
 port = sys.argv[1] if len(sys.argv) > 1 else "18125"
@@ -52,7 +53,7 @@ def sign_in(session, account):
 alpha, beta, guest = client(), client(), client()
 alpha_path, beta_path = sign_in(alpha, "alpha"), sign_in(beta, "beta")
 assert alpha_path != beta_path
-month = f"?month={date[:7]}"
+month = "?" + urlencode({"month": date[:7], "keyword": note})
 assert call(guest, alpha_path + month)[0] == 401
 assert call(guest, alpha_path, draft)[0] == 401
 assert call(beta, alpha_path + month)[0] == 403

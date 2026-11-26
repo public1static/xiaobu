@@ -75,3 +75,12 @@ test('load more depends only on the server page metadata', async () => {
   assert.equal(hasNextStatementPage({ page: 2, pageSize: 20, totalCount: 49 }), false);
   assert.equal(hasNextStatementPage({ page: 1, pageSize: 20, totalCount: 40 }), false);
 });
+
+test('edits between pages invalidate loaded rows even when the count stays the same', async () => {
+  const { sameStatementDays } = await import('../src/pages/ledger/transaction.ts');
+  const day = { bookedOn: '2026-11-25', entryCount: 20, expenseCents: 100, incomeCents: 0 };
+  assert.equal(sameStatementDays([day], [{ ...day }]), true);
+  for (const change of [{ expenseCents: 200 }, { bookedOn: '2026-11-26' }, { entryCount: 19 }]) {
+    assert.equal(sameStatementDays([day], [{ ...day, ...change }]), false);
+  }
+});

@@ -55,6 +55,7 @@ import {
   formatCents,
   formatSignedCurrency,
   hasNextStatementPage,
+  sameStatementDays,
   localDay,
   parseCents,
   resolveLedgerMonth,
@@ -153,8 +154,9 @@ function startPresetEntry(preset: TransactionEntryPreset) {
   if (preset.defaultDate) applyExtensionDateDefault(preset.defaultDate);
 }
 
+// 礼单默认日期沿用记账表单可选的起止日期。
 function applyExtensionDateDefault(value: string) {
-  if (value > '1900-01-01' && value <= today.value) date.value = value;
+  if (value >= '1900-01-01' && value <= today.value) date.value = value;
 }
 
 function refreshAfterTransactionChange() {
@@ -584,7 +586,7 @@ async function refresh(append = false) {
       const existing = new Set(append ? items.value.map((item) => item.id) : []);
       if (
         append &&
-        (result.totalCount !== statement.value?.totalCount ||
+        (!sameStatementDays(statement.value?.days ?? [], result.days) ||
           result.entries.some((item) => existing.has(item.id)))
       ) {
         // Offset pages can shift after another member records or deletes an entry.

@@ -5,6 +5,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
@@ -131,16 +132,18 @@ def main():
     result = call(alpha, "GET", f"{path}/{income['id']}")["extensions"][0]["detail"]
     assert result["bookCode"] == "DAILY_RECEIVED" and result["personName"] is None
     gifts = f"{root}/gifts"
+    run_id = uuid.uuid4().hex[:12]
+    person_name = f"测试同名-{run_id}"
     book = call(
         alpha, "POST", gifts + "/books",
-        {"name": "活动验收", "direction": "INCOME", "defaultReason": "婚礼"},
+        {"name": f"活动验收-{run_id}", "direction": "INCOME", "defaultReason": "婚礼"},
         201,
     )
     contact_path = gifts + "/contacts"
-    first_person = call(alpha, "POST", contact_path, {"name": "测试同名"}, 201)
-    call(alpha, "POST", contact_path, {"name": "测试同名"}, 409)
+    first_person = call(alpha, "POST", contact_path, {"name": person_name}, 201)
+    call(alpha, "POST", contact_path, {"name": person_name}, 409)
     second_person = call(
-        alpha, "POST", contact_path, {"name": "测试同名", "distinction": "同事"}, 201
+        alpha, "POST", contact_path, {"name": person_name, "distinction": "同事"}, 201
     )
     assert first_person["id"] != second_person["id"]
     targeted = {
@@ -185,7 +188,7 @@ def main():
     # Over 100 real postings: first page totals must not depend on visible row count,
     # and a literal keyword containing percent/underscore must find the oldest row.
     large = call(alpha, "POST", gifts + "/books",
-        {"name": "分页验收礼单", "direction": "INCOME"}, 201)
+        {"name": f"分页验收礼单-{run_id}", "direction": "INCOME"}, 201)
     large_filter = f"{gifts}/activity?bookId={large['id']}"
     def for_large(amount, day, note):
         return {

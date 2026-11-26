@@ -1,3 +1,5 @@
+import type { LedgerStatementDay } from '../../api/ledger-transactions';
+
 const EXPENSE_CATEGORIES = [
   ['DINING', '餐饮'],
   ['GROCERIES', '买菜'],
@@ -39,6 +41,22 @@ export function hasNextStatementPage(
   result: { page: number; pageSize: number; totalCount: number } | null,
 ) {
   return result !== null && (result.page + 1) * result.pageSize < result.totalCount;
+}
+
+// 两次查询之间金额或日期发生变化时，先前加载的明细需要重新读取。
+export function sameStatementDays(previous: LedgerStatementDay[], current: LedgerStatementDay[]) {
+  return (
+    previous.length === current.length &&
+    previous.every((day, index) => {
+      const next = current[index];
+      return (
+        day.bookedOn === next.bookedOn &&
+        day.entryCount === next.entryCount &&
+        day.incomeCents === next.incomeCents &&
+        day.expenseCents === next.expenseCents
+      );
+    })
+  );
 }
 
 export function parseCents(input: string): number | null {

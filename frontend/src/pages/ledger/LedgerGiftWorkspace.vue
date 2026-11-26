@@ -62,6 +62,7 @@ function errorText(failure: unknown, fallback: string) {
   return failure instanceof ApiRequestError ? failure.message : fallback;
 }
 
+// 按当前筛选加载往来；跨页期间账本变更时从首页重新读取。
 async function loadRows(append = false) {
   clearTimeout(searchDelay);
   const sequence = ++requestSequence;
@@ -84,6 +85,18 @@ async function loadRows(append = false) {
       pageSize: 20,
     });
     if (sequence !== requestSequence) return;
+    if (append) {
+      const loaded = new Set(rows.value.map((row) => row.transactionId));
+      if (
+        result.totalCount !== summary.value.totalCount ||
+        result.incomeCents !== summary.value.incomeCents ||
+        result.expenseCents !== summary.value.expenseCents ||
+        result.entries.some((row) => loaded.has(row.transactionId))
+      ) {
+        await loadRows();
+        return;
+      }
+    }
     rows.value = append ? [...rows.value, ...result.entries] : result.entries;
     currentPage.value = result.page;
     summary.value = {

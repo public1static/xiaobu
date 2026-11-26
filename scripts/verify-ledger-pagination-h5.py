@@ -5,6 +5,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
@@ -43,7 +44,7 @@ def main():
     ledger = call(alpha, "POST", "/local-session", {"account": "alpha"})["ledgerId"]
     call(beta, "POST", "/local-session", {"account": "beta"})
     path = f"/ledgers/{ledger}/transactions"
-    marker = "流水翻页验收%_"
+    marker = f"流水翻页验收%_{uuid.uuid4().hex}"
 
     def record(direction, amount, day, category):
         return call(alpha, "POST", path, {
