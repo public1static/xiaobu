@@ -14,14 +14,14 @@ interface LedgerStatementJpaRepository extends Repository<LedgerTransactionEntit
       """
       FROM (
         SELECT t.id, t.direction, t.amount_cents, t.booked_on, t.category_code, t.note,
-               t.account_id, NULL AS original_id, t.created_at, 0 AS kind
+               t.account_id, NULL AS original_id, t.created_at, 0 AS kind, t.created_by AS recorder
         FROM ledger_transactions t
         WHERE t.ledger_id = :ledger AND t.deleted = 0
           AND t.booked_on BETWEEN :from AND :through
           AND (:keyword = '' OR LOCATE(LOWER(:keyword), LOWER(t.note)) > 0)
         UNION ALL
         SELECT r.id, original.direction, r.amount_cents, r.received_on, original.category_code,
-               original.note, r.account_id, original.id, r.created_at, 1
+               original.note, r.account_id, original.id, r.created_at, 1, r.created_by
         FROM ledger_refunds r
         INNER JOIN ledger_transactions original
             ON original.id = r.transaction_id AND original.ledger_id = r.ledger_id
@@ -30,6 +30,11 @@ interface LedgerStatementJpaRepository extends Repository<LedgerTransactionEntit
           AND (:keyword = '' OR LOCATE(LOWER(:keyword), LOWER(original.note)) > 0
               OR LOCATE(LOWER(:keyword), '退款') > 0)
       ) AS activity
+      WHERE (:category IS NULL OR category_code = :category)
+        AND (:account IS NULL OR account_id = :account)
+        AND (:unassigned = 0 OR account_id IS NULL)
+        AND (:direction IS NULL OR direction = :direction)
+        AND (:recorder IS NULL OR recorder = :recorder)
       """;
 
   @Query(
@@ -50,6 +55,11 @@ interface LedgerStatementJpaRepository extends Repository<LedgerTransactionEntit
       @Param("from") LocalDate from,
       @Param("through") LocalDate through,
       @Param("keyword") String keyword,
+      @Param("category") String category,
+      @Param("account") String account,
+      @Param("unassigned") boolean unassigned,
+      @Param("direction") String direction,
+      @Param("recorder") String recorder,
       @Param("limit") int limit,
       @Param("offset") int offset);
 
@@ -69,7 +79,57 @@ interface LedgerStatementJpaRepository extends Repository<LedgerTransactionEntit
       @Param("ledger") String ledgerId,
       @Param("from") LocalDate from,
       @Param("through") LocalDate through,
-      @Param("keyword") String keyword);
+      @Param("keyword") String keyword,
+      @Param("category") String category,
+      @Param("account") String account,
+      @Param("unassigned") boolean unassigned,
+      @Param("direction") String direction,
+      @Param("recorder") String recorder);
+
+  // 聚合与来源明细共用授权范围和过滤条件；固定次序使相同净支出的排名可复现。
+  @Query(
+      value =
+          """
+          SELECT CASE :dimension
+            WHEN 'CATEGORY' THEN category_code WHEN 'ACCOUNT' THEN account_id
+            WHEN 'RECORDER' THEN recorder WHEN 'DAY' THEN DATE_FORMAT(booked_on, '%Y-%m-%d')
+            WHEN 'WEEK' THEN DATE_FORMAT(DATE_SUB(booked_on, INTERVAL WEEKDAY(booked_on) DAY), '%Y-%m-%d')
+            WHEN 'MONTH' THEN DATE_FORMAT(booked_on, '%Y-%m') END AS groupKey,
+            COUNT(*) AS entryCount,
+            SUM(CASE WHEN direction = 'INCOME' THEN amount_cents ELSE 0 END) AS incomeCents,
+            SUM(CASE WHEN direction = 'EXPENSE' AND kind = 0 THEN amount_cents ELSE 0 END) AS grossExpenseCents,
+            SUM(CASE WHEN kind = 1 THEN amount_cents ELSE 0 END) AS refundCents,
+            SUM(CASE WHEN kind = 1 THEN -amount_cents
+                     WHEN direction = 'EXPENSE' THEN amount_cents ELSE 0 END) AS netExpenseCents
+          """
+              + STATEMENT
+              + " GROUP BY groupKey ORDER BY netExpenseCents DESC, groupKey ASC",
+      nativeQuery = true)
+  List<StatementGroup> summarizeByGroup(
+      @Param("ledger") String ledgerId,
+      @Param("from") LocalDate from,
+      @Param("through") LocalDate through,
+      @Param("keyword") String keyword,
+      @Param("category") String category,
+      @Param("account") String account,
+      @Param("unassigned") boolean unassigned,
+      @Param("direction") String direction,
+      @Param("recorder") String recorder,
+      @Param("dimension") String dimension);
+
+  interface StatementGroup {
+    String getGroupKey();
+
+    long getEntryCount();
+
+    long getIncomeCents();
+
+    long getGrossExpenseCents();
+
+    long getRefundCents();
+
+    long getNetExpenseCents();
+  }
 
   interface StatementRow {
     String getId();

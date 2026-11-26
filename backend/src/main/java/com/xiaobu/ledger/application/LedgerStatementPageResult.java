@@ -10,4 +10,5 @@ public record LedgerStatementPageResult(
     long balanceCents,
     long totalCount,
     int page,
-    int pageSize) {}
+    int pageSize,
+    List<LedgerStatementGroupResult> groups) {}

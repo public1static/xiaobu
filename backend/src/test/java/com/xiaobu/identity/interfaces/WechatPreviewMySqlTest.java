@@ -65,12 +65,26 @@ class WechatPreviewMySqlTest {
         {"direction":"EXPENSE","amountCents":3200,"bookedOn":"2026-10-31","categoryCode":"DINING","note":"联调午饭"}
         """;
     assertEquals(200, send("POST", transactions, draft, alphaToken).statusCode());
+    String catalog = "/ledgers/" + book + "/assistant/query-catalog";
+    assertEquals(403, send("GET", catalog, null, betaToken).statusCode());
     var invitation = data(send("POST", "/ledgers/" + book + "/invitations", null, alphaToken));
     String invite = "{\"token\":\"" + invitation.get("token").asText() + "\"}";
     assertEquals(200, send("POST", "/ledger-invitations/preview", invite, null).statusCode());
     assertEquals(403, send("GET", transactions + "?month=2026-10", null, betaToken).statusCode());
     assertEquals(200, send("POST", "/ledger-invitations/accept", invite, betaToken).statusCode());
     var statement = data(send("GET", transactions + "?month=2026-10", null, betaToken));
+    assertEquals(
+        "statement", data(send("GET", catalog, null, betaToken)).get(0).get("name").asText());
+    String query =
+        transactions + "?month=2026-10&direction=EXPENSE&categoryCode=DINING&groupBy=CATEGORY";
+    assertEquals(
+        400,
+        send("GET", transactions + "?month=2026-10&groupBy=UNKNOWN", null, betaToken).statusCode());
+    var grouped = data(send("GET", query, null, betaToken));
+    assertEquals(3200, grouped.get("groups").get(0).get("netExpenseCents").asInt());
+    assertEquals(
+        0,
+        data(send("GET", query + "&recordedByMe=true", null, betaToken)).get("totalCount").asInt());
     assertEquals(1, statement.get("totalCount").asInt());
     assertEquals(3200, statement.get("expenseCents").asInt());
     assertEquals(3200, statement.get("entries").get(0).get("amountCents").asInt());
@@ -108,7 +122,9 @@ class WechatPreviewMySqlTest {
     @Bean
     @Primary
     WechatIdentityGateway fixtureIdentities() {
-      return code -> code.equals("B") ? "wx_beta_fixture" : "wx_alpha_fixture";
+      // 每次启动使用独立身份，同一测试中的重复登录仍回到同一账本。
+      var run = java.util.UUID.randomUUID().toString();
+      return code -> (code.equals("B") ? "wx_b_" : "wx_a_") + run;
     }
   }
 }

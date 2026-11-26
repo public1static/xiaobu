@@ -10,4 +10,5 @@ record LedgerStatementPageResponse(
     long balanceCents,
     long totalCount,
     int page,
-    int pageSize) {}
+    int pageSize,
+    List<LedgerStatementGroupResponse> groups) {}

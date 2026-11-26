@@ -13,7 +13,32 @@ public record ListLedgerTransactionsQuery(
     LocalDate through,
     String keyword,
     int page,
-    int pageSize) {
+    int pageSize,
+    LedgerStatementFilter filter,
+    GroupBy groupBy) {
+
+  // 分组键由服务端固定映射，避免把输入当成数据库标识符。
+  public enum GroupBy {
+    CATEGORY,
+    ACCOUNT,
+    RECORDER,
+    DAY,
+    WEEK,
+    MONTH
+  }
+
+  // 普通流水页无需分组或额外筛选。
+  public ListLedgerTransactionsQuery(
+      String ledgerId,
+      String actorId,
+      LocalDate from,
+      LocalDate through,
+      String keyword,
+      int page,
+      int pageSize) {
+    this(
+        ledgerId, actorId, from, through, keyword, page, pageSize, LedgerStatementFilter.ALL, null);
+  }
 
   public static final int DEFAULT_PAGE_SIZE = 20;
   public static final int MAX_PAGE_SIZE = 100;
@@ -27,7 +52,9 @@ public record ListLedgerTransactionsQuery(
     this(ledgerId, actorId, month.atDay(1), month.atEndOfMonth(), "");
   }
 
+  // 所有入口共用日期、筛选及分页边界。
   public ListLedgerTransactionsQuery {
+    if (filter == null) filter = LedgerStatementFilter.ALL;
     if (page < 0
         || pageSize < 1
         || pageSize > MAX_PAGE_SIZE
