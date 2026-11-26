@@ -13,11 +13,15 @@ class LedgerManualReminderPersistenceAdapter implements LedgerManualReminderRepo
   private static final IdPrefix REMINDER_PREFIX = new IdPrefix("reminder");
   private final LedgerManualReminderJpaRepository rows;
   private final EntityIdGenerator ids;
+  private final LedgerManualReminderOccurrenceJpaRepository occurrences;
 
   LedgerManualReminderPersistenceAdapter(
-      LedgerManualReminderJpaRepository rows, EntityIdGenerator ids) {
+      LedgerManualReminderJpaRepository rows,
+      EntityIdGenerator ids,
+      LedgerManualReminderOccurrenceJpaRepository occurrences) {
     this.rows = rows;
     this.ids = ids;
+    this.occurrences = occurrences;
   }
 
   @Override
@@ -43,5 +47,25 @@ class LedgerManualReminderPersistenceAdapter implements LedgerManualReminderRepo
             .orElseThrow();
     row.revise(reminder, actorId);
     return row.toDomain();
+  }
+
+  @Override
+  public Optional<LedgerManualReminder> findCompletedOccurrence(String reminderId, long revision) {
+    return occurrences
+        .findByReminderIdAndRevisionAndDeletedFalse(reminderId, revision)
+        .map(LedgerManualReminderOccurrenceEntity::toDomain);
+  }
+
+  @Override
+  public void recordCompletedOccurrence(LedgerManualReminder reminder, String actorId) {
+    occurrences.save(new LedgerManualReminderOccurrenceEntity(reminder, actorId));
+  }
+
+  @Override
+  public void revertCompletedOccurrence(String reminderId, long revision, String actorId) {
+    occurrences
+        .findByReminderIdAndRevisionAndDeletedFalse(reminderId, revision)
+        .orElseThrow()
+        .revert(actorId);
   }
 }

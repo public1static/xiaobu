@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { listLedgerTodos, type LedgerTodo } from '../../api/ledger-todos';
 import { ledgerTodoKey, ledgerTodoSource } from './ledger-todo-sources';
+import { ApiRequestError } from '../../api/request';
 import { formatSignedCurrency } from './transaction';
 import LedgerIcon from '../../components/LedgerIcon.vue';
 
@@ -29,6 +30,15 @@ const acting = ref(false);
 const undo = ref<LedgerTodo>();
 let undoTimer: ReturnType<typeof setTimeout> | undefined;
 
+function clearUndo() {
+  clearTimeout(undoTimer);
+  undo.value = undefined;
+}
+function selectRow(row: LedgerTodo) {
+  clearUndo();
+  emit('select', row);
+}
+
 async function complete(row: LedgerTodo, done: boolean) {
   const action = ledgerTodoSource(row.source)?.complete;
   if (!props.writable || acting.value || !action) return;
@@ -39,8 +49,13 @@ async function complete(row: LedgerTodo, done: boolean) {
     undo.value = done ? row : undefined;
     if (done) undoTimer = setTimeout(() => (undo.value = undefined), 8000);
     emit('changed');
-  } catch {
-    uni.showToast({ title: '未能更新状态，请重试', icon: 'none' });
+  } catch (error) {
+    const changed = error instanceof ApiRequestError && error.status === 409;
+    if (changed) {
+      undo.value = undefined;
+      emit('changed');
+    }
+    uni.showToast({ title: changed ? '该期提醒已更新' : '未能更新状态，请重试', icon: 'none' });
   } finally {
     acting.value = false;
   }
@@ -159,7 +174,7 @@ function shortMonth(date: string) {
               class="agenda-row"
               :aria-label="ledgerTodoSource(row.source)?.action + '：' + row.title"
               :disabled="!ledgerTodoSource(row.source)"
-              @click="emit('select', row)"
+              @click="selectRow(row)"
             >
               <view class="agenda-date"
                 ><text>{{ shortMonth(row.dueOn) }}</text
@@ -345,20 +360,24 @@ function shortMonth(date: string) {
   font-size: 12px;
 }
 .agenda-undo {
-  position: sticky;
+  position: fixed;
   bottom: max(12px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   justify-content: space-between;
   align-items: center;
   width: calc(min(100%, 540px) - 28px);
   box-sizing: border-box;
-  margin: 0 auto 12px;
+  margin: 0;
   padding: 0 12px;
   background: #21352e;
   color: white;
   border-radius: 10px;
 }
 .todo-workspace .agenda-undo button {
+  display: flex;
+  align-items: center;
   min-height: 44px;
   padding: 0 8px;
 }

@@ -166,7 +166,7 @@ const reminderBillTarget = ref<{ billId: string; month: string }>();
 const budgetOpen = ref(false);
 const rentalsOpen = ref(false);
 const remindersOpen = ref(false);
-const manualReminderId = ref<string | null>(null);
+const manualReminderTarget = ref<{ id: string; revision?: number } | null>(null);
 const reminderContractId = ref('');
 const reminderCount = ref(0);
 const reminderRevision = ref(0);
@@ -187,7 +187,7 @@ function closeFixedBills() {
 }
 function openTodo(item: LedgerTodo) {
   openLedgerTodo(item, {
-    openManualReminder: (id) => (manualReminderId.value = id),
+    openManualReminder: (id, revision) => (manualReminderTarget.value = { id, revision }),
     openContract: openRentalWorkspace,
     openFixedBill: (billId, month) => {
       reminderBillTarget.value = { billId, month };
@@ -321,7 +321,7 @@ watch(ledgerId, async (target) => {
   closeFixedBills();
   closeRentalWorkspace();
   remindersOpen.value = false;
-  manualReminderId.value = null;
+  manualReminderTarget.value = null;
   reminderCount.value = 0;
   void refreshReminderCount();
   categoryCatalog.value = null;
@@ -525,7 +525,7 @@ function resetSession(next: LocalSession | null) {
   closeFixedBills();
   closeRentalWorkspace();
   remindersOpen.value = false;
-  manualReminderId.value = null;
+  manualReminderTarget.value = null;
   ledgerHubOpen.value = false;
   giftWorkspaceOpen.value = false;
   sharedLedger.value = null;
@@ -1759,24 +1759,25 @@ const entryDateLabel = computed(() => {
     />
     <LedgerTodoWorkspace
       v-if="remindersOpen && ledgerId"
-      v-show="!rentalsOpen && !fixedBillsOpen && manualReminderId === null"
+      v-show="!rentalsOpen && !fixedBillsOpen && manualReminderTarget === null"
       :key="ledgerId"
       :ledger-id="ledgerId"
       :revision="reminderRevision"
       @close="remindersOpen = false"
       :writable="!readOnly"
-      @create="manualReminderId = ''"
+      @create="manualReminderTarget = { id: '' }"
       @changed="refreshLedgerTodos"
       @select="openTodo"
       @count="reminderCount = $event"
     />
     <LedgerManualReminderWorkspace
-      v-if="remindersOpen && manualReminderId !== null && ledgerId"
-      :key="ledgerId + ':' + manualReminderId"
+      v-if="remindersOpen && manualReminderTarget !== null && ledgerId"
+      :key="ledgerId + ':' + manualReminderTarget.id + ':' + manualReminderTarget.revision"
       :ledger-id="ledgerId"
-      :reminder-id="manualReminderId"
+      :reminder-id="manualReminderTarget.id"
+      :revision="manualReminderTarget.revision"
       :writable="!readOnly"
-      @close="manualReminderId = null"
+      @close="manualReminderTarget = null"
       @changed="refreshLedgerTodos"
     />
     <LedgerRentalWorkspace

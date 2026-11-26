@@ -19,6 +19,7 @@ import com.xiaobu.ledger.application.PayFixedBillCommand;
 import com.xiaobu.ledger.application.RentalApplicationService;
 import com.xiaobu.ledger.application.SaveLedgerManualReminderCommand;
 import com.xiaobu.ledger.application.SaveRentalHomeCommand;
+import com.xiaobu.ledger.domain.ManualReminderFrequency;
 import com.xiaobu.ledger.domain.RentalPaymentCycle;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -137,7 +138,16 @@ class LedgerTodoPersistenceMySqlTest {
     var time = LocalTime.of(9, 30);
     var reminder =
         reminders.saveLedgerManualReminder(
-            new SaveLedgerManualReminderCommand(f.ledger(), f.actor(), null, "联系房东", due, time, 3));
+            new SaveLedgerManualReminderCommand(
+                f.ledger(),
+                f.actor(),
+                null,
+                "联系房东",
+                due,
+                time,
+                3,
+                ManualReminderFrequency.ONCE,
+                null));
     assertEquals(TODAY.atTime(time), reminder.remindAt());
     assertEquals(
         "2025-02-28 09:30:00",
@@ -145,7 +155,9 @@ class LedgerTodoPersistenceMySqlTest {
             "SELECT CAST(remind_at AS CHAR) FROM ledger_manual_reminders WHERE id = ?",
             String.class,
             reminder.id()));
-    assertEquals(reminder, reminders.getLedgerManualReminder(f.ledger(), f.actor(), reminder.id()));
+    assertEquals(
+        reminder,
+        reminders.getLedgerManualReminder(f.ledger(), f.actor(), reminder.id(), null).reminder());
     var before = new LedgerTodoQuery(f.ledger(), f.actor(), reminder.remindAt().minusSeconds(1));
     var at = new LedgerTodoQuery(f.ledger(), f.actor(), reminder.remindAt());
     var planned = repository.listLedgerTodos(before, false, 0);
@@ -156,8 +168,14 @@ class LedgerTodoPersistenceMySqlTest {
     assertEquals(1, repository.countPendingLedgerTodos(at));
     assertEquals("PENDING", repository.listLedgerTodos(at, false, 0).entries().getFirst().status());
 
-    reminders.setLedgerManualReminderCompletion(f.ledger(), f.actor(), reminder.id(), true);
-    reminders.setLedgerManualReminderCompletion(f.ledger(), f.actor(), reminder.id(), true);
+    var completed =
+        reminders.setLedgerManualReminderCompletion(
+            f.ledger(), f.actor(), reminder.id(), reminder.revision(), true);
+    assertThrows(
+        FoundationException.class,
+        () ->
+            reminders.setLedgerManualReminderCompletion(
+                f.ledger(), f.actor(), reminder.id(), reminder.revision(), true));
     assertEquals(0, repository.listLedgerTodos(at, false, 0).totalCount());
     assertEquals(
         "COMPLETED", repository.listLedgerTodos(at, true, 0).entries().getFirst().status());
@@ -166,13 +184,31 @@ class LedgerTodoPersistenceMySqlTest {
         () ->
             reminders.saveLedgerManualReminder(
                 new SaveLedgerManualReminderCommand(
-                    f.ledger(), f.actor(), reminder.id(), "修改", due, time, 0)));
-    reminders.setLedgerManualReminderCompletion(f.ledger(), f.actor(), reminder.id(), false);
+                    f.ledger(),
+                    f.actor(),
+                    reminder.id(),
+                    "修改",
+                    due,
+                    time,
+                    0,
+                    ManualReminderFrequency.ONCE,
+                    completed.revision())));
+    var restored =
+        reminders.setLedgerManualReminderCompletion(
+            f.ledger(), f.actor(), reminder.id(), reminder.revision(), false);
     assertEquals(1, repository.countPendingLedgerTodos(at));
     var revised =
         reminders.saveLedgerManualReminder(
             new SaveLedgerManualReminderCommand(
-                f.ledger(), f.actor(), reminder.id(), " 更新 ", due, time, 1));
+                f.ledger(),
+                f.actor(),
+                reminder.id(),
+                " 更新 ",
+                due,
+                time,
+                1,
+                ManualReminderFrequency.ONCE,
+                restored.revision()));
     assertEquals(reminder.id(), revised.id());
     assertEquals("更新", revised.title());
     assertEquals(0, repository.countPendingLedgerTodos(at));
@@ -192,32 +228,150 @@ class LedgerTodoPersistenceMySqlTest {
     var reminder =
         reminders.saveLedgerManualReminder(
             new SaveLedgerManualReminderCommand(
-                f.ledger(), f.actor(), null, "本人提醒", TODAY, LocalTime.MIDNIGHT, 0));
+                f.ledger(),
+                f.actor(),
+                null,
+                "本人提醒",
+                TODAY,
+                LocalTime.MIDNIGHT,
+                0,
+                ManualReminderFrequency.ONCE,
+                null));
     var otherActorOnSameLedger =
         new LedgerTodoQuery(f.ledger(), other.actor(), TODAY.atStartOfDay());
     assertEquals(0, repository.listLedgerTodos(otherActorOnSameLedger, false, 0).totalCount());
     assertEquals(0, repository.countPendingLedgerTodos(otherActorOnSameLedger));
     assertThrows(
         FoundationException.class,
-        () -> reminders.getLedgerManualReminder(other.ledger(), other.actor(), reminder.id()));
+        () ->
+            reminders.getLedgerManualReminder(other.ledger(), other.actor(), reminder.id(), null));
     assertThrows(
         FoundationException.class,
         () ->
             reminders.setLedgerManualReminderCompletion(
-                f.ledger(), other.actor(), reminder.id(), true));
+                f.ledger(), other.actor(), reminder.id(), reminder.revision(), true));
     assertThrows(
         FoundationException.class,
         () ->
             reminders.saveLedgerManualReminder(
                 new SaveLedgerManualReminderCommand(
-                    f.ledger(), f.actor(), null, "提前 2 天", TODAY, LocalTime.NOON, 2)));
+                    f.ledger(),
+                    f.actor(),
+                    null,
+                    "提前 2 天",
+                    TODAY,
+                    LocalTime.NOON,
+                    2,
+                    ManualReminderFrequency.ONCE,
+                    null)));
     assertThrows(
         FoundationException.class,
         () ->
             reminders.saveLedgerManualReminder(
                 new SaveLedgerManualReminderCommand(
-                    f.ledger(), f.actor(), null, "秒数", TODAY, LocalTime.of(10, 0, 1), 0)));
+                    f.ledger(),
+                    f.actor(),
+                    null,
+                    "秒数",
+                    TODAY,
+                    LocalTime.of(10, 0, 1),
+                    0,
+                    ManualReminderFrequency.ONCE,
+                    null)));
     assertEquals(1, repository.listLedgerTodos(query(f), false, 0).totalCount());
+  }
+
+  @Test
+  void onlyCompletesTheSelectedOccurrenceAndRetainsTheOriginalMonthEndAnchor() {
+    var f = fixture();
+    var date = LocalDate.of(2027, 1, 31);
+    var time = LocalTime.of(9, 30);
+    var series =
+        reminders.saveLedgerManualReminder(
+            new SaveLedgerManualReminderCommand(
+                f.ledger(),
+                f.actor(),
+                null,
+                "月末核对",
+                date,
+                time,
+                0,
+                ManualReminderFrequency.MONTHLY,
+                null));
+    var at = new LedgerTodoQuery(f.ledger(), f.actor(), series.remindAt());
+    assertEquals(
+        Long.toString(series.revision()),
+        repository.listLedgerTodos(at, false, 0).entries().getFirst().occurrence());
+
+    var february =
+        reminders.setLedgerManualReminderCompletion(
+            f.ledger(), f.actor(), series.id(), series.revision(), true);
+    assertEquals(LocalDate.of(2027, 2, 28), february.dueOn());
+    assertEquals(0, repository.countPendingLedgerTodos(at));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            reminders.setLedgerManualReminderCompletion(
+                f.ledger(), f.actor(), series.id(), series.revision(), true));
+    assertEquals(1, repository.listLedgerTodos(at, true, 0).totalCount());
+    assertEquals(
+        february,
+        reminders.getLedgerManualReminder(f.ledger(), f.actor(), series.id(), null).reminder());
+
+    var january =
+        reminders.getLedgerManualReminder(f.ledger(), f.actor(), series.id(), series.revision());
+    assertTrue(january.canUndo());
+    assertEquals(date, january.reminder().dueOn());
+    var restored =
+        reminders.setLedgerManualReminderCompletion(
+            f.ledger(), f.actor(), series.id(), series.revision(), false);
+    assertEquals(date, restored.dueOn());
+    assertEquals(0, repository.listLedgerTodos(at, true, 0).totalCount());
+    assertThrows(
+        FoundationException.class,
+        () ->
+            reminders.setLedgerManualReminderCompletion(
+                f.ledger(), f.actor(), series.id(), series.revision(), true));
+    var februaryAgain =
+        reminders.setLedgerManualReminderCompletion(
+            f.ledger(), f.actor(), series.id(), restored.revision(), true);
+    assertEquals(february.dueOn(), februaryAgain.dueOn());
+    var edited =
+        reminders.saveLedgerManualReminder(
+            new SaveLedgerManualReminderCommand(
+                f.ledger(),
+                f.actor(),
+                series.id(),
+                "新标题",
+                februaryAgain.dueOn(),
+                LocalTime.of(10, 30),
+                1,
+                ManualReminderFrequency.MONTHLY,
+                februaryAgain.revision()));
+    assertEquals(date, edited.anchorOn());
+    var march =
+        reminders.setLedgerManualReminderCompletion(
+            f.ledger(), f.actor(), series.id(), edited.revision(), true);
+    assertEquals(LocalDate.of(2027, 3, 31), march.dueOn());
+    assertEquals(LocalDate.of(2027, 3, 30).atTime(10, 30), march.remindAt());
+    assertEquals(
+        "月末核对",
+        reminders
+            .getLedgerManualReminder(f.ledger(), f.actor(), series.id(), restored.revision())
+            .reminder()
+            .title());
+    assertFalse(
+        reminders
+            .getLedgerManualReminder(f.ledger(), f.actor(), series.id(), restored.revision())
+            .canUndo());
+    assertThrows(
+        FoundationException.class,
+        () ->
+            reminders.setLedgerManualReminderCompletion(
+                f.ledger(), f.actor(), series.id(), restored.revision(), false));
+    reminders.stopLedgerManualReminder(f.ledger(), f.actor(), series.id(), march.revision());
+    assertEquals(0, repository.listLedgerTodos(at, false, 0).totalCount());
+    assertEquals(2, repository.listLedgerTodos(at, true, 0).totalCount());
   }
 
   private Fixture fixture() {

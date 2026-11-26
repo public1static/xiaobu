@@ -12,6 +12,7 @@ interface LedgerManualReminderWebMapper {
   SaveLedgerManualReminderCommand toCommand(
       String ledgerId, String actorId, String reminderId, SaveLedgerManualReminderRequest body);
 
+  @Mapping(target = ".", source = "reminder")
   @Mapping(target = "leadDays", expression = "java(reminder.leadDays())")
-  LedgerManualReminderResponse toResponse(LedgerManualReminder reminder);
+  LedgerManualReminderResponse toResponse(LedgerManualReminder reminder, boolean canUndo);
 }
