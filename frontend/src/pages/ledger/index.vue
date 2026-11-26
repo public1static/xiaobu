@@ -1504,6 +1504,7 @@ const entryDateLabel = computed(() => {
     />
     <LedgerGiftWorkspace
       v-if="giftWorkspaceOpen && ledgerId"
+      :key="ledgerId"
       :ledger-id="ledgerId"
       :writable="!readOnly"
       :revision="giftRevision"
