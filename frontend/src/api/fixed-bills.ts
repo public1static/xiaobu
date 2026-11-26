@@ -153,3 +153,9 @@ export function reviseFixedBillPlan(ledgerId: string, billId: string, plan: Bill
     plan,
   );
 }
+
+export function stopFixedBillPlan(ledgerId: string, billId: string, expectedStopOn: string) {
+  return request<void>(path(ledgerId) + '/plans/' + encodeURIComponent(billId) + '/stop', 'PUT', {
+    expectedStopOn,
+  });
+}

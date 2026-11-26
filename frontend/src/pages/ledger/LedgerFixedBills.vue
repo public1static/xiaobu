@@ -6,6 +6,7 @@ import {
   listFixedBillPlans,
   payFixedBill,
   reviseFixedBillPlan,
+  stopFixedBillPlan,
   type FixedBillPeriod,
   type FixedBillPlan,
 } from '../../api/fixed-bills';
@@ -22,6 +23,11 @@ import {
   parseCents,
   shiftLedgerMonth,
 } from './transaction';
+
+// #ifdef H5
+import { showConfirmDialog } from 'vant';
+import 'vant/es/dialog/style';
+// #endif
 
 const props = defineProps<{
   ledgerId: string;
@@ -52,6 +58,7 @@ const page = ref(0);
 const total = ref(0);
 const loading = ref(false);
 const saving = ref(false);
+const stopping = ref(false);
 const linking = ref(false);
 const error = ref('');
 const catalogError = ref(false);
@@ -235,7 +242,7 @@ function openPeriod(row: FixedBillPeriod) {
 }
 
 function back() {
-  if (saving.value || linking.value) return;
+  if (saving.value || stopping.value || linking.value) return;
   if (view.value === 'edit') openPlans();
   else if (view.value === 'link') view.value = 'period';
   else if (view.value === 'list') emit('close');
@@ -246,8 +253,68 @@ function back() {
   }
 }
 
+async function confirmStop(stopOn: string) {
+  const title = '停止后续账期？';
+  const message = '从 ' + stopOn + ' 起停止生成账期，已有账期和流水保留。';
+  // #ifdef H5
+  try {
+    await showConfirmDialog({
+      title,
+      message,
+      confirmButtonText: '停止后续账期',
+      confirmButtonColor: '#a54341',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+  // #endif
+  // #ifndef H5
+  return new Promise<boolean>((resolve) =>
+    uni.showModal({
+      title,
+      content: message,
+      confirmText: '停止账期',
+      confirmColor: '#a54341',
+      success: (result) => resolve(result.confirm),
+      fail: () => resolve(false),
+    }),
+  );
+  // #endif
+}
+
+async function stopPlan() {
+  const plan = selectedPlan.value;
+  if (!plan || saving.value || stopping.value || !props.writable) return;
+  stopping.value = true;
+  error.value = '';
+  try {
+    if (!(await confirmStop(plan.earliestFirstDueOn))) return;
+    await stopFixedBillPlan(props.ledgerId, plan.billId, plan.earliestFirstDueOn);
+    selectedPlan.value = undefined;
+    view.value = 'list';
+    void loadPlans();
+    await load();
+    uni.showToast({ title: '已停止后续账期', icon: 'none' });
+  } catch (failure) {
+    error.value =
+      failure instanceof ApiRequestError && failure.status === 409
+        ? '计划或预付账期已变更，请返回账单计划重新打开。'
+        : '未确认是否停止，请返回账单计划核对。';
+  } finally {
+    stopping.value = false;
+  }
+}
+
 async function save() {
-  if (saving.value || !props.writable || catalogError.value || catalogLoading.value) return;
+  if (
+    saving.value ||
+    stopping.value ||
+    !props.writable ||
+    catalogError.value ||
+    catalogLoading.value
+  )
+    return;
   const amountCents = parseCents(amount.value);
   if (amountCents == null || amountCents <= 0) {
     error.value = '请输入大于零的金额，最多两位小数。';
@@ -493,14 +560,26 @@ async function save() {
       <button v-if="catalogError" class="bill-retry" @click="loadCatalog">
         账户和分类加载失败，重试
       </button>
-      <button
+      <view
         v-if="writable && (planForm || (view === 'period' && !selected?.transactionId))"
-        class="bill-submit"
-        :disabled="saving || catalogError || catalogLoading"
-        @click="save"
+        :class="{ 'bill-edit-actions': view === 'edit' }"
       >
-        {{ saving ? '正在保存…' : planForm ? '保存' : '记为已付' }}
-      </button>
+        <button
+          v-if="view === 'edit'"
+          class="bill-submit bill-stop"
+          :disabled="saving || stopping"
+          @click="stopPlan"
+        >
+          停止后续账期
+        </button>
+        <button
+          class="bill-submit"
+          :disabled="saving || stopping || catalogError || catalogLoading"
+          @click="save"
+        >
+          {{ saving ? '正在保存…' : planForm ? '保存' : '记为已付' }}
+        </button>
+      </view>
       <button
         v-if="view === 'period' && writable && selected && !selected.transactionId"
         class="bill-submit bill-link"
@@ -705,6 +784,22 @@ async function save() {
   border: 0;
   border-radius: 999px;
   font-size: 15px;
+}
+.bill-edit-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+}
+.bill-edit-actions .bill-submit {
+  box-sizing: border-box;
+  width: 100%;
+}
+.bill-stop {
+  background: white;
+  color: #a54341;
+  border: 1px solid #ead9d7;
+  padding: 0 13px;
+  font-size: 14px;
 }
 .bill-link {
   margin-top: 10px;
