@@ -123,3 +123,9 @@ export function clampLedgerDueOn(month: string, dueDayOfMonth: number) {
   const last = new Date(Date.UTC(year, number, 0)).getUTCDate();
   return month + '-' + String(Math.min(last, dueDayOfMonth)).padStart(2, '0');
 }
+
+export function nextLedgerDay(day: string) {
+  const date = new Date(day + 'T00:00:00Z');
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}

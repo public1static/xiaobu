@@ -95,6 +95,19 @@ class RentalController {
         mapper.toResponse(rentals.getRentalContract(ledgerId, actor.actorId(), contractId)));
   }
 
+  @PostMapping("/contracts/{contractId}/renewals")
+  public ApiResponse<RentalContractResponse> renewRentalContract(
+      @PathVariable String ledgerId,
+      @PathVariable String contractId,
+      @Valid @RequestBody RenewRentalContractRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            rentals.renewRentalContract(
+                mapper.toCommand(ledgerId, actor.actorId(), contractId, body))));
+  }
+
   @PostMapping("/contracts")
   public ApiResponse<RentalContractResponse> createRentalContract(
       @PathVariable String ledgerId,

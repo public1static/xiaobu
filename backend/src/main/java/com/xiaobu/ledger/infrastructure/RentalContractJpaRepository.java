@@ -27,15 +27,29 @@ interface RentalContractJpaRepository extends Repository<RentalContractEntity, S
 
   boolean existsByBillId(String billId);
 
+  boolean existsByLedgerIdAndPreviousContractId(String ledgerId, String previousContractId);
+
+  @Query(
+      """
+      select count(c.id) from RentalContractEntity c
+      where c.ledgerId = :ledgerId and c.homeId = :homeId and c.deleted = false
+          and c.startsOn <= :endsOn and c.endsOn >= :startsOn
+          and (:renewalsOnly = false or c.previousContractId is not null)
+      """)
+  long countOverlappingContracts(
+      String ledgerId, String homeId, LocalDate startsOn, LocalDate endsOn, boolean renewalsOnly);
+
   String CONTRACTS =
       """
       from RentalContractEntity c
       join RentalHomeEntity h on h.id = c.homeId and h.ledgerId = c.ledgerId and h.deleted = false
       left join FixedBillEntity b on b.id = c.billId and b.ledgerId = c.ledgerId and b.deleted = false
+      left join RentalContractEntity n on n.ledgerId = c.ledgerId and n.previousContractId = c.id and n.deleted = false
       where c.ledgerId = :ledgerId and c.deleted = false
       """;
 
-  String CONTRACT_DETAILS = "select c as contract, h.name as homeName, b as bill ";
+  String CONTRACT_DETAILS =
+      "select c as contract, h.name as homeName, b as bill, n.id as nextContractId ";
 
   @Query(CONTRACT_DETAILS + CONTRACTS + " and c.id = :contractId")
   Optional<ContractRow> findContractDetails(String ledgerId, String contractId);
@@ -93,5 +107,7 @@ interface RentalContractJpaRepository extends Repository<RentalContractEntity, S
     String getHomeName();
 
     FixedBillEntity getBill();
+
+    String getNextContractId();
   }
 }

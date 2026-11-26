@@ -35,6 +35,8 @@ export interface RentalContract extends RentalContractInput {
   homeName: string;
   remindDays: number;
   handledEnd: string | null;
+  previousContractId: string | null;
+  nextContractId: string | null;
   billId: string | null;
   dueDayOfMonth: number | null;
   periodAmountCents: number;
@@ -70,6 +72,19 @@ export function listRentalContracts(ledgerId: string, page: number, homeId?: str
 
 export function createRentalContract(ledgerId: string, contract: RentalContractInput) {
   return request<RentalContract>(path(ledgerId) + '/contracts', 'POST', contract);
+}
+
+export function renewRentalContract(
+  ledgerId: string,
+  contractId: string,
+  expectedEndsOn: string,
+  contract: Omit<RentalContractInput, 'homeId'>,
+) {
+  return request<RentalContract>(
+    path(ledgerId) + '/contracts/' + encodeURIComponent(contractId) + '/renewals',
+    'POST',
+    { ...contract, expectedEndsOn },
+  );
 }
 
 export function generateRentalBill(ledgerId: string, contractId: string, firstDueOn: string) {

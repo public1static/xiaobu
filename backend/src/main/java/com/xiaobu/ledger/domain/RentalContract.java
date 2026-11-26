@@ -17,7 +17,8 @@ public record RentalContract(
     String billId,
     String note,
     int remindDays,
-    LocalDate handledEnd) {
+    LocalDate handledEnd,
+    String previousContractId) {
   private static final long MAX_CENTS = 9_999_999_999L;
 
   public RentalContract {
@@ -59,7 +60,8 @@ public record RentalContract(
         billId,
         note,
         remindDays,
-        handledEnd);
+        handledEnd,
+        previousContractId);
   }
 
   public FixedBill createRentBill(String homeName, LocalDate firstDueOn) {

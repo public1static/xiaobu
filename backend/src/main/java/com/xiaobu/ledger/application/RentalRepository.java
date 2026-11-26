@@ -29,6 +29,11 @@ public interface RentalRepository {
 
   boolean hasContractForBill(String billId);
 
+  boolean hasRenewal(String ledgerId, String contractId);
+
+  boolean hasOverlappingContract(
+      String ledgerId, String homeId, LocalDate startsOn, LocalDate endsOn, boolean renewalsOnly);
+
   Optional<RentalContractResult> findContractDetails(String ledgerId, String contractId);
 
   void configureExpiryReminder(String ledgerId, String contractId, int remindDays, String actorId);
