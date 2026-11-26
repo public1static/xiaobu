@@ -120,8 +120,8 @@ function manage() {
       </button></view
     >
     <text v-if="error && !open" class="error">{{ error }}</text>
-    <view v-if="open" class="overlay reason-overlay" @click.self="!busy && (open = false)"
-      ><view class="sheet" role="dialog" aria-label="事由管理"
+    <view v-if="open" class="overlay reason-overlay" @click="!busy && (open = false)"
+      ><view class="sheet" role="dialog" aria-label="事由管理" @click.stop
         ><view class="reason-toolbar sheet-child"
           ><button aria-label="关闭事由管理" :disabled="busy" @click="open = false">×</button
           ><text>事由管理</text
