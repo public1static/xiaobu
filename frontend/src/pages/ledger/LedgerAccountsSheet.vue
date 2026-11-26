@@ -178,7 +178,7 @@ onMounted(refresh);
       :aria-label="selectable ? '选择账户' : '账户'"
       aria-modal="true"
     >
-      <view class="account-head">
+      <view class="account-head sheet-child">
         <button
           class="text-button"
           :aria-label="mode === 'list' ? '关闭账户' : '返回账户列表'"
@@ -213,16 +213,20 @@ onMounted(refresh);
         <input
           v-if="selectable"
           v-model="search"
-          class="account-search"
+          class="account-search sheet-child"
           aria-label="搜索账户"
           placeholder="搜索账户"
         />
-        <text v-if="!selectable" class="preview-label">账面余额按期初余额、收支和转账计算。</text>
-        <text v-if="!loaded && busy" class="preview-label" role="status">正在加载账户</text>
-        <text v-if="loaded && !accounts.length" class="preview-label">还没有账户</text>
+        <text v-if="!selectable" class="preview-label sheet-child"
+          >账面余额按期初余额、收支和转账计算。</text
+        >
+        <text v-if="!loaded && busy" class="preview-label sheet-child" role="status"
+          >正在加载账户</text
+        >
+        <text v-if="loaded && !accounts.length" class="preview-label sheet-child">还没有账户</text>
         <button
           v-if="selectable"
-          class="text-button account-row"
+          class="text-button account-row sheet-child"
           :disabled="busy"
           @click="emit('select', null)"
         >
@@ -231,7 +235,7 @@ onMounted(refresh);
         <button
           v-for="account in selectable ? visibleAccounts : []"
           :key="account.id"
-          class="text-button account-row"
+          class="text-button account-row sheet-child"
           :disabled="busy"
           @click="emit('select', account)"
         >
@@ -241,7 +245,7 @@ onMounted(refresh);
             }}<text v-if="selectedId === account.id" aria-label="已选"> ✓</text></text
           >
         </button>
-        <view v-if="!selectable" class="account-list">
+        <view v-if="!selectable" class="account-list sheet-child">
           <view v-for="account in accounts" :key="account.id" class="account-row">
             <view class="account-summary">
               <text>{{ account.name }}</text>
@@ -252,7 +256,7 @@ onMounted(refresh);
             <text class="account-balance">{{ formatBalance(account.balanceCents) }}</text>
           </view>
         </view>
-        <view v-if="loaded" class="account-actions">
+        <view v-if="loaded" class="account-actions sheet-child">
           <button
             v-if="!selectable && allowTransfer && accounts.length >= 2"
             class="primary"
@@ -262,7 +266,10 @@ onMounted(refresh);
             转账
           </button>
         </view>
-        <view v-if="!selectable && (transfers.length || historyError)" class="account-history">
+        <view
+          v-if="!selectable && (transfers.length || historyError)"
+          class="account-history sheet-child"
+        >
           <text class="account-history-title">最近转账</text>
           <text v-if="historyError" class="error">转账记录加载失败。</text>
           <view v-for="entry in transfers" :key="entry.id" class="transfer-row">
@@ -279,7 +286,7 @@ onMounted(refresh);
           </view>
         </view>
       </template>
-      <view v-else-if="mode === 'account'" class="account-form">
+      <view v-else-if="mode === 'account'" class="account-form sheet-child">
         <view class="meta"
           ><view class="form-row"
             ><text>账户名称<text class="star">*</text></text>
@@ -301,7 +308,7 @@ onMounted(refresh);
         <text class="preview-label">填开始记账时的余额，欠款可填负数。</text>
         <button class="primary" :disabled="busy" @click="create">保存账户</button>
       </view>
-      <view v-else class="account-form"
+      <view v-else class="account-form sheet-child"
         ><view class="meta">
           <LedgerPicker
             label="选择转出账户"
@@ -360,10 +367,10 @@ onMounted(refresh);
         <text class="preview-label">只调整两个账户的余额，不计入收支。</text>
         <button class="primary" :disabled="busy" @click="transfer">保存转账</button>
       </view>
-      <text v-if="error" class="error" role="alert">{{ error }}</text>
+      <text v-if="error" class="error sheet-child" role="alert">{{ error }}</text>
       <button
         v-if="mode === 'list' && (error || historyError)"
-        class="text-button"
+        class="text-button sheet-child"
         :disabled="busy"
         @click="refresh"
       >

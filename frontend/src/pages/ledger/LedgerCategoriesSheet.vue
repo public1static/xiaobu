@@ -135,7 +135,7 @@ onMounted(refresh);
       aria-modal="true"
       @keydown.esc.stop="!busy && emit('close')"
     >
-      <view class="category-toolbar">
+      <view class="category-toolbar sheet-child">
         <button
           class="text-button category-close"
           aria-label="关闭分类"
@@ -149,7 +149,7 @@ onMounted(refresh);
           {{ adding ? '取消' : '新增' }}
         </button>
       </view>
-      <view v-if="adding" class="category-add">
+      <view v-if="adding" class="category-add sheet-child">
         <text>分类名称<text class="star">*</text></text>
         <input
           v-model="name"
@@ -163,18 +163,20 @@ onMounted(refresh);
         />
         <button class="text-button" :disabled="busy" @click="add">保存并选用</button>
       </view>
-      <text v-if="error" class="error" role="alert">{{ error }}</text>
+      <text v-if="error" class="error sheet-child" role="alert">{{ error }}</text>
       <button
         v-if="error && !adding"
-        class="text-button category-reload"
+        class="text-button category-reload sheet-child"
         :disabled="busy"
         @click="refresh"
       >
         重新加载
       </button>
-      <text class="category-hint">{{ allowManage ? '点选使用，拖动调整顺序' : '点选使用' }}</text>
+      <text class="category-hint sheet-child">{{
+        allowManage ? '点选使用，拖动调整顺序' : '点选使用'
+      }}</text>
       <LedgerCategoryTiles
-        class="category-sheet-grid"
+        class="category-sheet-grid sheet-child"
         :items="choices"
         :columns="columns"
         :selected="selected"
@@ -184,7 +186,7 @@ onMounted(refresh);
         @select="emit('select', $event)"
         @move="move"
       />
-      <view v-if="allowManage && choices.length" class="category-maintenance">
+      <view v-if="allowManage && choices.length" class="category-maintenance sheet-child">
         <button
           class="text-button category-reload"
           :aria-expanded="maintenanceOpen"

@@ -122,7 +122,7 @@ function manage() {
     <text v-if="error && !open" class="error">{{ error }}</text>
     <view v-if="open" class="overlay reason-overlay" @click.self="!busy && (open = false)"
       ><view class="sheet" role="dialog" aria-label="事由管理"
-        ><view class="reason-toolbar"
+        ><view class="reason-toolbar sheet-child"
           ><button aria-label="关闭事由管理" :disabled="busy" @click="open = false">×</button
           ><text>事由管理</text
           ><button
@@ -135,7 +135,7 @@ function manage() {
             {{ adding ? '取消' : '新增' }}
           </button></view
         >
-        <view v-if="adding" class="reason-add"
+        <view v-if="adding" class="reason-add sheet-child"
           ><text>事由名称<text class="star">*</text></text
           ><input
             v-model="name"
@@ -145,10 +145,10 @@ function manage() {
             @confirm="add"
           /><button :disabled="busy" @click="add">保存并选用</button></view
         >
-        <text v-if="error" class="error" role="alert">{{ error }}</text>
-        <text class="hint">点选使用，拖动调整顺序</text>
+        <text v-if="error" class="error sheet-child" role="alert">{{ error }}</text>
+        <text class="hint sheet-child">点选使用，拖动调整顺序</text>
         <LedgerCategoryTiles
-          class="reason-list"
+          class="reason-list sheet-child"
           :items="names.map((n) => [n, n] as const)"
           :selected="value"
           :columns="1"

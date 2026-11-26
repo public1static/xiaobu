@@ -102,7 +102,7 @@ onMounted(load);
       :aria-label="refunding ? '登记退款' : '流水详情'"
       aria-modal="true"
     >
-      <view class="sheet-head">
+      <view class="sheet-head sheet-child">
         <text>{{ refunding ? '登记退款' : '流水详情' }}</text>
         <button
           v-if="!refunding"
@@ -114,8 +114,9 @@ onMounted(load);
           ×
         </button>
       </view>
-      <text v-if="loading" class="preview-label" role="status">正在加载详情</text>
+      <text v-if="loading" class="preview-label sheet-child" role="status">正在加载详情</text>
       <LedgerRefundForm
+        class="sheet-child"
         v-else-if="refunding && detail"
         :ledger-id="ledgerId"
         :detail="detail"
@@ -124,7 +125,7 @@ onMounted(load);
         @saved="onRefundSaved"
       />
       <template v-else-if="detail">
-        <view class="detail-summary"
+        <view class="detail-summary sheet-child"
           ><view class="detail-summary-head">
             <text
               >{{
@@ -147,7 +148,7 @@ onMounted(load);
             }}</text
           ></view
         >
-        <view class="meta">
+        <view class="meta sheet-child">
           <view class="meta-row"
             ><text>记账日期</text><text>{{ detail.transaction.bookedOn }}</text></view
           >
@@ -162,12 +163,13 @@ onMounted(load);
           >
         </view>
         <LedgerExtensionDetail
+          class="sheet-child"
           v-for="extension in detail.extensions ?? []"
           :key="extension.type"
           :extension="extension"
           :direction="detail.transaction.direction"
         />
-        <view v-if="refundHistory.length" class="meta refund-history">
+        <view v-if="refundHistory.length" class="meta refund-history sheet-child">
           <text class="detail-caption">退款记录</text>
           <view v-for="receipt in refundHistory" :key="receipt.id" class="meta-row">
             <view class="refund-history-info"
@@ -177,11 +179,14 @@ onMounted(load);
             <text>+¥{{ formatCents(receipt.amountCents) }}</text>
           </view>
         </view>
-        <view v-if="!browseOnly && detail.canModify && !confirming" class="detail-actions">
+        <view
+          v-if="!browseOnly && detail.canModify && !confirming"
+          class="detail-actions sheet-child"
+        >
           <button class="primary secondary danger" @click="confirming = true">删除这笔</button>
           <button class="primary" @click="emit('edit', detail)">编辑</button>
         </view>
-        <view v-if="confirming" class="detail-confirm">
+        <view v-if="confirming" class="detail-confirm sheet-child">
           <text class="preview-label">{{
             refundHistory.length
               ? '退款也会从流水移除，恢复时一并恢复。'
@@ -195,8 +200,8 @@ onMounted(load);
           </button>
         </view>
       </template>
-      <text v-if="error" class="error" role="alert">{{ error }}</text>
-      <button v-if="error && !detail" class="text-button" @click="load">重试</button>
+      <text v-if="error" class="error sheet-child" role="alert">{{ error }}</text>
+      <button v-if="error && !detail" class="text-button sheet-child" @click="load">重试</button>
     </view>
   </view>
 </template>
