@@ -89,9 +89,44 @@ class WechatPreviewMySqlTest {
     assertEquals(3200, statement.get("expenseCents").asInt());
     assertEquals(3200, statement.get("entries").get(0).get("amountCents").asInt());
     assertEquals(403, send("POST", transactions, draft, betaToken).statusCode());
+    verifyPrivateAssistant(book, alphaToken, betaToken);
     assertEquals(204, send("DELETE", "/wechat-session", null, betaToken).statusCode());
     assertEquals(401, send("GET", transactions + "?month=2026-10", null, betaToken).statusCode());
     assertEquals(200, send("GET", transactions + "?month=2026-10", null, alphaToken).statusCode());
+  }
+
+  // 真实 HTTP 会话核对只读成员的问账权限、私人历史、版本与来源。
+  private void verifyPrivateAssistant(String book, String alpha, String beta) throws Exception {
+    String root = "/ledgers/" + book + "/assistant/conversations";
+    String id = data(send("POST", root, null, beta)).get("id").asText();
+    String messages = root + "/" + id + "/messages";
+    String question =
+        "{\"question\":\"十月餐饮多少\",\"revision\":0,\"clientId\":\""
+            + java.util.UUID.randomUUID()
+            + "\"}";
+    var response = send("POST", messages, question, beta);
+    assertEquals(200, response.statusCode(), response.body());
+    var first = data(response);
+    assertEquals(3200, first.at("/answer/statement/expenseCents").asInt());
+    assertEquals(1, data(send("POST", messages, question, beta)).get("sequence").asInt());
+    assertEquals(1, data(send("GET", messages, null, beta)).size());
+    assertEquals(
+        3200, data(send("GET", messages + "/1/entries", null, beta)).get("expenseCents").asInt());
+    assertEquals(404, send("GET", messages, null, alpha).statusCode());
+    assertEquals(0, data(send("GET", root, null, alpha)).size());
+    String follow =
+        "{\"question\":\"那上个月呢\",\"replyTo\":1,\"revision\":1,\"clientId\":\""
+            + java.util.UUID.randomUUID()
+            + "\"}";
+    var second = data(send("POST", messages, follow, beta));
+    assertEquals("餐饮", second.at("/answer/scope/plan/category").asText());
+    assertEquals(2, second.get("sequence").asInt());
+    assertEquals(409, send("POST", messages, follow.replace("那上个月呢", "另一问题"), beta).statusCode());
+    String members = "/ledgers/" + book + "/members";
+    var member = data(send("GET", members, null, alpha)).get(0).get("memberId").asText();
+    assertEquals(204, send("DELETE", members + "/" + member, null, alpha).statusCode());
+    assertEquals(403, send("GET", messages, null, beta).statusCode());
+    assertEquals(403, send("GET", messages + "/1/entries", null, beta).statusCode());
   }
 
   private JsonNode signIn(String code) throws Exception {
@@ -119,6 +154,21 @@ class WechatPreviewMySqlTest {
 
   @TestConfiguration
   static class Fixture {
+    // 用受控解析输出验证账务结果，测试不向供应商发送数据。
+    @Bean
+    @Primary
+    com.xiaobu.assistant.application.AssistantIntentParser fixtureParser() {
+      return (question, previous, today) ->
+          new com.xiaobu.assistant.application.AssistantQueryPlan(
+              java.time.LocalDate.of(2026, 10, 1),
+              java.time.LocalDate.of(2026, 10, 31),
+              "餐饮",
+              null,
+              com.xiaobu.ledger.domain.TransactionDirection.EXPENSE,
+              false,
+              null);
+    }
+
     @Bean
     @Primary
     WechatIdentityGateway fixtureIdentities() {

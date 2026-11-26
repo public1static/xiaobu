@@ -164,6 +164,18 @@ function refreshAfterTransactionChange() {
   void refresh();
 }
 
+// 保留流水页与筛选，聊天页通过当前账本重新鉴权。
+function openAssistant() {
+  if (ledgerId.value)
+    uni.navigateTo({
+      url:
+        '/pages/assistant/index?ledger=' +
+        encodeURIComponent(ledgerId.value) +
+        '&name=' +
+        encodeURIComponent(ledgerLabel.value),
+    });
+}
+
 function selectAccount(value: LedgerAccount | null) {
   account.value = value;
   accountView.value = null;
@@ -1070,6 +1082,7 @@ const entryDateLabel = computed(() => {
       class="ledger-bottom-nav"
     >
       <button class="text-button is-current" aria-current="page">流水</button>
+      <button class="text-button" @click="openAssistant">小簿</button>
       <button class="text-button" @click="ledgerHubOpen = true">账本</button>
     </view>
     <view v-if="ledgerHubOpen && ledgerId" class="overlay">

@@ -13,9 +13,11 @@ import { categoryLabel, formatCents, refundToday } from './transaction';
 const props = defineProps<{
   ledgerId: string;
   transactionId: string;
+  browseOnly?: boolean;
   categoryNames?: Record<string, string>;
 }>();
 const emit = defineEmits<{
+  (event: 'accessLost'): void;
   (event: 'close'): void;
   (event: 'edit', detail: LedgerTransactionDetail): void;
   (event: 'deleted'): void;
@@ -54,6 +56,8 @@ async function load() {
   try {
     detail.value = await getLedgerTransaction(props.ledgerId, props.transactionId);
   } catch (failure) {
+    if (failure instanceof ApiRequestError && [401, 403].includes(failure.status))
+      emit('accessLost');
     error.value =
       failure instanceof ApiRequestError && [403, 404].includes(failure.status)
         ? '这笔流水已不可查看。'
@@ -178,7 +182,7 @@ onMounted(load);
         >
           登记退款
         </button>
-        <view v-if="detail.canModify && !confirming" class="detail-actions">
+        <view v-if="!browseOnly && detail.canModify && !confirming" class="detail-actions">
           <button class="primary secondary" @click="confirming = true">删除这笔</button>
           <button class="primary" @click="emit('edit', detail)">编辑</button>
         </view>
