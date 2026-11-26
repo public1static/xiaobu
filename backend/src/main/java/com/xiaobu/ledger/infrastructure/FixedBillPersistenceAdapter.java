@@ -2,6 +2,7 @@ package com.xiaobu.ledger.infrastructure;
 
 import com.xiaobu.ledger.application.FixedBillCandidatePageResult;
 import com.xiaobu.ledger.application.FixedBillPageResult;
+import com.xiaobu.ledger.application.FixedBillPaymentReferenceResult;
 import com.xiaobu.ledger.application.FixedBillPeriodResult;
 import com.xiaobu.ledger.application.FixedBillRepository;
 import com.xiaobu.ledger.domain.FixedBill;
@@ -40,13 +41,24 @@ class FixedBillPersistenceAdapter implements FixedBillRepository {
   @Override
   public Optional<FixedBillPayment> findPayment(String billId, YearMonth month) {
     return payments
-        .findByBillIdAndPeriod(billId, month.atDay(1))
+        .findByBillIdAndPeriodAndDeletedFalse(billId, month.atDay(1))
         .map(FixedBillPaymentEntity::toDomain);
   }
 
   @Override
+  public Optional<FixedBillPaymentReferenceResult> findPaymentReference(
+      String ledgerId, String transactionId) {
+    return payments.findPaymentReference(ledgerId, transactionId);
+  }
+
+  @Override
+  public void unlinkPayment(String paymentId, String actorId) {
+    payments.findByIdAndDeletedFalse(paymentId).orElseThrow().markUnlinked(actorId);
+  }
+
+  @Override
   public boolean hasPaymentForTransaction(String transactionId) {
-    return payments.existsByTransactionId(transactionId);
+    return payments.existsByTransactionIdAndDeletedFalse(transactionId);
   }
 
   @Override

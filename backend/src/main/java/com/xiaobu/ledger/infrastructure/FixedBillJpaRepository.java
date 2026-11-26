@@ -17,7 +17,7 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
   String PERIODS =
       """
       from FixedBillEntity b left join FixedBillPaymentEntity p
-          on p.billId = b.id and p.period = :period
+          on p.billId = b.id and p.period = :period and p.deleted = false
       where b.ledgerId = :ledgerId and b.deleted = false and b.firstDueOn <= :monthEnd
           and ((:paid = true and p.id is not null) or (:paid = false and p.id is null))
       """;
@@ -35,7 +35,7 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
       where t.ledgerId = :ledgerId and t.deleted = false
           and t.direction = com.xiaobu.ledger.domain.TransactionDirection.EXPENSE
           and t.bookedOn <= :today
-          and not exists (select p.id from FixedBillPaymentEntity p where p.transactionId = t.id)
+          and not exists (select p.id from FixedBillPaymentEntity p where p.transactionId = t.id and p.deleted = false)
           and (:keyword = '' or locate(:keyword, lower(t.note)) > 0
               or locate(:keyword, lower(a.name)) > 0
               or locate(:keyword, cast(t.bookedOn as string)) > 0

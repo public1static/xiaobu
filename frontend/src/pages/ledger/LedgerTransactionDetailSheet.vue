@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LedgerExtensionDetail from './LedgerExtensionDetail.vue';
+import LedgerFixedBillReference from './LedgerFixedBillReference.vue';
 import { computed, onMounted, ref } from 'vue';
 import {
   deleteLedgerTransaction,
@@ -16,6 +17,7 @@ const props = defineProps<{
   example?: LedgerTransactionDetail;
   transactionId: string;
   browseOnly?: boolean;
+  allowBillUnlink?: boolean;
   categoryNames?: Record<string, string>;
 }>();
 const emit = defineEmits<{
@@ -24,6 +26,7 @@ const emit = defineEmits<{
   (event: 'edit', detail: LedgerTransactionDetail): void;
   (event: 'deleted'): void;
   (event: 'refunded'): void;
+  (event: 'billUnlinked'): void;
 }>();
 const detail = ref<LedgerTransactionDetail | null>(null);
 const loading = ref(false);
@@ -31,6 +34,7 @@ const error = ref('');
 const confirming = ref(false);
 const deleting = ref(false);
 const refunding = ref(false);
+const unlinking = ref(false);
 const refundHistory = computed(() => detail.value?.refunds ?? []);
 const refundedCents = computed(() =>
   refundHistory.value.reduce((sum, refund) => sum + refund.amountCents, 0),
@@ -114,7 +118,7 @@ onMounted(load);
           v-if="!refunding"
           class="close"
           aria-label="关闭详情"
-          :disabled="deleting"
+          :disabled="deleting || unlinking"
           @click="emit('close')"
         >
           ×
@@ -139,7 +143,12 @@ onMounted(load);
                 categoryLabel(detail.transaction.categoryCode, detail.transaction.direction)
               }}{{ refundHistory.length ? ' · 实付' : '' }}</text
             >
-            <button v-if="canRefund && !confirming" class="refund-entry" @click="refunding = true">
+            <button
+              v-if="canRefund && !confirming"
+              :disabled="unlinking"
+              class="refund-entry"
+              @click="refunding = true"
+            >
               记退款
             </button></view
           >
@@ -155,6 +164,15 @@ onMounted(load);
           ></view
         >
         <view class="meta sheet-child">
+          <LedgerFixedBillReference
+            v-if="!example && ledgerId && detail.transaction.direction === 'EXPENSE'"
+            :ledger-id="ledgerId"
+            :transaction-id="transactionId"
+            :writable="Boolean(allowBillUnlink) && !browseOnly"
+            :disabled="confirming || deleting"
+            @unlinked="emit('billUnlinked')"
+            @busy="unlinking = $event"
+          />
           <view class="meta-row"
             ><text>记账日期</text><text>{{ detail.transaction.bookedOn }}</text></view
           >
@@ -189,8 +207,10 @@ onMounted(load);
           v-if="!browseOnly && detail.canModify && !confirming"
           class="detail-actions sheet-child"
         >
-          <button class="primary secondary danger" @click="confirming = true">删除这笔</button>
-          <button class="primary" @click="emit('edit', detail)">编辑</button>
+          <button class="primary secondary danger" :disabled="unlinking" @click="confirming = true">
+            删除这笔
+          </button>
+          <button class="primary" :disabled="unlinking" @click="emit('edit', detail)">编辑</button>
         </view>
         <view v-if="confirming" class="detail-confirm sheet-child">
           <text class="preview-label">{{

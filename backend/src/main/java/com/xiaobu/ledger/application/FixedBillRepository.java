@@ -14,6 +14,11 @@ public interface FixedBillRepository {
 
   Optional<FixedBillPayment> findPayment(String billId, YearMonth month);
 
+  Optional<FixedBillPaymentReferenceResult> findPaymentReference(
+      String ledgerId, String transactionId);
+
+  void unlinkPayment(String paymentId, String actorId);
+
   boolean hasPaymentForTransaction(String transactionId);
 
   FixedBillCandidatePageResult listCandidates(

@@ -17,6 +17,7 @@ import com.xiaobu.ledger.application.LinkFixedBillPaymentCommand;
 import com.xiaobu.ledger.application.ListFixedBillCandidatesQuery;
 import com.xiaobu.ledger.application.PayFixedBillCommand;
 import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
+import com.xiaobu.ledger.application.UnlinkFixedBillPaymentCommand;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -258,5 +259,96 @@ class FixedBillPersistenceMySqlTest {
             bills.linkFixedBillPayment(
                 new LinkFixedBillPaymentCommand(
                     ledger, actor, second.billId(), month, expense.id(), 1)));
+  }
+
+  @Test
+  void unlinkRetainsHistoryAndOriginalExpenseAndRejectsStaleRequests() {
+    String actor = "bill-" + UUID.randomUUID();
+    String ledger = "book_" + UUID.randomUUID();
+    String reader = "reader-" + UUID.randomUUID();
+    String member = "member-" + UUID.randomUUID();
+    jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", ledger, actor);
+    jdbc.update(
+        "INSERT INTO ledger_members (id, ledger_id, member_id, inviter_name, role) VALUES (?, ?, ?,"
+            + " ?, ?)",
+        UUID.randomUUID().toString(),
+        ledger,
+        reader,
+        "甲",
+        "READ_ONLY");
+    jdbc.update(
+        "INSERT INTO ledger_members (id, ledger_id, member_id, inviter_name, role) VALUES (?, ?, ?,"
+            + " ?, ?)",
+        UUID.randomUUID().toString(),
+        ledger,
+        member,
+        "甲",
+        "CAN_RECORD");
+    var month = YearMonth.of(2025, 2);
+    var account =
+        accounts.createLedgerAccount(new CreateLedgerAccountCommand(ledger, actor, "家庭现金", 30000));
+    var bill =
+        bills.createFixedBill(
+            new CreateFixedBillCommand(
+                ledger, actor, "家庭宽带", month.atEndOfMonth(), 9900, "DAILY", account.id()));
+    var paid =
+        bills.payFixedBill(
+            new PayFixedBillCommand(
+                ledger, actor, bill.billId(), month, month.atDay(20), 9700, account.id()));
+    var reference =
+        bills.findFixedBillPaymentReference(ledger, reader, paid.transactionId()).orElseThrow();
+    assertEquals("家庭宽带", reference.billName());
+    assertEquals(month.atDay(1), reference.periodStart());
+    assertThrows(
+        FoundationException.class,
+        () ->
+            bills.unlinkFixedBillPayment(
+                new UnlinkFixedBillPaymentCommand(
+                    ledger, reader, paid.transactionId(), reference.paymentId())));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            bills.unlinkFixedBillPayment(
+                new UnlinkFixedBillPaymentCommand(
+                    ledger, actor, "some-other-transaction", reference.paymentId())));
+    var request =
+        new UnlinkFixedBillPaymentCommand(
+            ledger, member, paid.transactionId(), reference.paymentId());
+    bills.unlinkFixedBillPayment(request);
+    assertEquals(0, bills.listFixedBillPeriods(ledger, actor, month, true, 0).totalCount());
+    assertEquals(1, bills.listFixedBillPeriods(ledger, actor, month, false, 0).totalCount());
+    assertEquals(
+        true, bills.findFixedBillPaymentReference(ledger, actor, paid.transactionId()).isEmpty());
+    var history =
+        jdbc.queryForMap(
+            "SELECT created_by, updated_by, deleted FROM fixed_bill_payments WHERE id = ?",
+            reference.paymentId());
+    assertEquals(actor, history.get("created_by"));
+    assertEquals(member, history.get("updated_by"));
+    assertEquals(true, history.get("deleted"));
+    var candidate =
+        bills
+            .listFixedBillCandidates(
+                new ListFixedBillCandidatesQuery(ledger, actor, bill.billId(), month, "", 0))
+            .entries()
+            .getFirst();
+    assertEquals(paid.transactionId(), candidate.id());
+    assertEquals(0, candidate.version());
+    assertEquals(20300, accounts.listLedgerAccounts(ledger, actor).getFirst().balanceCents());
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "select count(*) from ledger_transactions where ledger_id = ?", Integer.class, ledger));
+    bills.linkFixedBillPayment(
+        new LinkFixedBillPaymentCommand(
+            ledger, actor, bill.billId(), month, candidate.id(), candidate.version()));
+    assertThrows(FoundationException.class, () -> bills.unlinkFixedBillPayment(request));
+    var current = bills.findFixedBillPaymentReference(ledger, actor, candidate.id()).orElseThrow();
+    assertNotEquals(reference.paymentId(), current.paymentId());
+    assertEquals(1, bills.listFixedBillPeriods(ledger, actor, month, true, 0).totalCount());
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "select count(*) from ledger_transactions where ledger_id = ?", Integer.class, ledger));
   }
 }

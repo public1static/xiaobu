@@ -101,3 +101,26 @@ export function linkFixedBillPayment(
     version: candidate.version,
   });
 }
+
+export interface FixedBillPaymentReference {
+  paymentId: string;
+  billName: string;
+  periodStart: string;
+}
+
+const referencePath = (ledgerId: string, transactionId: string) =>
+  path(ledgerId) + '/payment-references/' + encodeURIComponent(transactionId);
+
+export function findFixedBillPaymentReference(ledgerId: string, transactionId: string) {
+  return request<FixedBillPaymentReference | undefined>(
+    referencePath(ledgerId, transactionId),
+    'GET',
+  );
+}
+
+export function unlinkFixedBillPayment(ledgerId: string, transactionId: string, paymentId: string) {
+  return request<void>(
+    referencePath(ledgerId, transactionId) + '/' + encodeURIComponent(paymentId),
+    'DELETE',
+  );
+}
