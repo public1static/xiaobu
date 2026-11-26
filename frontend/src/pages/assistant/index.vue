@@ -582,6 +582,7 @@ button::after {
   border-radius: 14px;
 }
 .card text {
+  white-space: pre-wrap;
   display: block;
   margin-bottom: 6px;
 }

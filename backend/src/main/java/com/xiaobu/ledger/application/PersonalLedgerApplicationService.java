@@ -40,6 +40,11 @@ public class PersonalLedgerApplicationService {
         .orElseGet(() -> ledgers.addIfAbsent(new PersonalLedger(ids.next(LEDGER_PREFIX), ownerId)));
   }
 
+  // 目录按当前身份决定是否公开成员管理数据。
+  public boolean isOwner(String ledgerId, String actorId) {
+    return ledgers.existsByIdAndOwnerId(ledgerId, actorId);
+  }
+
   public void requireOwnership(String ledgerId, String actorId) {
     if (!ledgers.existsByIdAndOwnerId(ledgerId, actorId)) {
       throw denied();

@@ -3,6 +3,7 @@ package com.xiaobu.assistant.infrastructure;
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
+import com.xiaobu.assistant.application.AssistantDataset;
 import com.xiaobu.assistant.application.AssistantIntentParser;
 import com.xiaobu.assistant.application.AssistantQueryPlan;
 import java.time.Duration;
@@ -86,9 +87,19 @@ class DeepSeekIntentParser implements AssistantIntentParser {
   // 只发送问题与必要的查询上下文，不发送来源流水或成员资料。
   @Override
   public AssistantQueryPlan parse(String question, AssistantQueryPlan previous, LocalDate today) {
+    return parse(question, previous, today, AssistantDataset.catalog(false));
+  }
+
+  // 提供当前授权目录的结构，不向供应商发送目录数据。
+  @Override
+  public AssistantQueryPlan parse(
+      String question,
+      AssistantQueryPlan previous,
+      LocalDate today,
+      List<AssistantDataset.Definition> catalog) {
     if (model == null) throw unavailable("尚未配置文字模型，可以使用页面上的快捷问法");
     try {
-      var input = json.writeValueAsString(new Input(today, previous, question));
+      var input = json.writeValueAsString(new Input(today, previous, question, catalog));
       var output =
           model
               .call(new Prompt(List.of(new SystemMessage(instruction), new UserMessage(input))))
@@ -103,6 +114,31 @@ class DeepSeekIntentParser implements AssistantIntentParser {
       var allowed =
           java.util.Set.of(
               "from", "through", "category", "account", "direction", "recordedByMe", "keyword");
+      if (fields.has("analysis")) {
+        allowed = new java.util.HashSet<>(allowed);
+        allowed.add("analysis");
+        var a = fields.get("analysis");
+        if (!a.isObject()
+            || !java.util.Set.of(
+                    "dataset",
+                    "operation",
+                    "metric",
+                    "groupBy",
+                    "limit",
+                    "baselineFrom",
+                    "baselineThrough",
+                    "filters")
+                .equals(java.util.Set.copyOf(a.propertyNames()))) return null;
+        for (var k : List.of("dataset", "operation", "metric"))
+          if (!a.get(k).isString()) return null;
+        for (var k : List.of("groupBy", "baselineFrom", "baselineThrough"))
+          if (!a.get(k).isNull() && !a.get(k).isString()) return null;
+        if (!a.get("limit").isNull() && !a.get("limit").isIntegralNumber()) return null;
+        var filters = a.get("filters");
+        if (!filters.isObject()
+            || filters.propertyNames().stream().anyMatch(k -> !filters.get(k).isString()))
+          return null;
+      }
       if (!fields.isObject()
           || !java.util.Set.copyOf(fields.propertyNames()).equals(allowed)
           || !fields.get("recordedByMe").isBoolean()) return null;
@@ -110,7 +146,9 @@ class DeepSeekIntentParser implements AssistantIntentParser {
         var field = fields.get(name);
         if (!field.isNull() && (!field.isString() || field.asString().isBlank())) return null;
       }
-      if (!fields.get("from").isString() || !fields.get("through").isString()) return null;
+      for (var k : List.of("from", "through"))
+        if (!fields.get(k).isString() && !(fields.has("analysis") && fields.get(k).isNull()))
+          return null;
       var plan = json.treeToValue(fields, AssistantQueryPlan.class);
       return plan;
     } catch (RuntimeException ex) {
@@ -127,5 +165,9 @@ class DeepSeekIntentParser implements AssistantIntentParser {
         Map.of());
   }
 
-  private record Input(LocalDate today, AssistantQueryPlan previous, String question) {}
+  private record Input(
+      LocalDate today,
+      AssistantQueryPlan previous,
+      String question,
+      List<AssistantDataset.Definition> catalog) {}
 }

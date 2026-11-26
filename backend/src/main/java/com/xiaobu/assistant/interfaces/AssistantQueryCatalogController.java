@@ -1,8 +1,8 @@
 package com.xiaobu.assistant.interfaces;
 
 import com.aegisid.foundation.web.api.ApiResponse;
+import com.xiaobu.assistant.application.AssistantDataset;
 import com.xiaobu.identity.interfaces.LedgerSessionContext;
-import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
 import com.xiaobu.ledger.application.PersonalLedgerApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
@@ -23,51 +23,11 @@ public class AssistantQueryCatalogController {
 
   // 客户端通过逻辑名发现可查字段；具体数据入口仍逐次鉴权。
   @GetMapping("/api/v1/ledgers/{ledgerId}/assistant/query-catalog")
-  public ApiResponse<List<DatasetResponse>> listDatasets(
+  public ApiResponse<List<AssistantDataset.Definition>> listDatasets(
       @PathVariable String ledgerId, HttpServletRequest request) {
     var actor = LedgerSessionContext.require(request);
     ledgers.requireReadAccess(ledgerId, actor.actorId());
     return ApiResponse.success(
-        List.of(
-            new DatasetResponse(
-                "statement",
-                "一笔收支或一笔已到账退款",
-                "transactions",
-                List.of(
-                    "categoryCode",
-                    "accountId",
-                    "unassignedAccount",
-                    "recorderId",
-                    "direction",
-                    "recordedByMe",
-                    "from",
-                    "through",
-                    "keyword"),
-                java.util.Arrays.stream(ListLedgerTransactionsQuery.GroupBy.values())
-                    .map(Enum::name)
-                    .toList(),
-                List.of(
-                    "incomeCents",
-                    "grossExpenseCents",
-                    "refundCents",
-                    "netExpenseCents",
-                    "entryCount")),
-            new DatasetResponse(
-                "accounts",
-                "当前账本账户及当前余额",
-                "accounts",
-                List.of(),
-                List.of(),
-                List.of("openingBalanceCents", "recordedBalanceCents", "balanceCents")),
-            new DatasetResponse(
-                "categories", "当前账本分类及启停状态", "categories", List.of(), List.of(), List.of())));
+        AssistantDataset.catalog(ledgers.isOwner(ledgerId, actor.actorId())));
   }
-
-  record DatasetResponse(
-      String name,
-      String description,
-      String resource,
-      List<String> filters,
-      List<String> groupBy,
-      List<String> metrics) {}
 }
