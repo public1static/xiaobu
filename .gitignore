@@ -17,3 +17,4 @@ unpackage/
 !.env.example
 !.env.*.example
 project.private.config.json
+/.local-run/
