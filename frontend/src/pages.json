@@ -3,6 +3,10 @@
     {
       "path": "pages/ledger/index",
       "style": { "navigationStyle": "custom", "navigationBarTitleText": "小簿" }
+    },
+    {
+      "path": "pages/assistant/index",
+      "style": { "navigationStyle": "custom", "navigationBarTitleText": "小簿" }
     }
   ],
   "globalStyle": {
