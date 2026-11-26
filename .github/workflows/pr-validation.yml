@@ -1,0 +1,135 @@
+name: PR validation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (JDK 27, MySQL 5.7)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:5.7.44
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root
+          MYSQL_DATABASE: xiaobu_expense_test
+          MYSQL_USER: xiaobu_ci
+          MYSQL_PASSWORD: ci-test
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="mysql --protocol=TCP -h 127.0.0.1 -u xiaobu_ci -pci-test xiaobu_expense_test -e 'SELECT 1'"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=24
+    steps:
+      - name: Check out PR merge
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21 for Foundation
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Maven 3.10.0
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output maven.tar.gz \
+            https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.10.0/apache-maven-3.10.0-bin.tar.gz
+          sha512sum --check <<'CHECKSUM'
+          908b1501bfb420bf7c8affb855534a9c407fd6099367bfb9f2f2dcb8e9799102bffb84518cde74c679bd76870247c6528683abdd620581bffa90f95d92d175aa  maven.tar.gz
+          CHECKSUM
+          tar -xzf maven.tar.gz
+          echo "$RUNNER_TEMP/apache-maven-3.10.0/bin" >> "$GITHUB_PATH"
+
+      - name: Build Foundation dependencies from source
+        working-directory: foundation
+        run: mvn --batch-mode -pl foundation-common-data,foundation-common-web -am -DskipTests install
+
+      - name: Install JDK 27 for Xiaobu
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output jdk27.tar.gz \
+            https://download.java.net/java/GA/jdk27.0.1.0.3/b14170c9b2de463d9b89442c6db3e384/1/GPL/openjdk-27.0.1.0.3_linux-x64_bin.tar.gz
+          sha256sum --check <<'CHECKSUM'
+          256199399aaddc6d66919b5de90794b4263e4ab312aa56692cb63b70a0abef41  jdk27.tar.gz
+          CHECKSUM
+          tar -xzf jdk27.tar.gz
+          echo "JAVA_HOME=$RUNNER_TEMP/jdk-27.0.1.0.3" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/jdk-27.0.1.0.3/bin" >> "$GITHUB_PATH"
+
+      - name: Verify backend against isolated MySQL
+        working-directory: backend
+        env:
+          XIAOBU_DEV_DB_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/xiaobu_expense_test?sslMode=DISABLED&connectionTimeZone=UTC
+          XIAOBU_DEV_DB_USER: xiaobu_ci
+          XIAOBU_DEV_DB_PASSWORD: ci-test
+        run: mvn --batch-mode --no-transfer-progress verify
+
+      - name: Confirm MySQL suites ran
+        working-directory: backend
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          reports = {
+              report.stem.split(".")[-1]: ElementTree.parse(report).getroot().attrib
+              for report in Path("target/surefire-reports").glob("TEST-*MySqlTest.xml")
+          }
+          suites = sorted(Path("src/test/java").rglob("*MySqlTest.java"))
+          if not suites:
+              raise SystemExit("No MySQL integration tests found")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              print("### MySQL integration tests", file=summary)
+              for suite in suites:
+                  counts = reports.get(suite.stem, {})
+                  tests = int(counts.get("tests", 0))
+                  skipped = int(counts.get("skipped", 0))
+                  if tests == 0 or skipped:
+                      raise SystemExit(f"{suite.stem}: {tests} tests, {skipped} skipped")
+                  print(f"- {suite.stem}: {tests} passed", file=summary)
+          PYTHON
+
+  frontend:
+    name: Frontend (format, test, H5, WeChat)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out PR merge
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build:h5
+      - run: npm run build:mp-weixin
