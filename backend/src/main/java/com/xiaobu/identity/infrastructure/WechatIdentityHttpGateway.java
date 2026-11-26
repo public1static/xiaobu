@@ -38,8 +38,7 @@ class WechatIdentityHttpGateway implements WechatIdentityGateway {
 
   WechatIdentityHttpGateway(String appId, String appSecret, RestClient client) {
     if (appId.isBlank() || appSecret.isBlank()) {
-      throw new IllegalStateException(
-          "WeChat preview requires an AppID and a server-side AppSecret");
+      throw new IllegalStateException("微信预览需要配置 AppID 和服务端 AppSecret");
     }
     this.appId = appId;
     this.appSecret = appSecret;
@@ -100,7 +99,7 @@ class WechatIdentityHttpGateway implements WechatIdentityGateway {
               .digest((appId + ":" + openid).getBytes(StandardCharsets.UTF_8));
       return "wx_" + Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
     } catch (NoSuchAlgorithmException ex) {
-      throw new IllegalStateException("SHA-256 unavailable", ex);
+      throw new IllegalStateException("无法使用 SHA-256 摘要算法", ex);
     }
   }
 

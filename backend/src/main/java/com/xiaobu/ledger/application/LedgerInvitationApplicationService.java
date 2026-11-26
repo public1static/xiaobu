@@ -172,7 +172,7 @@ public class LedgerInvitationApplicationService {
               MessageDigest.getInstance("SHA-256")
                   .digest(token.getBytes(StandardCharsets.US_ASCII)));
     } catch (NoSuchAlgorithmException ex) {
-      throw new IllegalStateException("SHA-256 unavailable", ex);
+      throw new IllegalStateException("无法使用 SHA-256 摘要算法", ex);
     }
   }
 }

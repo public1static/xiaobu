@@ -84,3 +84,9 @@ test('edits between pages invalidate loaded rows even when the count stays the s
     assert.equal(sameStatementDays([day], [{ ...day, ...change }]), false);
   }
 });
+
+test('refund date rolls over at Beijing midnight', async () => {
+  const { refundToday } = await import('../src/pages/ledger/transaction.ts');
+  assert.equal(refundToday(new Date('2026-11-25T15:59:59Z')), '2026-11-25');
+  assert.equal(refundToday(new Date('2026-11-25T16:00:00Z')), '2026-11-26');
+});

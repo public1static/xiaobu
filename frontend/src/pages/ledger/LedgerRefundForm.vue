@@ -4,7 +4,7 @@ import type { LedgerAccount } from '../../api/ledger-accounts';
 import { recordLedgerRefund, type LedgerTransactionDetail } from '../../api/ledger-transactions';
 import { ApiRequestError } from '../../api/request';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
-import { formatCents, localDay, parseCents } from './transaction';
+import { formatCents, refundToday, parseCents } from './transaction';
 
 const props = defineProps<{
   ledgerId: string;
@@ -13,7 +13,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ cancel: []; saved: [] }>();
 const amount = ref('');
-const receivedOn = ref(localDay());
+const receivedOn = ref(refundToday());
 const selectedAccount = ref<LedgerAccount | null>(null);
 const selectingAccount = ref(false);
 const saving = ref(false);
@@ -37,7 +37,7 @@ async function save() {
     validationError.value = '请输入不超过可退金额的退款金额。';
     return;
   }
-  if (receivedOn.value < props.detail.transaction.bookedOn || receivedOn.value > localDay()) {
+  if (receivedOn.value < props.detail.transaction.bookedOn || receivedOn.value > refundToday()) {
     validationError.value = '到账日期须在原付款日期至今天之间。';
     return;
   }
@@ -88,7 +88,7 @@ async function save() {
           mode="date"
           :value="receivedOn"
           :start="detail.transaction.bookedOn"
-          :end="localDay()"
+          :end="refundToday()"
           @change="onDateChange"
         >
           <text>{{ receivedOn }} ›</text>

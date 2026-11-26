@@ -23,8 +23,7 @@ class WechatSessionFilter extends OncePerRequestFilter {
       Environment environment,
       @Value("${server.address:}") String address) {
     if (environment.matchesProfiles("local-expense") || !"127.0.0.1".equals(address)) {
-      throw new IllegalStateException(
-          "WeChat preview must be isolated on loopback and not run with local-expense");
+      throw new IllegalStateException("微信预览须绑定回环地址并独立于 local-expense 运行");
     }
     this.sessions = sessions;
   }

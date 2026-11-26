@@ -14,7 +14,7 @@ class LocalSessionWebConfiguration implements WebMvcConfigurer {
 
   LocalSessionWebConfiguration(@Value("${server.address:}") String address) {
     if (!"127.0.0.1".equals(address)) {
-      throw new IllegalStateException("The local session preview must bind to 127.0.0.1");
+      throw new IllegalStateException("本地会话预览必须绑定到 127.0.0.1");
     }
   }
 
