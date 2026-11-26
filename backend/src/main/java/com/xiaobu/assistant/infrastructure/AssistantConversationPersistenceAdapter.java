@@ -19,7 +19,11 @@ class AssistantConversationPersistenceAdapter implements AssistantConversationRe
 
   @Override
   public void create(String id, String ledger, String owner) {
-    jdbc.sql("INSERT INTO assistant_conversations VALUES (?, ?, ?, '新对话', 0, UTC_TIMESTAMP(6))")
+    jdbc.sql(
+            """
+            INSERT INTO assistant_conversations (id,ledger_id,owner_id,title,revision,updated_at)
+            VALUES (?, ?, ?, '新对话', 0, UTC_TIMESTAMP(6))
+            """)
         .params(id, ledger, owner)
         .update();
   }
@@ -49,13 +53,14 @@ class AssistantConversationPersistenceAdapter implements AssistantConversationRe
   public List<Turn> history(String id, long before) {
     return jdbc.sql(
             """
-            SELECT sequence_no AS sequence, question, answer_json FROM assistant_turns
-            WHERE conversation_id=? AND sequence_no<? ORDER BY sequence_no DESC LIMIT 20
+            SELECT sequence_no AS sequence, question, answer_json FROM (
+              SELECT sequence_no, question, answer_json FROM assistant_turns
+              WHERE conversation_id=? AND sequence_no<? ORDER BY sequence_no DESC LIMIT 20
+            ) recent ORDER BY sequence_no
             """)
         .params(id, before)
         .query(Turn.class)
-        .list()
-        .reversed();
+        .list();
   }
 
   @Override

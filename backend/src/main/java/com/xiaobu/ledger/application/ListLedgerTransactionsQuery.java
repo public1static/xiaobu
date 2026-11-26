@@ -61,12 +61,7 @@ public record ListLedgerTransactionsQuery(
         || (long) page * pageSize > Integer.MAX_VALUE) {
       throw new FoundationException(new ErrorCode("XIAOBU_INVALID_PAGE"), "请选择有效的分页参数");
     }
-    if (from == null
-        || through == null
-        || from.getYear() < 1900
-        || through.getYear() > 9999
-        || from.isAfter(through)
-        || ChronoUnit.DAYS.between(from, through) > 365) {
+    if (!isValidDateRange(from, through)) {
       throw new FoundationException(
           new ErrorCode("XIAOBU_INVALID_DATE_RANGE"), "请选择有效日期，范围最多 366 天");
     }
@@ -74,5 +69,15 @@ public record ListLedgerTransactionsQuery(
     if (keyword.length() > 80) {
       throw new FoundationException(new ErrorCode("XIAOBU_SEARCH_TOO_LONG"), "搜索词最多 80 个字符");
     }
+  }
+
+  // 所有流水和分析入口按同一个闭区间上限校验主期间与基期。
+  public static boolean isValidDateRange(LocalDate from, LocalDate through) {
+    return from != null
+        && through != null
+        && from.getYear() >= 1900
+        && through.getYear() <= 9999
+        && !from.isAfter(through)
+        && ChronoUnit.DAYS.between(from, through) <= 365;
   }
 }

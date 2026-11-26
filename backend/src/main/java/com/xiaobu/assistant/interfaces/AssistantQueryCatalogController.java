@@ -16,18 +16,34 @@ import org.springframework.web.bind.annotation.RestController;
 public class AssistantQueryCatalogController {
   private final PersonalLedgerApplicationService ledgers;
 
+  // 将内部目录定义转换为稳定的 HTTP 契约。
+  private final AssistantWebMapper mapper;
+
   // 目录沿用实际数据源的账本读取权限。
-  AssistantQueryCatalogController(PersonalLedgerApplicationService ledgers) {
+  AssistantQueryCatalogController(
+      PersonalLedgerApplicationService ledgers, AssistantWebMapper mapper) {
+    this.mapper = mapper;
     this.ledgers = ledgers;
   }
 
   // 客户端通过逻辑名发现可查字段；具体数据入口仍逐次鉴权。
   @GetMapping("/api/v1/ledgers/{ledgerId}/assistant/query-catalog")
-  public ApiResponse<List<AssistantDataset.Definition>> listDatasets(
+  public ApiResponse<List<DatasetResponse>> listDatasets(
       @PathVariable String ledgerId, HttpServletRequest request) {
     var actor = LedgerSessionContext.require(request);
     ledgers.requireReadAccess(ledgerId, actor.actorId());
     return ApiResponse.success(
-        AssistantDataset.catalog(ledgers.isOwner(ledgerId, actor.actorId())));
+        mapper.toDatasetResponses(
+            AssistantDataset.catalog(ledgers.isOwner(ledgerId, actor.actorId()))));
   }
+
+  record DatasetResponse(
+      String name,
+      String description,
+      String resource,
+      boolean dated,
+      List<String> filters,
+      List<String> groupBy,
+      List<String> metrics,
+      List<String> operations) {}
 }

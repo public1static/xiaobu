@@ -11,20 +11,20 @@ export interface Message {
   question: string;
   answer: {
     text: string;
-    sourceId?: string;
-    choices?: { label: string }[];
+    sourceId?: string | null;
+    choices?: { label: string }[] | null;
     scope?: {
       plan: {
-        from: string;
-        through: string;
-        direction?: string;
-        category?: string;
-        account?: string;
+        from: string | null;
+        through: string | null;
+        direction?: 'INCOME' | 'EXPENSE' | null;
+        category?: string | null;
+        account?: string | null;
         recordedByMe: boolean;
-        keyword?: string;
+        keyword?: string | null;
       };
-    };
-    statement?: LedgerStatementPage;
+    } | null;
+    statement?: LedgerStatementPage | null;
   };
 }
 

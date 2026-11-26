@@ -2,10 +2,9 @@ package com.xiaobu.assistant.interfaces;
 
 import com.aegisid.foundation.web.api.ApiResponse;
 import com.xiaobu.assistant.application.AssistantConversationApplicationService;
-import com.xiaobu.assistant.application.AssistantConversationApplicationService.Message;
-import com.xiaobu.assistant.application.AssistantConversationRepository.Conversation;
 import com.xiaobu.identity.interfaces.LedgerSessionContext;
-import com.xiaobu.ledger.application.LedgerStatementPageResult;
+import com.xiaobu.ledger.interfaces.LedgerStatementPageResponse;
+import com.xiaobu.ledger.interfaces.LedgerTransactionWebMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -30,64 +29,88 @@ import org.springframework.web.bind.annotation.RestController;
 public class AssistantConversationController {
   private final AssistantConversationApplicationService chats;
 
+  // 将聊天和流水分别转换为对应接口的响应。
+  private final AssistantWebMapper mapper;
+  private final LedgerTransactionWebMapper statements;
+
   // 从服务端身份读取私人会话。
-  AssistantConversationController(AssistantConversationApplicationService chats) {
+  AssistantConversationController(
+      AssistantConversationApplicationService chats,
+      AssistantWebMapper mapper,
+      LedgerTransactionWebMapper statements) {
+    this.mapper = mapper;
+    this.statements = statements;
     this.chats = chats;
   }
 
+  // 新会话归属当前账本及登录人。
   @PostMapping
-  public ApiResponse<Conversation> create(@PathVariable String ledger, HttpServletRequest req) {
-    return ApiResponse.success(chats.create(ledger, LedgerSessionContext.require(req).actorId()));
+  public ApiResponse<ConversationResponse> createConversation(
+      @PathVariable String ledger, HttpServletRequest req) {
+    return ApiResponse.success(
+        mapper.toResponse(
+            chats.createConversation(ledger, LedgerSessionContext.require(req).actorId())));
   }
 
+  // 按更新时间分页列出当前用户的会话。
   @GetMapping
-  public ApiResponse<List<Conversation>> list(
+  public ApiResponse<List<ConversationResponse>> listConversations(
       @PathVariable String ledger,
       @RequestParam(defaultValue = "0") int offset,
       HttpServletRequest req) {
     return ApiResponse.success(
-        chats.list(ledger, LedgerSessionContext.require(req).actorId(), offset));
+        mapper.toConversationResponses(
+            chats.listConversations(ledger, LedgerSessionContext.require(req).actorId(), offset)));
   }
 
+  // 读取游标之前的一页历史。
   @GetMapping("/{id}/messages")
-  public ApiResponse<List<Message>> history(
+  public ApiResponse<List<AssistantMessageResponse>> listMessages(
       @PathVariable String ledger,
       @PathVariable String id,
       @RequestParam(defaultValue = "9223372036854775807") long before,
       HttpServletRequest req) {
     return ApiResponse.success(
-        chats.history(ledger, LedgerSessionContext.require(req).actorId(), id, before));
+        mapper.toMessageResponses(
+            chats.listMessages(ledger, LedgerSessionContext.require(req).actorId(), id, before)));
   }
 
+  // 按客户端请求编号提交一轮提问。
   @PostMapping("/{id}/messages")
-  public ApiResponse<Message> ask(
+  public ApiResponse<AssistantMessageResponse> askQuestion(
       @PathVariable String ledger,
       @PathVariable String id,
-      @Valid @RequestBody Ask input,
+      @Valid @RequestBody AskAssistantRequest input,
       HttpServletRequest req) {
     return ApiResponse.success(
-        chats.ask(
-            ledger,
-            LedgerSessionContext.require(req).actorId(),
-            id,
-            input.question().strip(),
-            input.revision(),
-            input.clientId().toString(),
-            input.replyTo()));
+        mapper.toResponse(
+            chats.askQuestion(
+                ledger,
+                LedgerSessionContext.require(req).actorId(),
+                id,
+                input.question().strip(),
+                input.revision(),
+                input.clientId().toString(),
+                input.replyTo())));
   }
 
+  // 按所选回答的来源条件查询流水。
   @GetMapping("/{id}/messages/{sequence}/entries")
-  public ApiResponse<LedgerStatementPageResult> entries(
+  public ApiResponse<LedgerStatementPageResponse> listMessageEntries(
       @PathVariable String ledger,
       @PathVariable String id,
       @PathVariable long sequence,
       @RequestParam(defaultValue = "0") int page,
       HttpServletRequest req) {
     return ApiResponse.success(
-        chats.entries(ledger, LedgerSessionContext.require(req).actorId(), id, sequence, page));
+        statements.toResponse(
+            chats.listMessageEntries(
+                ledger, LedgerSessionContext.require(req).actorId(), id, sequence, page)));
   }
 
-  record Ask(
+  record ConversationResponse(String id, String title, long revision) {}
+
+  record AskAssistantRequest(
       @NotBlank @Size(max = 500) String question,
       @NotNull @PositiveOrZero Long revision,
       @NotNull UUID clientId,
