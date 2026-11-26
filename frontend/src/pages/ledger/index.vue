@@ -58,6 +58,7 @@ import {
   FIRST_LEDGER_MONTH,
   categoryLabel,
   formatCents,
+  formatCentsForInput,
   formatSignedCurrency,
   hasNextStatementPage,
   sameStatementDays,
@@ -131,8 +132,24 @@ const capabilitySelection = computed(
 const editableCapabilities = computed(() =>
   capabilitySelection.value.filter((capability) => supportsTransactionExtension(capability.type)),
 );
-function updateExtensionDraft(type: string, detail: TransactionExtensionDetail) {
-  extensionDrafts.value = { ...extensionDrafts.value, [type]: detail };
+function updateExtensionDraft(type: string, detail: TransactionExtensionDetail | null) {
+  const next = { ...extensionDrafts.value };
+  if (detail) next[type] = detail;
+  else delete next[type];
+  extensionDrafts.value = next;
+}
+watch(capabilitySelection, (now, previous) => {
+  for (const item of previous) {
+    if (!item.required && !now.some(({ type }) => type === item.type)) {
+      updateExtensionDraft(item.type, null);
+    }
+  }
+});
+function applyExtensionAmountDefault(cents: number) {
+  if (!editing.value) {
+    amount.value = formatCentsForInput(cents);
+    fieldError.value.amount = '';
+  }
 }
 const note = ref('');
 const account = ref<Pick<LedgerAccount, 'id' | 'name'> | null>(null);
@@ -741,11 +758,13 @@ function closeTransactionForm() {
   if (!saving.value) open.value = false;
 }
 
-function confirmExtensionRemoval(): Promise<boolean> {
+function confirmExtensionRemoval(categoryChanged: boolean): Promise<boolean> {
   return new Promise((resolve) => {
     uni.showModal({
       title: '移除业务关联？',
-      content: '新分类不支持这笔流水已有的业务明细。继续将移除关联，不会删除这笔流水。',
+      content: categoryChanged
+        ? '新分类不支持这笔流水已有的业务明细。继续将移除关联，不会删除这笔流水。'
+        : '移除关联后，这笔流水仍会保留。',
       confirmText: '移除',
       success: (result) => resolve(result.confirm),
       fail: () => resolve(false),
@@ -769,7 +788,12 @@ async function submit(continueEntry = false) {
     return;
   }
   const supported = new Set(capabilitySelection.value.map(({ type }) => type));
-  const remove = previousExtensions.filter(({ type }) => !supported.has(type));
+  const remove = previousExtensions.filter(
+    ({ type }) =>
+      !supported.has(type) ||
+      (!extensionDrafts.value[type] &&
+        capabilitySelection.value.some((item) => item.type === type && !item.required)),
+  );
   if (
     capabilitySelection.value.some(
       ({ type, required }) => required && !supportsTransactionExtension(type),
@@ -808,7 +832,9 @@ async function submit(continueEntry = false) {
   saveError.value = '';
   try {
     if (remove.length) {
-      const confirmed = await confirmExtensionRemoval();
+      const confirmed = await confirmExtensionRemoval(
+        remove.some(({ type }) => !supported.has(type)),
+      );
       if (!confirmed) return;
       changes.push(...remove.map(({ type }) => ({ type, operation: 'REMOVE' as const })));
     }
@@ -1429,9 +1455,11 @@ const entryDateLabel = computed(() => {
           :type="capability.type"
           :detail="extensionDrafts[capability.type] ?? {}"
           :direction="direction"
+          :booked-on="date"
           :disabled="saving"
           @change="updateExtensionDraft(capability.type, $event)"
           @date-default="applyExtensionDateDefault"
+          @amount-default="applyExtensionAmountDefault"
         />
         <view class="amount-field sheet-child">
           <text class="field-label">{{ directionLabel }}金额<text class="star">*</text></text>
@@ -1530,9 +1558,11 @@ const entryDateLabel = computed(() => {
           :type="capability.type"
           :detail="extensionDrafts[capability.type] ?? {}"
           :direction="direction"
+          :booked-on="date"
           :disabled="saving"
           @change="updateExtensionDraft(capability.type, $event)"
           @date-default="applyExtensionDateDefault"
+          @amount-default="applyExtensionAmountDefault"
         />
         <text v-if="saveError" class="error sheet-child" role="alert">{{ saveError }}</text>
         <view v-if="entryPreset" class="quick-entry-actions sheet-child">

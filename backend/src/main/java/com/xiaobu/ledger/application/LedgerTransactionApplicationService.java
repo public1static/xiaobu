@@ -198,7 +198,12 @@ public class LedgerTransactionApplicationService {
           command.ledgerId(), details.direction(), details.categoryCode());
     }
     extensions.apply(
-        extensionContext(command.ledgerId(), command.actorId(), command.transactionId(), details),
+        extensionContext(
+            command.ledgerId(),
+            command.actorId(),
+            command.transactionId(),
+            details,
+            original.details().categoryCode()),
         command.extensions(),
         false);
     repository.edit(command.ledgerId(), command.transactionId(), command.actorId(), details);
@@ -206,8 +211,24 @@ public class LedgerTransactionApplicationService {
 
   private static TransactionExtensionContext extensionContext(
       String ledgerId, String actorId, String transactionId, LedgerTransactionDetails details) {
+    return extensionContext(ledgerId, actorId, transactionId, details, details.categoryCode());
+  }
+
+  private static TransactionExtensionContext extensionContext(
+      String ledgerId,
+      String actorId,
+      String transactionId,
+      LedgerTransactionDetails details,
+      String originalCategoryCode) {
     return new TransactionExtensionContext(
-        ledgerId, actorId, transactionId, details.direction(), details.categoryCode());
+        ledgerId,
+        actorId,
+        transactionId,
+        details.direction(),
+        details.categoryCode(),
+        details.bookedOn(),
+        details.amountCents(),
+        originalCategoryCode);
   }
 
   @Transactional

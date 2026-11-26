@@ -1,4 +1,5 @@
 import { request } from './request';
+import type { FixedBillPage } from './fixed-bills';
 
 export const rentalCycles = {
   MONTHLY: { name: '月付', months: 1 },
@@ -102,4 +103,8 @@ export function linkRentalBill(ledgerId: string, contractId: string, billId: str
     'PUT',
     { billId },
   );
+}
+
+export function listPendingRentalPeriods(ledgerId: string, month: string, page = 0) {
+  return request<FixedBillPage>(path(ledgerId) + '/payment-periods', 'GET', { month, page });
 }

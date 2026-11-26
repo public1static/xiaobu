@@ -8,6 +8,7 @@ import com.xiaobu.boot.XiaobuApplication;
 import com.xiaobu.ledger.application.ChangeLedgerTransactionStateCommand;
 import com.xiaobu.ledger.application.CreateFixedBillCommand;
 import com.xiaobu.ledger.application.CreateRentalContractCommand;
+import com.xiaobu.ledger.application.EditLedgerTransactionCommand;
 import com.xiaobu.ledger.application.FixedBillApplicationService;
 import com.xiaobu.ledger.application.GenerateRentalBillCommand;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
@@ -18,11 +19,14 @@ import com.xiaobu.ledger.application.ListRentalBillPlansQuery;
 import com.xiaobu.ledger.application.PayFixedBillCommand;
 import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
 import com.xiaobu.ledger.application.RentalApplicationService;
+import com.xiaobu.ledger.application.RentalPaymentDraft;
 import com.xiaobu.ledger.application.SaveRentalHomeCommand;
+import com.xiaobu.ledger.application.TransactionExtensionChange;
 import com.xiaobu.ledger.domain.RentalPaymentCycle;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -482,6 +486,199 @@ class RentalPersistenceMySqlTest {
                     ledger, actor, RentalPaymentCycle.MONTHLY, day, day, 0))
             .totalCount());
     assertEquals(0, transactionCount(ledger));
+  }
+
+  @Test
+  void recordsRentDirectlyAndRejectsAnOccupiedPeriodWithoutLeavingAnExtraExpense() {
+    String actor = "rent-" + UUID.randomUUID();
+    String ledger = "book_" + UUID.randomUUID();
+    jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", ledger, actor);
+    var month = YearMonth.of(2025, 1);
+    var bookedOn = month.atDay(10);
+    var contract = setupRental(ledger, actor, month);
+    bills.createFixedBill(
+        new CreateFixedBillCommand(
+            ledger, actor, "普通住房固定账单", month.atDay(15), 9900, "HOUSING", null));
+    assertEquals(1, rentals.listPendingRentalPeriods(ledger, actor, month, 0).totalCount());
+    assertEquals(
+        contract,
+        rentals.listPendingRentalPeriods(ledger, actor, month, 0).entries().getFirst().billId());
+    assertEquals(
+        0, rentals.listPendingRentalPeriods(ledger, actor, month.plusMonths(4), 0).totalCount());
+
+    var draft = rentChange(contract, month);
+    assertThrows(
+        FoundationException.class,
+        () ->
+            transactions.recordLedgerTransaction(
+                new RecordLedgerTransactionCommand(
+                    ledger,
+                    actor,
+                    TransactionDirection.EXPENSE,
+                    10000,
+                    bookedOn,
+                    "DAILY",
+                    "非住房",
+                    null,
+                    draft)));
+    assertEquals(0, transactionCount(ledger));
+    var entry =
+        new RecordLedgerTransactionCommand(
+            ledger,
+            actor,
+            TransactionDirection.EXPENSE,
+            247000,
+            bookedOn,
+            "HOUSING",
+            "本月房租",
+            null,
+            draft);
+    var saved = transactions.recordLedgerTransaction(entry);
+    assertThrows(FoundationException.class, () -> transactions.recordLedgerTransaction(entry));
+    assertEquals(1, transactionCount(ledger));
+    assertEquals(0, rentals.listPendingRentalPeriods(ledger, actor, month, 0).totalCount());
+    var paid =
+        bills.listFixedBillPeriods(ledger, actor, month, true, 0, contract).entries().getFirst();
+    assertEquals(saved.id(), paid.transactionId());
+    assertEquals(247000L, paid.paidAmountCents());
+    assertEquals(bookedOn, paid.paidOn());
+
+    var ordinary =
+        transactions.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledger,
+                actor,
+                TransactionDirection.EXPENSE,
+                8700,
+                bookedOn,
+                "HOUSING",
+                "维修",
+                null));
+    assertEquals(
+        0, transactions.getLedgerTransaction(ledger, actor, ordinary.id()).extensions().size());
+    assertEquals(2, transactionCount(ledger));
+  }
+
+  @Test
+  void editingCanCorrectRentAmountAndMoveOrClearTheSameTransactionBinding() {
+    String actor = "rent-" + UUID.randomUUID();
+    String ledger = "book_" + UUID.randomUUID();
+    jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", ledger, actor);
+    var month = YearMonth.of(2025, 1);
+    var bookedOn = month.atDay(10);
+    var billId = setupRental(ledger, actor, month);
+    var row =
+        transactions.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledger,
+                actor,
+                TransactionDirection.EXPENSE,
+                250000,
+                bookedOn,
+                "HOUSING",
+                "",
+                null,
+                rentChange(billId, month)));
+    var originalRef = bills.findFixedBillPaymentReference(ledger, actor, row.id()).orElseThrow();
+    var next = month.plusMonths(1);
+    transactions.editLedgerTransaction(
+        new EditLedgerTransactionCommand(
+            ledger,
+            actor,
+            row.id(),
+            0,
+            TransactionDirection.EXPENSE,
+            251000,
+            bookedOn,
+            "HOUSING",
+            "",
+            null,
+            List.of()));
+    var updated =
+        bills.listFixedBillPeriods(ledger, actor, month, true, 0, billId).entries().getFirst();
+    assertEquals(251000L, updated.paidAmountCents());
+    assertEquals(
+        originalRef, bills.findFixedBillPaymentReference(ledger, actor, row.id()).orElseThrow());
+    transactions.editLedgerTransaction(
+        new EditLedgerTransactionCommand(
+            ledger,
+            actor,
+            row.id(),
+            1,
+            TransactionDirection.EXPENSE,
+            252000,
+            bookedOn,
+            "HOUSING",
+            "",
+            null,
+            rentChange(billId, next)));
+    assertEquals(1, rentals.listPendingRentalPeriods(ledger, actor, month, 0).totalCount());
+    assertEquals(
+        row.id(),
+        bills
+            .listFixedBillPeriods(ledger, actor, next, true, 0, billId)
+            .entries()
+            .getFirst()
+            .transactionId());
+
+    transactions.deleteLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledger, actor, row.id(), 2));
+    assertEquals(1, rentals.listPendingRentalPeriods(ledger, actor, next, 0).totalCount());
+    transactions.restoreLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledger, actor, row.id(), 3));
+    assertEquals(
+        row.id(),
+        bills
+            .listFixedBillPeriods(ledger, actor, next, true, 0, billId)
+            .entries()
+            .getFirst()
+            .transactionId());
+
+    transactions.editLedgerTransaction(
+        new EditLedgerTransactionCommand(
+            ledger,
+            actor,
+            row.id(),
+            4,
+            TransactionDirection.EXPENSE,
+            252000,
+            bookedOn,
+            "HOUSING",
+            "",
+            null,
+            List.of(
+                new TransactionExtensionChange(
+                    "RENTAL_PAYMENT", TransactionExtensionChange.Operation.REMOVE, null))));
+    assertEquals(1, rentals.listPendingRentalPeriods(ledger, actor, next, 0).totalCount());
+    assertEquals(0, transactions.getLedgerTransaction(ledger, actor, row.id()).extensions().size());
+    assertEquals(1, transactionCount(ledger));
+  }
+
+  private String setupRental(String ledger, String actor, YearMonth month) {
+    var home = rentals.saveRentalHome(new SaveRentalHomeCommand(ledger, actor, null, "房屋", "", ""));
+    return rentals
+        .createRentalContract(
+            new CreateRentalContractCommand(
+                ledger,
+                actor,
+                home.id(),
+                "出租方",
+                month.atDay(1),
+                month.plusMonths(2).atEndOfMonth(),
+                250000,
+                0,
+                RentalPaymentCycle.MONTHLY,
+                month.atDay(15),
+                ""))
+        .billId();
+  }
+
+  private static List<TransactionExtensionChange> rentChange(String billId, YearMonth month) {
+    return List.of(
+        new TransactionExtensionChange(
+            "RENTAL_PAYMENT",
+            TransactionExtensionChange.Operation.UPSERT,
+            new RentalPaymentDraft(billId, month)));
   }
 
   private int transactionCount(String ledger) {

@@ -13,7 +13,7 @@ export interface FixedBillPeriod {
   paidAmountCents?: number | null;
 }
 
-interface FixedBillPage {
+export interface FixedBillPage {
   entries: FixedBillPeriod[];
   totalCount: number;
   page: number;

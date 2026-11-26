@@ -95,8 +95,7 @@ public class TransactionExtensionRegistry {
     }
     previous.stream()
         .filter(result -> !pending.containsKey(result.type()))
-        .forEach(
-            result -> requireHandler(result.type()).validateRetained(context, result.detail()));
+        .forEach(result -> requireHandler(result.type()).retain(context, result.detail()));
     pending.forEach((type, change) -> {
       var handler = requireHandler(type);
       if (change.operation() == TransactionExtensionChange.Operation.UPSERT)
