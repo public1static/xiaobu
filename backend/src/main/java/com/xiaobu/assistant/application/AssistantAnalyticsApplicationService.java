@@ -45,13 +45,17 @@ public class AssistantAnalyticsApplicationService {
     this.repository = repository;
   }
 
-  // 快照沿用业务服务的可见字段与派生余额。
+  /**
+   * 快照沿用业务服务的可见字段与派生余额。
+   *
+   * @param amounts 派生金额指标，单位为分
+   */
   private record Item(Map<String, String> fields, Map<String, Long> amounts) {}
 
   // 按业务服务的权限和现有字段读取完整快照。
   private List<Item> items(AssistantDataset data, String ledger, String actor) {
     return switch (data) {
-      case accounts ->
+      case ACCOUNTS ->
           accounts.listLedgerAccounts(ledger, actor).stream()
               .map(r ->
                   new Item(
@@ -64,7 +68,7 @@ public class AssistantAnalyticsApplicationService {
                           "balanceCents",
                           r.balanceCents())))
               .toList();
-      case categories ->
+      case CATEGORIES ->
           categories.listLedgerCategories(ledger, actor).stream()
               .map(r ->
                   new Item(
@@ -77,11 +81,11 @@ public class AssistantAnalyticsApplicationService {
                           r.active() ? "启用" : "停用"),
                       Map.of()))
               .toList();
-      case members ->
+      case MEMBERS ->
           members.listLedgerMembers(ledger, actor).stream()
               .map(r -> new Item(Map.of("member", r.memberId(), "role", r.role().name()), Map.of()))
               .toList();
-      case giftBooks ->
+      case GIFT_BOOKS ->
           gifts.listGiftBooks(ledger, actor).stream()
               .map(r ->
                   new Item(
@@ -94,7 +98,7 @@ public class AssistantAnalyticsApplicationService {
                           r.archived() ? "归档" : "使用中"),
                       Map.of()))
               .toList();
-      case giftContacts ->
+      case GIFT_CONTACTS ->
           gifts.listGiftContacts(ledger, actor).stream()
               .map(r ->
                   new Item(
@@ -143,19 +147,14 @@ public class AssistantAnalyticsApplicationService {
       String ledger, String actor, AssistantQueryPlan p, String category, String account) {
     ledgers.requireReadAccess(ledger, actor);
     var a = p.analysis();
-    var def =
-        AssistantDataset.catalog(ledgers.isOwner(ledger, actor)).stream()
-            .filter(d -> d.name().equals(a.dataset()))
-            .findFirst()
-            .orElse(null);
-    if (def == null || !valid(def, p)) return Optional.empty();
-    var data = AssistantDataset.valueOf(def.name());
-    if (def.dated()) {
-      new ListLedgerTransactionsQuery(ledger, actor, p.from(), p.through(), p.keyword());
-      if ("compare".equals(a.operation()))
-        new ListLedgerTransactionsQuery(
-            ledger, actor, a.baselineFrom(), a.baselineThrough(), p.keyword());
-    }
+    var data =
+        AssistantDataset.findVisible(a.dataset(), ledgers.isOwner(ledger, actor)).orElse(null);
+    if (data == null || !valid(data.definition(), p)) return Optional.empty();
+    if (data.definition().dated()
+        && (!ListLedgerTransactionsQuery.isValidDateRange(p.from(), p.through())
+            || ("compare".equals(a.operation())
+                && !ListLedgerTransactionsQuery.isValidDateRange(
+                    a.baselineFrom(), a.baselineThrough())))) return Optional.empty();
     return Optional.of(describe(ledger, actor, p, category, account, data));
   }
 
@@ -205,9 +204,9 @@ public class AssistantAnalyticsApplicationService {
     if (rows.isEmpty() || rows.getFirst().count() == 0) return title + "\n没有匹配记录。";
     if ("total".equals(a.operation())) return title + "\n" + amount(rows.getFirst(), a.metric());
     Map<String, String> labels = new HashMap<>();
-    if (data == AssistantDataset.statement && "CATEGORY".equals(a.groupBy()))
+    if (data == AssistantDataset.STATEMENT && "CATEGORY".equals(a.groupBy()))
       categories.listLedgerCategories(ledger, actor).forEach(c -> labels.put(c.code(), c.name()));
-    if (data == AssistantDataset.statement && "ACCOUNT".equals(a.groupBy()))
+    if (data == AssistantDataset.STATEMENT && "ACCOUNT".equals(a.groupBy()))
       accounts.listLedgerAccounts(ledger, actor).forEach(c -> labels.put(c.id(), c.name()));
     var lines = new ArrayList<String>();
     lines.add(title + "（最多 " + (a.limit() == null ? 10 : a.limit()) + " 项）");

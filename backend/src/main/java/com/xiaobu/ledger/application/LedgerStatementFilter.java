@@ -4,7 +4,11 @@ import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.TransactionDirection;
 
-// 当前账本内的组合筛选；记账人筛选分别采用流水和退款的登记身份。
+/**
+ * 当前账本内的组合筛选；记账人筛选分别采用流水和退款的登记身份。
+ *
+ * @param recorderId 指定登记人的身份，与仅本人筛选互斥
+ */
 public record LedgerStatementFilter(
     String categoryCode,
     String accountId,

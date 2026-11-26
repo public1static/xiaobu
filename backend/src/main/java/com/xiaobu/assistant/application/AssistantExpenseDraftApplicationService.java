@@ -16,6 +16,7 @@ import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
 import com.xiaobu.ledger.application.TransactionExtensionRegistry;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,7 +58,7 @@ public class AssistantExpenseDraftApplicationService {
 
   // 返回当前待办或指定草稿的状态，用于恢复会话及核对已确认的原单。
   @Transactional(readOnly = true)
-  public Draft read(String ledger, String actor, String chat, String id) {
+  public Draft findExpenseDraft(String ledger, String actor, String chat, String id) {
     ledgers.requireReadAccess(ledger, actor);
     owned(ledger, actor, chat);
     return id == null
@@ -67,7 +68,7 @@ public class AssistantExpenseDraftApplicationService {
 
   // 持有账本写权限锁后，同时保存草稿内容与用户看到的回复。
   @Transactional
-  public Draft edit(
+  public Draft editExpenseDraft(
       String ledger,
       String actor,
       String chat,
@@ -98,14 +99,27 @@ public class AssistantExpenseDraftApplicationService {
     return draft;
   }
 
-  // 校验原账本、草稿版本和当前权限，流水与确认结果一起提交。
+  // 确认草稿与写流水在同一事务中提交。
   @Transactional
-  public Draft finish(
-      String ledger, String actor, String chat, String id, long version, boolean confirm) {
+  public Draft confirmExpenseDraft(
+      String ledger, String actor, String chat, String id, long version) {
+    return finishExpenseDraft(ledger, actor, chat, id, version, Status.CONFIRMED);
+  }
+
+  // 放弃草稿只更新状态和对应的会话消息。
+  @Transactional
+  public Draft discardExpenseDraft(
+      String ledger, String actor, String chat, String id, long version) {
+    return finishExpenseDraft(ledger, actor, chat, id, version, Status.DISCARDED);
+  }
+
+  // 共享归属、版本和终态校验，重复操作返回同一份草稿。
+  private Draft finishExpenseDraft(
+      String ledger, String actor, String chat, String id, long version, Status target) {
     ledgers.requireWriteAccess(ledger, actor);
     var conversation = owned(ledger, actor, chat);
     var draft = drafts.find(chat, id).orElseThrow(this::missing);
-    var target = confirm ? Status.CONFIRMED : Status.DISCARDED;
+    boolean confirm = target == Status.CONFIRMED;
     if (draft.status() == target) return draft;
     if (draft.status() != Status.PENDING || draft.version() != version) throw changed();
     String source = null;
@@ -157,7 +171,7 @@ public class AssistantExpenseDraftApplicationService {
     if (!chats.append(
         c.id(),
         c.revision(),
-        java.util.UUID.randomUUID().toString(),
+        UUID.randomUUID().toString(),
         question,
         json.writeValueAsString(answer))) throw changed();
   }

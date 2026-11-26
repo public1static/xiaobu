@@ -5,12 +5,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.xiaobu.assistant.application.AssistantIntentParser;
+import com.xiaobu.assistant.application.AssistantQueryPlan;
 import com.xiaobu.boot.XiaobuApplication;
 import com.xiaobu.identity.application.WechatIdentityGateway;
+import com.xiaobu.ledger.domain.TransactionDirection;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -101,9 +108,7 @@ class WechatPreviewMySqlTest {
     String id = data(send("POST", root, null, beta)).get("id").asText();
     String messages = root + "/" + id + "/messages";
     String question =
-        "{\"question\":\"十月餐饮多少\",\"revision\":0,\"clientId\":\""
-            + java.util.UUID.randomUUID()
-            + "\"}";
+        "{\"question\":\"十月餐饮多少\",\"revision\":0,\"clientId\":\"" + UUID.randomUUID() + "\"}";
     var response = send("POST", messages, question, beta);
     assertEquals(200, response.statusCode(), response.body());
     var first = data(response);
@@ -116,7 +121,7 @@ class WechatPreviewMySqlTest {
     assertEquals(0, data(send("GET", root, null, alpha)).size());
     String follow =
         "{\"question\":\"那上个月呢\",\"replyTo\":1,\"revision\":1,\"clientId\":\""
-            + java.util.UUID.randomUUID()
+            + UUID.randomUUID()
             + "\"}";
     var second = data(send("POST", messages, follow, beta));
     assertEquals("餐饮", second.at("/answer/scope/plan/category").asText());
@@ -182,10 +187,9 @@ class WechatPreviewMySqlTest {
             .get("id")
             .asText();
     String card = data(send("POST", accounts, "{\"name\":\"银行卡\"}", owner)).get("id").asText();
-    for (String[] row :
-        java.util.List.of(new String[] {"09", "1000"}, new String[] {"10", "2500"})) {
+    for (String[] row : List.of(new String[] {"09", "1000"}, new String[] {"10", "2500"})) {
       var transfer =
-          java.util.Map.of(
+          Map.of(
               "sourceAccountId",
               cash,
               "targetAccountId",
@@ -204,7 +208,7 @@ class WechatPreviewMySqlTest {
     // 放入最近五十条之外的基期，用于发现基于首页做统计的回归。
     for (int i = 0; i < 51; i++) {
       var transfer =
-          java.util.Map.of(
+          Map.of(
               "sourceAccountId",
               cash,
               "targetAccountId",
@@ -264,6 +268,23 @@ class WechatPreviewMySqlTest {
     assertTrue(
         askAnalytics(messages, reader, 8, "giftContacts", "total", "entryCount", null, false)
             .contains("当前快照"));
+    // 非法的模型期间应返回澄清并保留上一轮目录，而不是中断 HTTP 会话。
+    assertTrue(
+        askAnalytics(messages, reader, 9, "transfers", "total", "amountCents", null, false)
+            .contains("无法"));
+    var clarified = data(send("GET", messages, null, reader)).get(9);
+    assertEquals("giftContacts", clarified.at("/answer/scope/plan/analysis/dataset").asText());
+    for (int revision = 10; revision < 22; revision++) {
+      askAnalytics(messages, reader, revision, "categories", "total", "entryCount", null, false);
+    }
+    var recent = data(send("GET", messages, null, reader));
+    assertEquals(20, recent.size());
+    for (int index = 0; index < 20; index++)
+      assertEquals(index + 3, recent.get(index).get("sequence").asInt());
+    var older = data(send("GET", messages + "?before=3", null, reader));
+    assertEquals(2, older.size());
+    assertEquals(1, older.get(0).get("sequence").asInt());
+    assertEquals(2, older.get(1).get("sequence").asInt());
   }
 
   // 固定模型输出，将金额计算及授权验证与供应商语义评测分开。
@@ -277,9 +298,9 @@ class WechatPreviewMySqlTest {
       String group,
       boolean dated)
       throws Exception {
-    var from = dated ? java.time.LocalDate.of(2026, 10, 1) : null;
+    var from = dated ? LocalDate.of(2026, 10, 1) : null;
     var plan =
-        new com.xiaobu.assistant.application.AssistantQueryPlan(
+        new AssistantQueryPlan(
             from,
             dated ? from.plusDays(30) : null,
             null,
@@ -287,7 +308,7 @@ class WechatPreviewMySqlTest {
             null,
             false,
             null,
-            new com.xiaobu.assistant.application.AssistantQueryPlan.Analysis(
+            new AssistantQueryPlan.Analysis(
                 dataset,
                 op,
                 metric,
@@ -295,18 +316,16 @@ class WechatPreviewMySqlTest {
                 op.equals("rank") ? 3 : null,
                 op.equals("compare") ? from.minusMonths(1) : null,
                 op.equals("compare") ? from.minusDays(1) : null,
-                dataset.equals("transfers")
-                    ? java.util.Map.of("source", "现金")
-                    : java.util.Map.of()));
+                dataset.equals("transfers") ? Map.of("source", "现金") : Map.of()));
     var mapper = JsonMapper.builder().findAndAddModules().build();
     var body =
-        java.util.Map.of(
+        Map.of(
             "question",
             mapper.writeValueAsString(plan),
             "revision",
             revision,
             "clientId",
-            java.util.UUID.randomUUID());
+            UUID.randomUUID());
     var reply = send("POST", path, json.writeValueAsString(body), token);
     assertEquals(200, reply.statusCode(), reply.body());
     return data(reply).at("/answer/text").asText();
@@ -340,19 +359,19 @@ class WechatPreviewMySqlTest {
     // 用受控解析输出验证账务结果，测试不向供应商发送数据。
     @Bean
     @Primary
-    com.xiaobu.assistant.application.AssistantIntentParser fixtureParser() {
+    AssistantIntentParser fixtureParser() {
       return (question, previous, today) ->
           question.startsWith("{")
               ? JsonMapper.builder()
                   .findAndAddModules()
                   .build()
-                  .readValue(question, com.xiaobu.assistant.application.AssistantQueryPlan.class)
-              : new com.xiaobu.assistant.application.AssistantQueryPlan(
-                  java.time.LocalDate.of(2026, 10, 1),
-                  java.time.LocalDate.of(2026, 10, 31),
+                  .readValue(question, AssistantQueryPlan.class)
+              : new AssistantQueryPlan(
+                  LocalDate.of(2026, 10, 1),
+                  LocalDate.of(2026, 10, 31),
                   "餐饮",
                   null,
-                  com.xiaobu.ledger.domain.TransactionDirection.EXPENSE,
+                  TransactionDirection.EXPENSE,
                   false,
                   null);
     }
@@ -361,7 +380,7 @@ class WechatPreviewMySqlTest {
     @Primary
     WechatIdentityGateway fixtureIdentities() {
       // 每次启动使用独立身份，同一测试中的重复登录仍回到同一账本。
-      var run = java.util.UUID.randomUUID().toString();
+      var run = UUID.randomUUID().toString();
       return code -> (code.equals("B") ? "wx_b_" : "wx_a_") + run;
     }
   }

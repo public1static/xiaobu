@@ -25,7 +25,11 @@ public record AssistantQueryPlan(
     this(from, through, category, account, direction, recordedByMe, keyword, null);
   }
 
-  // 比较明确给出基准区间，筛选与指标在两个期间共用。
+  /**
+   * 比较明确给出基准区间，筛选与指标在两个期间共用。
+   *
+   * @param baselineFrom 比较基期的首日，含当日
+   */
   public record Analysis(
       String dataset,
       String operation,

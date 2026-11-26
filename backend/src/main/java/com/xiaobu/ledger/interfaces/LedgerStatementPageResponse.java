@@ -2,7 +2,7 @@ package com.xiaobu.ledger.interfaces;
 
 import java.util.List;
 
-record LedgerStatementPageResponse(
+public record LedgerStatementPageResponse(
     List<LedgerTransactionResponse> entries,
     List<LedgerStatementDayResponse> days,
     long incomeCents,

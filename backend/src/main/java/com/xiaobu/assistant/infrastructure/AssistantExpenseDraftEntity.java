@@ -32,16 +32,20 @@ class AssistantExpenseDraftEntity {
   @Column(columnDefinition = "varchar(16)")
   private Status status;
 
-  // 以下字段为用户当前核对的账务内容，金额和分类可在追问时补充。
+  // 拟入账的业务日期。
   private LocalDate bookedOn;
+  // 拟入账金额（分），待补金额时为空。
   private Long amountCents;
 
+  // 当前账本的支出分类，待选择时为空。
   @Column(length = 20)
   private String categoryCode;
 
+  // 可选的付款账户，确认时再次核对账本归属。
   @Column(length = 48)
   private String accountId;
 
+  // 用户核对过的支出备注。
   @Column(length = 100)
   private String note;
 
