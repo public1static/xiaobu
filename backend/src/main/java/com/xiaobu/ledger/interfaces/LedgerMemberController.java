@@ -1,8 +1,8 @@
 package com.xiaobu.ledger.interfaces;
 
 import com.aegisid.foundation.web.api.ApiResponse;
+import com.xiaobu.identity.interfaces.LedgerSessionContext;
 import com.xiaobu.identity.interfaces.LocalPreviewAccount;
-import com.xiaobu.identity.interfaces.LocalSessionContext;
 import com.xiaobu.ledger.application.ChangeLedgerMemberRoleCommand;
 import com.xiaobu.ledger.application.LedgerMemberApplicationService;
 import com.xiaobu.ledger.application.RemoveLedgerMemberCommand;
@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("local-expense")
+@Profile("local-expense | wechat-preview")
 @RequestMapping("/api/v1/ledgers/{ledgerId}/members")
 public class LedgerMemberController {
 
@@ -35,7 +35,7 @@ public class LedgerMemberController {
   @GetMapping
   public ApiResponse<List<LedgerMemberResponse>> listLedgerMembers(
       @PathVariable("ledgerId") String ledgerId, HttpServletRequest request) {
-    String actorId = LocalSessionContext.require(request).actorId();
+    String actorId = LedgerSessionContext.require(request).actorId();
     return ApiResponse.success(
         members.listLedgerMembers(ledgerId, actorId).stream()
             .map(member ->
@@ -53,7 +53,7 @@ public class LedgerMemberController {
       @PathVariable("memberId") String memberId,
       @Valid @RequestBody ChangeLedgerMemberRoleRequest input,
       HttpServletRequest request) {
-    String actorId = LocalSessionContext.require(request).actorId();
+    String actorId = LedgerSessionContext.require(request).actorId();
     members.changeLedgerMemberRole(
         new ChangeLedgerMemberRoleCommand(
             ledgerId, actorId, memberId, LedgerMemberRole.valueOf(input.role())));
@@ -65,7 +65,7 @@ public class LedgerMemberController {
       @PathVariable("ledgerId") String ledgerId,
       @PathVariable("memberId") String memberId,
       HttpServletRequest request) {
-    String actorId = LocalSessionContext.require(request).actorId();
+    String actorId = LedgerSessionContext.require(request).actorId();
     members.removeLedgerMember(new RemoveLedgerMemberCommand(ledgerId, actorId, memberId));
   }
 }

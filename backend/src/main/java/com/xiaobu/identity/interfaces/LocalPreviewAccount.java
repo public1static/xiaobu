@@ -2,6 +2,7 @@ package com.xiaobu.identity.interfaces;
 
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
+import com.xiaobu.identity.application.WechatSessionApplicationService;
 import java.util.Arrays;
 
 /** Synthetic accounts used only by the loopback H5 preview. */
@@ -32,7 +33,7 @@ public enum LocalPreviewAccount {
         .filter(account -> account.actorId.equals(actorId))
         .map(LocalPreviewAccount::displayName)
         .findFirst()
-        .orElse("账本成员");
+        .orElseGet(() -> WechatSessionApplicationService.displayNameForActor(actorId));
   }
 
   String actorId() {

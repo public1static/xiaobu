@@ -1,7 +1,7 @@
 package com.xiaobu.ledger.interfaces;
 
 import com.aegisid.foundation.web.api.ApiResponse;
-import com.xiaobu.identity.interfaces.LocalSessionContext;
+import com.xiaobu.identity.interfaces.LedgerSessionContext;
 import com.xiaobu.ledger.application.CreateLedgerAccountCommand;
 import com.xiaobu.ledger.application.LedgerAccountApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("local-expense")
+@Profile("local-expense | wechat-preview")
 @RequestMapping("/api/v1/ledgers/{ledgerId}/accounts")
 public class LedgerAccountController {
 
@@ -31,7 +31,7 @@ public class LedgerAccountController {
   @GetMapping
   public ApiResponse<List<LedgerAccountResponse>> listLedgerAccounts(
       @PathVariable("ledgerId") String ledgerId, HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     return ApiResponse.success(
         accounts.listLedgerAccounts(ledgerId, actor.actorId()).stream()
             .map(mapper::toResponse)
@@ -43,7 +43,7 @@ public class LedgerAccountController {
       @PathVariable("ledgerId") String ledgerId,
       @Valid @RequestBody CreateLedgerAccountRequest input,
       HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     return ApiResponse.success(
         mapper.toResponse(
             accounts.createLedgerAccount(

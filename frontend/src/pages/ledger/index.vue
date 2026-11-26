@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { onLoad, onShareAppMessage } from '@dcloudio/uni-app';
+import { closeWechatSession, getWechatSession, openWechatSession } from '../../api/wechat-session';
+import { setWechatSessionToken, wechatPreviewApiBase } from '../../api/preview-transport';
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerSearchSheet from './LedgerSearchSheet.vue';
@@ -14,13 +17,10 @@ import {
   type LedgerTransactionFilter,
   type LedgerTransactionDetail,
 } from '../../api/ledger-transactions';
-import {
-  closeLocalSession,
-  getLocalSession,
-  openLocalSession,
-  type LocalSession,
-  type PreviewAccount,
-} from '../../api/local-session';
+import type { LocalSession, PreviewAccount } from '../../api/local-session';
+// #ifdef H5
+import { closeLocalSession, getLocalSession, openLocalSession } from '../../api/local-session';
+// #endif
 import {
   acceptLedgerInvitation,
   createLedgerInvitation,
@@ -99,6 +99,7 @@ const ledgerNotice = ref('');
 const ledgerPickerOpen = ref(false);
 const shareOpen = ref(false);
 const shareLink = ref('');
+const shareToken = ref('');
 const inviteBusy = ref(false);
 const inviteError = ref('');
 const inviteFeedback = ref('');
@@ -168,7 +169,7 @@ function finishInvitation() {
 
 async function joinInvitation() {
   if (!session.value) {
-    loginOpen.value = true;
+    beginSignIn();
     return;
   }
   if (inviteBusy.value || !invitePreview.value) return;
@@ -185,7 +186,7 @@ async function joinInvitation() {
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 401) {
       resetSession(null);
-      loginOpen.value = true;
+      beginSignIn();
       inviteError.value = '请重新登录后加入。';
     } else if (error instanceof ApiRequestError && error.status === 409) {
       inviteError.value = '不能接受自己发出的邀请。';
@@ -223,24 +224,26 @@ function selectLedger(ledger: JoinedLedger | null) {
 }
 
 async function generateInviteLink() {
-  // #ifdef H5
   if (!session.value || sharedLedger.value || inviteBusy.value) return;
   inviteBusy.value = true;
   shareOpen.value = true;
   shareLink.value = '';
+  shareToken.value = '';
   inviteError.value = '';
   inviteFeedback.value = '';
   try {
     const invite = await createLedgerInvitation(session.value.ledgerId);
+    shareToken.value = invite.token;
+    // #ifdef H5
     const url = new URL(window.location.href);
     url.hash = `/?invite=${encodeURIComponent(invite.token)}`;
     shareLink.value = url.toString();
+    // #endif
   } catch {
     inviteError.value = '生成邀请失败，请重试。';
   } finally {
     inviteBusy.value = false;
   }
-  // #endif
 }
 
 async function copyInvitation() {
@@ -271,6 +274,7 @@ function resetSession(next: LocalSession | null) {
   searchText.value = '';
   ledgerNotice.value = '';
   shareLink.value = '';
+  shareToken.value = '';
   session.value = next;
   items.value = [];
   listError.value = '';
@@ -280,24 +284,60 @@ function resetSession(next: LocalSession | null) {
 }
 
 async function restoreSession() {
-  // #ifdef H5
   try {
+    // #ifdef H5
     resetSession(await getLocalSession());
+    // #endif
+    // #ifdef MP-WEIXIN
+    if (wechatPreviewApiBase()) resetSession(await getWechatSession());
+    // #endif
     await refresh();
   } catch (error) {
-    if (!(error instanceof ApiRequestError) || error.status !== 401) {
+    if (error instanceof ApiRequestError && error.status === 401) {
+      // #ifdef MP-WEIXIN
+      setWechatSessionToken('');
+      // #endif
+    } else {
       sessionError.value = '无法连接联调服务，请稍后重试。';
     }
   } finally {
     checkingSession.value = false;
     void loadInvitePreview();
   }
+}
+
+function beginSignIn() {
+  // #ifdef H5
+  loginOpen.value = true;
+  sessionError.value = '';
   // #endif
-  // #ifndef H5
-  checkingSession.value = false;
+  // #ifdef MP-WEIXIN
+  void signInWithWechat();
   // #endif
 }
 
+async function signInWithWechat() {
+  if (sessionBusy.value) return;
+  if (!wechatPreviewApiBase()) {
+    sessionError.value = '尚未配置微信联调服务。';
+    return;
+  }
+  sessionBusy.value = true;
+  sessionError.value = '';
+  try {
+    resetSession(await openWechatSession());
+    if (incomingToken.value) await loadInvitePreview();
+    else openTransactionForm();
+    await refresh();
+  } catch {
+    sessionError.value = '微信登录未完成，请重试。';
+    if (incomingToken.value) inviteError.value = sessionError.value;
+  } finally {
+    sessionBusy.value = false;
+  }
+}
+
+// #ifdef H5
 async function signIn(account: PreviewAccount) {
   if (sessionBusy.value) return;
   sessionBusy.value = true;
@@ -318,12 +358,19 @@ async function signIn(account: PreviewAccount) {
   }
 }
 
+// #endif
+
 async function signOut() {
   if (sessionBusy.value || saving.value) return;
   sessionBusy.value = true;
   sessionError.value = '';
   try {
+    // #ifdef H5
     await closeLocalSession();
+    // #endif
+    // #ifdef MP-WEIXIN
+    await closeWechatSession();
+    // #endif
     resetSession(null);
   } catch {
     sessionError.value = '退出未确认，请重试。';
@@ -447,8 +494,7 @@ function changeMonth(offset: -1 | 1) {
 function startTransaction() {
   if (checkingSession.value || sessionBusy.value || readOnly.value) return;
   if (!session.value) {
-    loginOpen.value = true;
-    sessionError.value = '';
+    beginSignIn();
     return;
   }
   openTransactionForm();
@@ -499,11 +545,7 @@ async function submit() {
     note: note.value.trim(),
     accountId: account.value?.id ?? null,
   };
-  // The current preview has no server-side replay contract.
-  // #ifndef H5
-  saveError.value = '此里程碑仅支持 H5 本地联调';
-  return;
-  // #endif
+  // A transport failure does not prove the server did not save this entry.
   saving.value = true;
   saveError.value = '';
   try {
@@ -573,7 +615,22 @@ async function submit() {
 const showDay = (day: string) =>
   day === today.value ? '今天' : `${Number(day.slice(5, 7))}月${Number(day.slice(8))}日`;
 
+// #ifdef H5
 void restoreSession();
+// #endif
+// #ifdef MP-WEIXIN
+onLoad((options) => {
+  const token = options?.invite;
+  incomingToken.value = typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(token) ? token : '';
+  void restoreSession();
+});
+onShareAppMessage(() => ({
+  title: '邀请你查看小簿账本',
+  path: shareToken.value
+    ? `/pages/ledger/index?invite=${encodeURIComponent(shareToken.value)}`
+    : '/pages/ledger/index',
+}));
+// #endif
 </script>
 
 <template>
@@ -600,8 +657,8 @@ void restoreSession();
         <!-- #ifdef H5 -->
         <text class="preview-label">云电脑联调 · 仅测试身份</text>
         <!-- #endif -->
-        <!-- #ifndef H5 -->
-        <text class="preview-label">微信登录暂未接入</text>
+        <!-- #ifdef MP-WEIXIN -->
+        <text v-if="!wechatPreviewApiBase()" class="preview-label">尚未配置微信联调服务</text>
         <!-- #endif -->
       </view>
       <template v-else>
@@ -738,7 +795,6 @@ void restoreSession();
       </template>
     </view>
 
-    <!-- #ifdef H5 -->
     <view class="dock">
       <view v-if="readOnly" class="readonly-banner">只读账本 · 不能新增或修改流水</view>
       <button
@@ -803,6 +859,9 @@ void restoreSession();
           aria-label="邀请链接"
         />
         <button v-if="shareLink" class="primary" @click="copyInvitation">复制链接</button>
+        <!-- #ifdef MP-WEIXIN -->
+        <button v-if="shareToken" class="primary" open-type="share">邀请微信好友</button>
+        <!-- #endif -->
         <text v-if="inviteBusy" class="preview-label" role="status">正在生成邀请</text>
         <text v-if="inviteFeedback" class="preview-label" role="status">{{ inviteFeedback }}</text>
         <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
@@ -839,6 +898,7 @@ void restoreSession();
       </view>
     </view>
 
+    <!-- #ifdef H5 -->
     <view v-if="loginOpen" class="overlay">
       <view class="sheet login-sheet" role="dialog" aria-label="测试登录" aria-modal="true">
         <view class="sheet-head">

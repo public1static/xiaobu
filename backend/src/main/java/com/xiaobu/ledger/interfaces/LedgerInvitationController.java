@@ -1,7 +1,7 @@
 package com.xiaobu.ledger.interfaces;
 
 import com.aegisid.foundation.web.api.ApiResponse;
-import com.xiaobu.identity.interfaces.LocalSessionContext;
+import com.xiaobu.identity.interfaces.LedgerSessionContext;
 import com.xiaobu.ledger.application.CreateLedgerInvitationCommand;
 import com.xiaobu.ledger.application.LedgerInvitationApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("local-expense")
+@Profile("local-expense | wechat-preview")
 @RequestMapping("/api/v1")
 public class LedgerInvitationController {
 
@@ -32,7 +32,7 @@ public class LedgerInvitationController {
   @PostMapping("/ledgers/{ledgerId}/invitations")
   public ApiResponse<CreateLedgerInvitationResponse> createLedgerInvitation(
       @PathVariable("ledgerId") String ledgerId, HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     var command = new CreateLedgerInvitationCommand(ledgerId, actor.actorId(), actor.displayName());
     return ApiResponse.success(mapper.toResponse(invitations.createLedgerInvitation(command)));
   }
@@ -40,7 +40,7 @@ public class LedgerInvitationController {
   @PostMapping("/ledger-invitations/preview")
   public ApiResponse<LedgerInvitationPreviewResponse> previewLedgerInvitation(
       @Valid @RequestBody RespondToLedgerInvitationRequest input, HttpServletRequest request) {
-    var actor = LocalSessionContext.current(request);
+    var actor = LedgerSessionContext.current(request);
     var actorId = actor == null ? null : actor.actorId();
     return ApiResponse.success(
         mapper.toResponse(invitations.previewLedgerInvitation(input.token(), actorId)));
@@ -49,14 +49,14 @@ public class LedgerInvitationController {
   @PostMapping("/ledger-invitations/accept")
   public ApiResponse<JoinedLedgerResponse> acceptLedgerInvitation(
       @Valid @RequestBody RespondToLedgerInvitationRequest input, HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     return ApiResponse.success(
         mapper.toResponse(invitations.acceptLedgerInvitation(input.token(), actor.actorId())));
   }
 
   @GetMapping("/ledgers/joined")
   public ApiResponse<List<JoinedLedgerResponse>> listJoinedLedgers(HttpServletRequest request) {
-    var actor = LocalSessionContext.require(request);
+    var actor = LedgerSessionContext.require(request);
     return ApiResponse.success(
         invitations.listJoinedLedgers(actor.actorId()).stream().map(mapper::toResponse).toList());
   }

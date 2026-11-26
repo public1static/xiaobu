@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("local-expense")
+@Profile("local-expense | wechat-preview")
 public class LedgerAccountApplicationService {
 
   private static final IdPrefix ACCOUNT_PREFIX = new IdPrefix("acct");

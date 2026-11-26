@@ -7,6 +7,7 @@
     "dev:h5": "uni",
     "build:h5": "uni build",
     "build:mp-weixin": "uni build -p mp-weixin",
+    "build:mp-weixin:preview": "node ../scripts/build-wechat-preview.mjs",
     "test": "node --test test/*.test.cjs"
   },
   "devDependencies": {

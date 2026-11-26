@@ -9,7 +9,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.mvc.WebContentInterceptor;
 
 @Configuration(proxyBeanMethods = false)
-@Profile("local-expense")
+@Profile("local-expense & !wechat-preview")
 class LocalSessionWebConfiguration implements WebMvcConfigurer {
 
   LocalSessionWebConfiguration(@Value("${server.address:}") String address) {

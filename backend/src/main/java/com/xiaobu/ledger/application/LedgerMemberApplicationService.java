@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("local-expense")
+@Profile("local-expense | wechat-preview")
 public class LedgerMemberApplicationService {
 
   private static final ErrorCode MEMBER_NOT_FOUND = new ErrorCode("XIAOBU_LEDGER_MEMBER_NOT_FOUND");
