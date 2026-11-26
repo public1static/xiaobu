@@ -38,6 +38,7 @@ const remainingCents = computed(
 );
 const canRefund = computed(
   () =>
+    !props.browseOnly &&
     detail.value?.canModify &&
     detail.value.transaction.direction === 'EXPENSE' &&
     remainingCents.value > 0 &&
@@ -123,28 +124,29 @@ onMounted(load);
         @saved="onRefundSaved"
       />
       <template v-else-if="detail">
-        <view class="detail-caption"
-          ><text>{{
-            categoryNames?.[detail.transaction.categoryCode] ||
-            categoryLabel(detail.transaction.categoryCode, detail.transaction.direction)
-          }}</text></view
+        <view class="detail-summary"
+          ><view class="detail-summary-head">
+            <text
+              >{{
+                categoryNames?.[detail.transaction.categoryCode] ||
+                categoryLabel(detail.transaction.categoryCode, detail.transaction.direction)
+              }}{{ refundHistory.length ? ' · 实付' : '' }}</text
+            >
+            <button v-if="canRefund && !confirming" class="refund-entry" @click="refunding = true">
+              记退款
+            </button></view
+          >
+          <text class="detail-amount"
+            >{{
+              refundHistory.length ? '' : detail.transaction.direction === 'INCOME' ? '+' : '−'
+            }}¥{{ formatCents(remainingCents) }}</text
+          >
+          <text v-if="refundHistory.length" class="refund-breakdown"
+            >原付 ¥{{ formatCents(detail.transaction.amountCents) }}　已退 ¥{{
+              formatCents(refundedCents)
+            }}</text
+          ></view
         >
-        <text class="detail-amount" :class="{ income: detail.transaction.direction === 'INCOME' }">
-          {{ detail.transaction.direction === 'INCOME' ? '+' : '−' }}¥{{
-            formatCents(remainingCents)
-          }}
-        </text>
-        <view v-if="refundHistory.length" class="refund-summary">
-          <view
-            ><text>原付</text><text>¥{{ formatCents(detail.transaction.amountCents) }}</text></view
-          >
-          <view
-            ><text>已退</text><text>¥{{ formatCents(refundedCents) }}</text></view
-          >
-          <view
-            ><text>实付</text><text>¥{{ formatCents(remainingCents) }}</text></view
-          >
-        </view>
         <view class="meta">
           <view class="meta-row"
             ><text>记账日期</text><text>{{ detail.transaction.bookedOn }}</text></view
@@ -175,15 +177,8 @@ onMounted(load);
             <text>+¥{{ formatCents(receipt.amountCents) }}</text>
           </view>
         </view>
-        <button
-          v-if="canRefund && !confirming"
-          class="primary secondary refund-open"
-          @click="refunding = true"
-        >
-          登记退款
-        </button>
         <view v-if="!browseOnly && detail.canModify && !confirming" class="detail-actions">
-          <button class="primary secondary" @click="confirming = true">删除这笔</button>
+          <button class="primary secondary danger" @click="confirming = true">删除这笔</button>
           <button class="primary" @click="emit('edit', detail)">编辑</button>
         </view>
         <view v-if="confirming" class="detail-confirm">
@@ -192,7 +187,9 @@ onMounted(load);
               ? '退款也会从流水移除，恢复时一并恢复。'
               : '删除后可在「最近删除」恢复。'
           }}</text>
-          <button class="primary" :disabled="deleting" @click="completeDeletion">确认删除</button>
+          <button class="primary danger-solid" :disabled="deleting" @click="completeDeletion">
+            确认删除
+          </button>
           <button class="primary secondary" :disabled="deleting" @click="confirming = false">
             取消
           </button>
@@ -206,34 +203,46 @@ onMounted(load);
 
 <style scoped src="./ledger.css"></style>
 <style scoped>
-.refund-summary {
+.detail-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 12px;
-  border-radius: 12px;
-  background: #f5f7fa;
+  gap: 6px;
+  background: #124334;
+  color: white;
+  border-radius: 16px;
+  padding: 15px 17px;
 }
-.refund-summary view,
+.detail-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #d6e7dd;
+  font-size: 14px;
+}
+.refund-entry {
+  margin: 0;
+  padding: 0 10px;
+  min-height: 32px;
+  line-height: 32px;
+  background: #ffffff18;
+  color: white;
+  border: 1px solid #ffffff42;
+  border-radius: 9px;
+  font-size: 13px;
+}
+.refund-breakdown {
+  font-size: 13px;
+  color: #d6e7dd;
+}
 .refund-history-info {
   display: grid;
   gap: 4px;
-  overflow-wrap: anywhere;
 }
-.refund-summary view {
-  text-align: center;
-  padding: 0 2px;
+.detail-actions .danger {
+  color: #a23832;
+  border-color: var(--line);
 }
-.refund-summary text:first-child,
-.refund-history-info text:last-child {
-  color: var(--muted);
-  font-size: 12px;
-}
-.refund-summary text:last-child {
-  font-weight: 650;
-}
-.refund-open {
-  margin: 0;
-  width: 100%;
+.detail-confirm .danger-solid {
+  background: #a23832;
 }
 .refund-history > .detail-caption {
   display: block;

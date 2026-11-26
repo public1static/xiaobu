@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import LedgerIcon from '../../components/LedgerIcon.vue';
+import LedgerPicker from '../../components/LedgerPicker.vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { onLoad, onShareAppMessage } from '@dcloudio/uni-app';
 import { closeWechatSession, getWechatSession, openWechatSession } from '../../api/wechat-session';
@@ -130,7 +132,6 @@ const giftRevision = ref(0);
 const entryPreset = ref<TransactionEntryPreset | null>(null);
 
 function openGiftWorkspace() {
-  ledgerHubOpen.value = false;
   giftWorkspaceOpen.value = true;
 }
 
@@ -397,6 +398,8 @@ async function copyInvitation() {
 function resetSession(next: LocalSession | null) {
   ++generation;
   ++membershipGeneration;
+  ledgerHubOpen.value = false;
+  giftWorkspaceOpen.value = false;
   sharedLedger.value = null;
   joinedLedgers.value = [];
   ledgerPickerOpen.value = false;
@@ -905,19 +908,22 @@ const entryDateLabel = computed(() => {
 
 <template>
   <view class="shell">
-    <view class="head">
-      <view class="eyebrow"><text class="brand-dot" /> 我的账本</view>
-      <view class="head-line">
-        <text class="brand">小簿</text>
-        <view v-if="session" class="session-tools">
-          <text>{{ session.displayName }}</text>
-          <button v-if="!readOnly" class="text-button" @click="recycleOpen = true">最近删除</button>
-          <button class="text-button" :disabled="sessionBusy" @click="signOut">退出</button>
-        </view>
-      </view>
+    <view v-show="!ledgerHubOpen" class="head">
+      <button v-if="session" class="book-entry" aria-label="切换账本" @click="openLedgerPicker">
+        <text class="brand-dot" />{{ ledgerLabel }}<text aria-hidden="true">⌄</text>
+      </button>
+      <text v-else class="brand">小簿</text>
+      <button
+        v-if="session && !readOnly"
+        class="recycle-button"
+        aria-label="最近删除"
+        @click="recycleOpen = true"
+      >
+        <LedgerIcon class="page-icon" src="/static/assistant/history.svg" />
+      </button>
     </view>
 
-    <view class="main">
+    <view v-show="!ledgerHubOpen" class="main">
       <text v-if="ledgerNotice" class="ledger-notice" role="status">{{ ledgerNotice }}</text>
       <text v-if="sessionError && !loginOpen" class="error" role="alert">{{ sessionError }}</text>
       <view v-if="checkingSession" class="empty" role="status">正在检查登录状态</view>
@@ -991,18 +997,8 @@ const entryDateLabel = computed(() => {
             >
           </view>
         </view>
-        <view class="section-title">
-          <text>流水</text>
-          <view class="ledger-actions">
-            <button class="text-button" @click="openLedgerPicker">{{ ledgerLabel }} · 切换</button>
-            <button class="text-button" @click="accountView = 'manage'">账户</button>
-            <template v-if="!sharedLedger">
-              <button class="text-button" @click="memberSheetOpen = true">成员</button>
-              <button class="text-button" @click="generateInviteLink">邀请只读成员</button>
-            </template>
-          </view>
-        </view>
         <view class="search-toolbar">
+          <LedgerIcon class="page-icon" src="/static/assistant/search.svg" />
           <input
             v-model="searchText"
             :maxlength="80"
@@ -1050,7 +1046,8 @@ const entryDateLabel = computed(() => {
               @keydown.space.prevent="transactionDetailId = row.originalTransactionId || row.id"
             >
               <view class="row-icon" aria-hidden="true">
-                <image
+                <LedgerIcon
+                  class="page-icon"
                   :src="`/static/ledger/${row.categoryCode.startsWith('CUS_') ? 'OTHER' : row.categoryCode}.svg`"
                 />
               </view>
@@ -1069,8 +1066,8 @@ const entryDateLabel = computed(() => {
               >
                 {{ row.direction === 'INCOME' || row.originalTransactionId ? '+' : '−' }}¥{{
                   formatCents(row.amountCents)
-                }}
-              </text>
+                }} </text
+              ><text class="row-chevron" aria-hidden="true">›</text>
             </view>
           </view>
         </view>
@@ -1085,33 +1082,47 @@ const entryDateLabel = computed(() => {
       </template>
     </view>
 
-    <view
-      v-if="session && !incomingToken && !giftWorkspaceOpen && !ledgerHubOpen"
-      class="ledger-bottom-nav"
-    >
-      <button class="text-button is-current" aria-current="page">流水</button>
-      <button class="text-button" @click="openAssistant">小簿</button>
-      <button class="text-button" @click="ledgerHubOpen = true">账本</button>
+    <view v-if="session && !incomingToken && !giftWorkspaceOpen" class="ledger-bottom-nav">
+      <button
+        class="text-button"
+        :class="{ 'is-current': !ledgerHubOpen }"
+        :aria-current="!ledgerHubOpen ? 'page' : undefined"
+        @click="ledgerHubOpen = false"
+      >
+        <LedgerIcon class="page-icon" src="/static/assistant/orders.svg" /><text>流水</text>
+      </button>
+      <button class="text-button" @click="openAssistant">
+        <LedgerIcon class="page-icon" src="/static/assistant/mark.svg" /><text>小簿</text>
+      </button>
+      <button
+        class="text-button"
+        :class="{ 'is-current': ledgerHubOpen }"
+        :aria-current="ledgerHubOpen ? 'page' : undefined"
+        @click="ledgerHubOpen = true"
+      >
+        <LedgerIcon class="page-icon" src="/static/assistant/book.svg" /><text>账本</text>
+      </button>
     </view>
-    <view v-if="ledgerHubOpen && ledgerId" class="overlay">
-      <view class="sheet login-sheet" role="dialog" aria-label="账本管理" aria-modal="true">
-        <view class="sheet-head"
-          ><text>账本管理</text
-          ><button class="close" aria-label="关闭账本管理" @click="ledgerHubOpen = false">
-            ×
-          </button></view
-        >
-        <button class="primary secondary" @click="openGiftWorkspace">礼金往来</button>
-        <button
-          class="primary secondary"
-          @click="
-            ledgerHubOpen = false;
-            accountView = 'manage';
-          "
-        >
-          账户
+    <view v-if="ledgerHubOpen && ledgerId" class="hub-page">
+      <text class="hub-title">账本管理</text
+      ><view class="meta">
+        <button class="hub-link" @click="openGiftWorkspace">
+          <LedgerIcon class="page-icon" src="/static/ledger/vant/GIFT_RECEIVED.svg" /><view
+            ><text>礼金往来</text><text class="preview-label">往来 · 礼单 · 亲友</text></view
+          ><text>›</text>
         </button>
-      </view>
+        <button class="hub-link" @click="accountView = 'manage'">
+          <LedgerIcon class="page-icon" src="/static/ledger/vant/SALARY.svg" /><view
+            ><text>账户管理</text><text class="preview-label">支付账户与收支流水</text></view
+          ><text>›</text>
+        </button> </view
+      ><view v-if="!sharedLedger" class="meta"
+        ><button class="hub-link" @click="memberSheetOpen = true">
+          <LedgerIcon class="page-icon" src="/static/assistant/book.svg" /><view
+            ><text>成员与邀请</text></view
+          ><text>›</text>
+        </button></view
+      >
     </view>
     <view
       v-if="readOnly && !giftWorkspaceOpen && !ledgerHubOpen"
@@ -1126,7 +1137,7 @@ const entryDateLabel = computed(() => {
       :disabled="checkingSession || sessionBusy"
       @click="startTransaction"
     >
-      <image src="/static/ledger/vant/EDIT.svg" aria-hidden="true" />
+      <LedgerIcon class="page-icon" src="/static/ledger/vant/EDIT.svg" />
     </button>
 
     <view v-if="ledgerPickerOpen && !incomingToken" class="overlay">
@@ -1146,6 +1157,36 @@ const entryDateLabel = computed(() => {
         >
           {{ joined.inviterName }}的账本 · {{ joined.role === 'CAN_RECORD' ? '可记账' : '只读' }}
         </button>
+        <view v-if="!sharedLedger" class="book-menu">
+          <button
+            @click="
+              ledgerPickerOpen = false;
+              memberSheetOpen = true;
+            "
+          >
+            成员
+          </button>
+          <button
+            @click="
+              ledgerPickerOpen = false;
+              generateInviteLink();
+            "
+          >
+            邀请只读成员
+          </button>
+        </view>
+        <view v-if="session" class="book-menu">
+          <text>{{ session.displayName }}</text>
+          <button
+            :disabled="sessionBusy"
+            @click="
+              ledgerPickerOpen = false;
+              signOut();
+            "
+          >
+            退出登录
+          </button>
+        </view>
         <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
       </view>
     </view>
@@ -1153,6 +1194,10 @@ const entryDateLabel = computed(() => {
     <LedgerMembersSheet
       v-if="memberSheetOpen && session && !sharedLedger"
       :ledger-id="session.ledgerId"
+      @invite="
+        memberSheetOpen = false;
+        generateInviteLink();
+      "
       @close="memberSheetOpen = false"
     />
 
@@ -1172,6 +1217,9 @@ const entryDateLabel = computed(() => {
         <text class="preview-label"
           >对方接受后，可查看此账本的所有流水，但不能修改。链接仅供本地测试，24
           小时有效，只能加入一人。</text
+        >
+        <view class="meta"
+          ><view class="meta-row"><text>加入后权限</text><text>只读</text></view></view
         >
         <input
           v-if="shareLink"
@@ -1209,9 +1257,10 @@ const entryDateLabel = computed(() => {
         <text v-if="inviteLoading" class="preview-label" role="status">正在查看邀请</text>
         <template v-else-if="invitePreview">
           <text class="guest-title">{{ invitePreview.inviterName }}的账本</text>
-          <text class="preview-label"
-            >权限：只读。接受前看不到账本内容；加入后可随时切回个人账。</text
+          <view class="meta"
+            ><view class="meta-row"><text>加入后权限</text><text>只读</text></view></view
           >
+          <text class="preview-label">接受前看不到账本内容；加入后可随时切回个人账。</text>
           <button class="primary" :disabled="inviteBusy" @click="joinInvitation">
             {{ !session ? '登录后加入' : invitePreview.accepted ? '进入账本' : '接受邀请' }}
           </button>
@@ -1300,7 +1349,7 @@ const entryDateLabel = computed(() => {
           @date-default="applyExtensionDateDefault"
         />
         <view class="amount-field">
-          <text class="field-label">{{ directionLabel }}金额 <text class="star">*</text></text>
+          <text class="field-label">{{ directionLabel }}金额<text class="star">*</text></text>
           <view class="amount-line"
             ><text>¥</text
             ><input
@@ -1332,7 +1381,8 @@ const entryDateLabel = computed(() => {
           }}</text>
         </view>
         <view class="meta">
-          <picker
+          <LedgerPicker
+            label="选择记账日期"
             mode="date"
             :value="date"
             :end="today"
@@ -1340,32 +1390,51 @@ const entryDateLabel = computed(() => {
             @change="date = $event.detail.value"
           >
             <view class="meta-row"
-              ><text>日期 <text class="star">*</text></text
+              ><text>日期<text class="star">*</text></text
               ><view class="entry-field-value">
                 <text>{{ entryDateLabel }}</text>
                 <text class="entry-chevron" aria-hidden="true">›</text>
               </view></view
             >
-          </picker>
+          </LedgerPicker>
           <view v-if="sharedLedger" class="meta-row"
             ><text>账本</text><text>{{ ledgerLabel }}</text></view
           >
           <view class="meta-row">
             <text>账户</text>
-            <button
-              class="text-button account-field"
-              :disabled="saving"
-              @click="accountView = 'select'"
+            <view class="clear-field">
+              <button
+                class="text-button account-field"
+                :disabled="saving"
+                @click="accountView = 'select'"
+              >
+                <text :class="{ 'entry-placeholder': !account }">{{
+                  account?.name ?? '选择账户'
+                }}</text>
+                <text class="entry-chevron" aria-hidden="true">›</text></button
+              ><button
+                v-if="account"
+                class="clear-control"
+                aria-label="清除账户"
+                @click="account = null"
+              >
+                ⊗
+              </button></view
             >
-              <text :class="{ 'entry-placeholder': !account }">{{
-                account?.name ?? '选择账户'
-              }}</text>
-              <text class="entry-chevron" aria-hidden="true">›</text>
-            </button>
           </view>
           <view class="meta-row"
-            ><text>备注</text><input v-model="note" :maxlength="100" aria-label="备注"
-          /></view>
+            ><text>备注</text
+            ><view class="clear-field"
+              ><input v-model="note" :maxlength="100" aria-label="备注" /><button
+                v-if="note"
+                aria-label="清除备注"
+                class="clear-control"
+                @click="note = ''"
+              >
+                ⊗
+              </button></view
+            ></view
+          >
         </view>
         <LedgerExtensionFields
           v-for="capability in entryPreset ? [] : editableCapabilities"
@@ -1403,6 +1472,7 @@ const entryDateLabel = computed(() => {
       :ledger-id="ledgerId"
       :allow-create="!sharedLedger"
       :allow-transfer="!readOnly"
+      :selected-id="account?.id"
       :selectable="accountView === 'select'"
       @close="accountView = null"
       @select="selectAccount"
@@ -1434,6 +1504,7 @@ const entryDateLabel = computed(() => {
     />
     <LedgerGiftWorkspace
       v-if="giftWorkspaceOpen && ledgerId"
+      :key="ledgerId"
       :ledger-id="ledgerId"
       :writable="!readOnly"
       :revision="giftRevision"

@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
+import com.xiaobu.gift.application.GiftDirectoryApplicationService;
+import com.xiaobu.gift.application.SaveGiftReasonsCommand;
 import com.xiaobu.ledger.application.ChangeLedgerCategoryOrderCommand;
 import com.xiaobu.ledger.application.ChangeLedgerCategoryStatusCommand;
 import com.xiaobu.ledger.application.ChangeLedgerTransactionStateCommand;
@@ -59,8 +61,28 @@ class LedgerTransactionPersistenceMySqlTest {
   @Autowired private PersonalLedgerApplicationService ledgers;
   @Autowired private LedgerCategoryApplicationService categories;
   @Autowired private LedgerAccountApplicationService accounts;
+  @Autowired private GiftDirectoryApplicationService gifts;
   @Autowired private EntityManager entityManager;
   @Autowired private JdbcTemplate jdbc;
+
+  // 验证新增、调序、账本隔离与过期写入保护。
+  @Test
+  void persistsReasonOrderWithinOneLedger() {
+    String ledger = newLedgerId();
+    var initial = gifts.listGiftReasons(ledger, "alice");
+    var added = new java.util.ArrayList<>(initial);
+    added.addFirst("回礼");
+    gifts.saveGiftReasons(new SaveGiftReasonsCommand(ledger, "alice", initial, added));
+    assertEquals(added, gifts.listGiftReasons(ledger, "alice"));
+    var reordered = new java.util.ArrayList<>(added);
+    java.util.Collections.swap(reordered, 0, 1);
+    gifts.saveGiftReasons(new SaveGiftReasonsCommand(ledger, "alice", added, reordered));
+    assertEquals(reordered, gifts.listGiftReasons(ledger, "alice"));
+    assertEquals(initial, gifts.listGiftReasons(newLedgerId("bob"), "bob"));
+    assertThrows(
+        FoundationException.class,
+        () -> gifts.saveGiftReasons(new SaveGiftReasonsCommand(ledger, "alice", initial, added)));
+  }
 
   @Test
   void recordsExactCentsAndInitialUtcAuditFields() {

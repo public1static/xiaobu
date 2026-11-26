@@ -3,6 +3,7 @@ package com.xiaobu.gift.interfaces;
 import com.aegisid.foundation.web.api.ApiResponse;
 import com.xiaobu.gift.application.GiftDirectoryApplicationService;
 import com.xiaobu.gift.application.ListGiftActivitiesQuery;
+import com.xiaobu.gift.application.SaveGiftReasonsCommand;
 import com.xiaobu.identity.interfaces.LedgerSessionContext;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,6 +36,28 @@ class GiftDirectoryController {
     this.gifts = gifts;
     this.mapper = mapper;
   }
+
+  // 返回当前账本可选的礼金事由。
+  @GetMapping("/reasons")
+  ApiResponse<List<String>> listGiftReasons(
+      @PathVariable String ledgerId, HttpServletRequest request) {
+    return ApiResponse.success(gifts.listGiftReasons(ledgerId, actor(request)));
+  }
+
+  // 保存新增或移动后的目录，并返回最终顺序。
+  @PutMapping("/reasons")
+  ApiResponse<List<String>> saveGiftReasons(
+      @PathVariable String ledgerId,
+      @Valid @RequestBody SaveGiftReasonsRequest input,
+      HttpServletRequest request) {
+    return ApiResponse.success(
+        gifts.saveGiftReasons(
+            new SaveGiftReasonsCommand(ledgerId, actor(request), input.previous(), input.names())));
+  }
+
+  record SaveGiftReasonsRequest(
+      @NotNull List<@NotBlank @Size(max = 60) String> previous,
+      @NotNull List<@NotBlank @Size(max = 60) String> names) {}
 
   @GetMapping("/books")
   ApiResponse<List<GiftBookResponse>> listGiftBooks(

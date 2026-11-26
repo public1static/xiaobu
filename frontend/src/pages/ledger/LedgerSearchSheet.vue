@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// #ifdef H5
+import { Calendar as VanCalendar } from 'vant';
+import 'vant/es/calendar/style';
+import { localDay } from './transaction';
+// #endif
 import { ref } from 'vue';
 import type { LedgerTransactionFilter } from '../../api/ledger-transactions';
 
@@ -11,6 +16,21 @@ const from = ref(props.filter.from);
 const through = ref(props.filter.through);
 const error = ref('');
 
+// #ifdef H5
+// 日历的初始值在打开面板时固定，选择起点后保留未完成的区间。
+const minDate = new Date(1900, 0, 1);
+const maxDate = new Date(props.today + 'T00:00:00');
+const initialRange =
+  from.value && through.value
+    ? [new Date(from.value + 'T00:00:00'), new Date(through.value + 'T00:00:00')]
+    : null;
+// 先暂存区间，只有点击查看流水才切换筛选条件。
+function stageRange(days: Date[]) {
+  from.value = localDay(days[0]);
+  through.value = days[1] ? localDay(days[1]) : '';
+  error.value = '';
+}
+// #endif
 function apply() {
   const start = from.value;
   const end = through.value;
@@ -32,6 +52,23 @@ function apply() {
         <text>选择日期</text>
         <button class="close" aria-label="关闭日期筛选" @click="emit('close')">×</button>
       </view>
+      <!-- #ifdef H5 -->
+      <VanCalendar
+        :poppable="false"
+        type="range"
+        switch-mode="year-month"
+        allow-same-day
+        :show-title="false"
+        :show-confirm="false"
+        :min-date="minDate"
+        :max-date="maxDate"
+        :default-date="initialRange"
+        color="#176a57"
+        style="height: min(50vh, 380px)"
+        @select="stageRange"
+      />
+      <!-- #endif -->
+      <!-- #ifdef MP-WEIXIN -->
       <view class="meta">
         <picker
           mode="date"
@@ -56,14 +93,16 @@ function apply() {
           >
         </picker>
       </view>
+      <!-- #endif -->
       <text v-if="error" class="error" role="alert">{{ error }}</text>
-      <button class="primary" @click="apply">查看流水</button>
-      <button
-        class="primary secondary"
-        @click="emit('apply', { from: '', through: '', keyword: props.filter.keyword })"
+      <view class="record-actions">
+        <button
+          class="primary secondary"
+          @click="emit('apply', { from: '', through: '', keyword: props.filter.keyword })"
+        >
+          恢复按月</button
+        ><button class="primary" @click="apply">查看流水</button></view
       >
-        恢复按月
-      </button>
     </view>
   </view>
 </template>

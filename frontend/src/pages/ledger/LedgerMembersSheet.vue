@@ -8,7 +8,7 @@ import {
 } from '../../api/ledger-members';
 
 const props = defineProps<{ ledgerId: string }>();
-const emit = defineEmits<{ (event: 'close'): void }>();
+const emit = defineEmits<{ (event: 'invite' | 'close'): void }>();
 const members = ref<LedgerMember[]>([]);
 const busy = ref(false);
 const loaded = ref(false);
@@ -104,6 +104,9 @@ onMounted(refresh);
           取消
         </button>
       </view>
+      <button v-if="!pendingRemoval" class="primary" :disabled="busy" @click="emit('invite')">
+        邀请只读成员
+      </button>
       <text v-if="error" class="error" role="alert">{{ error }}</text>
       <button v-if="error && !pendingRemoval" class="text-button" :disabled="busy" @click="refresh">
         刷新成员列表

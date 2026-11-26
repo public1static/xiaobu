@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import GiftReasonPicker from './GiftReasonPicker.vue';
+import LedgerPicker from '../../components/LedgerPicker.vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   dailyGiftBook,
   listGiftBooks,
@@ -24,13 +26,13 @@ const emit = defineEmits<{
 
 const books = ref<GiftBook[]>([]);
 const contacts = ref<GiftContact[] | null>(null);
-const chooser = ref(false);
+
 const focused = ref(false);
 const error = ref('');
 const query = computed(() => String(props.detail.personName ?? ''));
 const distinction = computed(() => String(props.detail.distinction ?? ''));
 const matching = computed(() =>
-  (contacts.value ?? []).filter((item) => item.name.includes(query.value.trim())).slice(0, 8),
+  (contacts.value ?? []).filter((item) => item.name === query.value.trim()),
 );
 const eligible = computed(() => [
   dailyGiftBook(props.direction),
@@ -49,23 +51,28 @@ function change(values: TransactionExtensionDetail) {
   emit('change', { ...props.detail, ...values });
 }
 
+// 切换账本或离开表单后丢弃未完成的亲友和礼单请求。
+let loadGeneration = 0;
 async function load() {
+  const generation = ++loadGeneration;
+  const ledger = props.ledgerId;
   error.value = '';
   try {
     const [activityBooks, people] = await Promise.all([
-      listGiftBooks(props.ledgerId),
-      listGiftContacts(props.ledgerId),
+      listGiftBooks(ledger),
+      listGiftContacts(ledger),
     ]);
+    if (generation !== loadGeneration || ledger !== props.ledgerId) return;
     books.value = activityBooks;
     contacts.value = people;
     if (props.detail.needsContactLookup) updateName(query.value);
   } catch {
-    error.value = '礼单或亲友暂未加载。';
+    if (generation === loadGeneration && ledger === props.ledgerId)
+      error.value = '礼单或亲友暂未加载。';
   }
 }
 
 function selectBook(book: GiftBook) {
-  chooser.value = false;
   if ((book.daily ? null : book.id) === (props.detail.bookId ?? null)) return;
   change({
     bookId: book.daily ? null : book.id,
@@ -135,7 +142,19 @@ watch(
     }
   },
 );
-onMounted(load);
+watch(
+  () => props.ledgerId,
+  () => {
+    books.value = [];
+    contacts.value = null;
+    focused.value = false;
+    void load();
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  loadGeneration++;
+});
 </script>
 
 <template>
@@ -143,46 +162,78 @@ onMounted(load);
     <view v-if="quick" class="gift-field"
       ><text>所属礼单</text><text>{{ title }}</text></view
     >
-    <button v-else class="gift-field gift-choice" :disabled="disabled" @click="chooser = !chooser">
-      <text>所属礼单</text><text>{{ title }}</text
-      ><text aria-hidden="true">›</text>
-    </button>
-    <view v-if="chooser" class="gift-options">
-      <button v-for="book in eligible" :key="book.id" class="gift-option" @click="selectBook(book)">
-        {{ book.name }}
-      </button>
-    </view>
-    <view class="gift-field">
-      <text>{{ personLabel }}<text v-if="quick" class="gift-required">*</text></text>
-      <input
-        :value="query"
-        :aria-label="personLabel"
-        :maxlength="60"
-        :disabled="disabled"
-        @focus="focused = true"
-        @input="updateName($event.detail.value)"
-      />
-    </view>
-    <view
-      v-if="focused && query.trim() && matching.length && !detail.sameName"
-      class="gift-options"
+    <LedgerPicker
+      v-else
+      label="选择所属礼单"
+      :range="eligible"
+      range-key="name"
+      :value="eligible.findIndex((b) => b.id === (detail.bookId || dailyGiftBook(direction).id))"
+      :disabled="disabled"
+      @change="selectBook(eligible[Number($event.detail.value)])"
+      ><view class="gift-field gift-choice"
+        ><text>所属礼单</text><text>{{ title }}</text
+        ><text>›</text></view
+      ></LedgerPicker
     >
-      <button
-        v-for="item in matching"
-        :key="item.id"
-        class="gift-option"
-        @click="selectContact(item)"
-      >
-        {{ [item.name, item.distinction].filter(Boolean).join(' · ') }}
-      </button>
-      <button
-        v-if="matching.some((item) => item.name === query.trim())"
-        class="gift-option"
-        @click="createSameName"
-      >
-        新增同名
-      </button>
+    <view class="gift-field contact-field">
+      <text>{{ personLabel }}<text v-if="quick" class="gift-required">*</text></text>
+      <view class="contact-input"
+        ><input
+          :value="query"
+          placeholder="输入姓名"
+          role="combobox"
+          :aria-expanded="focused && matching.length > 1 && !detail.contactId && !detail.sameName"
+          :aria-label="personLabel"
+          :maxlength="60"
+          :disabled="disabled"
+          @focus="focused = true"
+          @blur="focused = false"
+          @input="
+            focused = true;
+            updateName($event.detail.value);
+          "
+        />
+        <button
+          v-if="matching.some((p) => p.name === query.trim())"
+          :disabled="disabled"
+          class="same"
+          @click="detail.sameName ? updateName(query) : createSameName()"
+        >
+          {{ detail.sameName ? '取消新增' : '新增同名' }}
+        </button>
+        <button
+          v-if="query"
+          :disabled="disabled"
+          aria-label="清空对象"
+          @click="
+            updateName('');
+            focused = false;
+          "
+        >
+          ⊗
+        </button>
+        <view
+          v-if="focused && matching.length > 1 && !detail.contactId && !detail.sameName"
+          class="contact-panel"
+          role="listbox"
+        >
+          <button
+            v-for="item in matching"
+            :key="item.id"
+            role="option"
+            :aria-selected="item.id === detail.contactId"
+            @mousedown.prevent
+            @touchstart.stop.prevent="selectContact(item)"
+            @click="selectContact(item)"
+          >
+            {{ item.name }}<text>{{ item.distinction }}</text>
+          </button>
+        </view>
+      </view>
     </view>
+    <text v-if="detail.contactId && distinction" class="selected-distinction">{{
+      distinction
+    }}</text>
     <view v-if="detail.sameName" class="gift-field">
       <text>称呼或关系<text class="gift-required">*</text></text>
       <input
@@ -193,16 +244,12 @@ onMounted(load);
         @input="change({ distinction: $event.detail.value })"
       />
     </view>
-    <view class="gift-field">
-      <text>事由</text>
-      <input
-        :value="String(detail.reason ?? '')"
-        aria-label="事由"
-        :maxlength="60"
-        :disabled="disabled"
-        @input="change({ reason: $event.detail.value })"
-      />
-    </view>
+    <GiftReasonPicker
+      :ledger-id="ledgerId"
+      :value="String(detail.reason ?? '')"
+      :disabled="disabled"
+      @select="change({ reason: $event })"
+    />
     <view v-if="error" class="gift-options gift-required">
       <text>{{ error }}</text><button class="gift-option" @click="load">重试</button>
     </view>
@@ -256,5 +303,60 @@ onMounted(load);
 }
 .gift-required {
   color: #a23832;
+}
+.selected-distinction {
+  display: block;
+  margin: -4px 13px 8px 107px;
+  color: #536660;
+  font-size: 12px;
+}
+.contact-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.contact-input input {
+  flex: 1;
+  min-width: 0;
+}
+.contact-input button {
+  flex: none;
+  margin: 0;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 32px;
+  color: #176a57;
+  background: transparent;
+}
+.contact-input button::after {
+  border: 0;
+}
+.contact-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  background: white;
+  border: 1px solid #dce6df;
+  border-radius: 10px;
+  max-height: 170px;
+  overflow: auto;
+  box-shadow: 0 4px 14px #18262320;
+}
+.contact-panel button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 10px;
+  text-align: left;
+  color: #182623;
+}
+.contact-panel text {
+  color: #536660;
+  font-size: 12px;
 }
 </style>

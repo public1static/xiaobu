@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LedgerIcon from '../../components/LedgerIcon.vue';
 import { getCurrentInstance, onBeforeUnmount, onMounted, ref } from 'vue';
 
 type Choice = readonly [code: string, name: string];
@@ -10,6 +11,7 @@ const props = defineProps<{
   selected: string;
   columns: number;
   sortable?: boolean;
+  textOnly?: boolean;
   sortableCount?: number;
   disabled?: boolean;
 }>();
@@ -183,6 +185,7 @@ function icon(code: string) {
   <view
     ref="grid"
     class="ledger-category-grid"
+    :class="{ 'text-options': textOnly }"
     :style="{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
   >
     <view
@@ -210,7 +213,7 @@ function icon(code: string) {
         @click="select($event, code)"
         :tabindex="disabled ? -1 : 0"
       >
-        <image :src="icon(code)" aria-hidden="true" />
+        <LedgerIcon v-if="!textOnly" class="page-icon" :src="icon(code)" />
         <text class="category-name" :class="{ long: name.length >= 4 }">{{ name }}</text>
       </button>
     </view>
@@ -256,7 +259,7 @@ function icon(code: string) {
   outline: 2px solid #176a57;
   outline-offset: -2px;
 }
-.category-option image {
+.category-option .page-icon {
   width: 18px;
   height: 18px;
   pointer-events: none;
@@ -281,5 +284,20 @@ function icon(code: string) {
 }
 .dragging {
   opacity: 0.65;
+}
+.text-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+}
+.text-options .category-option {
+  display: block;
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 7px;
+}
+.text-options .category-name {
+  font-size: 13px;
 }
 </style>

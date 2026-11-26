@@ -6,6 +6,12 @@ import java.util.List;
 import java.util.Optional;
 
 public interface GiftDirectoryRepository {
+  // 获取该账本已保存的有序事由。
+  List<String> findReasons(String ledgerId);
+
+  // 在当前事务内替换已核对的目录。
+  void saveReasons(String ledgerId, List<String> names);
+
   List<GiftActivityBook> findBooks(String ledgerId);
 
   Optional<GiftActivityBook> findBook(String ledgerId, String id);

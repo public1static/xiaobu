@@ -11,11 +11,30 @@ import org.springframework.stereotype.Repository;
 class GiftDirectoryPersistenceAdapter implements GiftDirectoryRepository {
   private final GiftActivityBookJpaRepository books;
   private final GiftContactJpaRepository contacts;
+  // 按账本隔离存储有序礼金事由。
+  private final GiftReasonJpaRepository reasons;
 
   GiftDirectoryPersistenceAdapter(
-      GiftActivityBookJpaRepository books, GiftContactJpaRepository contacts) {
+      GiftActivityBookJpaRepository books,
+      GiftContactJpaRepository contacts,
+      GiftReasonJpaRepository reasons) {
+    this.reasons = reasons;
     this.books = books;
     this.contacts = contacts;
+  }
+
+  // 由数据库按显示位置排序。
+  @Override
+  public List<String> findReasons(String ledgerId) {
+    return reasons.findNames(ledgerId);
+  }
+
+  // 同一事务内保存目录的完整顺序。
+  @Override
+  public void saveReasons(String ledgerId, List<String> names) {
+    reasons.clearDirectory(ledgerId);
+    for (int i = 0; i < names.size(); i++)
+      reasons.save(new GiftReasonEntity(ledgerId, names.get(i), i));
   }
 
   @Override

@@ -11,14 +11,14 @@ const EXPENSE_CATEGORIES = [
   ['TRAVEL', '旅行'],
   ['HEALTH', '医疗'],
   ['EDUCATION', '教育'],
-  ['OTHER', '其他支出'],
+  ['OTHER', '其它'],
 ] as const;
 
 const INCOME_CATEGORIES = [
   ['SALARY', '工资'],
   ['BONUS', '奖金'],
   ['SIDE_INCOME', '兼职'],
-  ['OTHER_INCOME', '其他收入'],
+  ['OTHER_INCOME', '其它'],
 ] as const;
 
 export type TransactionDirection = 'EXPENSE' | 'INCOME';

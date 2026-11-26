@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LedgerPicker from '../../components/LedgerPicker.vue';
 import { ref, computed, watch } from 'vue';
 import type { DraftFields, ExpenseDraft } from '../../api/assistant';
 import type { LedgerCategory } from '../../api/ledger-categories';
@@ -58,27 +59,42 @@ function closeEditor() {
   <view class="draft">
     <text class="title">待确认支出 · {{ name }}</text>
     <template v-if="editing">
-      <label>金额（元）<input v-model="amount" type="digit" placeholder="请输入金额" /></label>
-      <picker
+      <label class="draft-field"
+        ><text>金额（元）</text><input v-model="amount" type="digit" placeholder="请输入金额"
+      /></label>
+      <LedgerPicker
+        label="选择分类"
+        :value="categories.findIndex((c) => c.code === fields.categoryCode)"
         :range="categories"
         range-key="name"
         @change="fields.categoryCode = categories[Number($event.detail.value)].code"
       >
-        <view>分类　{{ category || '选择分类' }} ›</view></picker
+        <view class="draft-field"
+          ><text>分类</text><text>{{ category || '选择分类' }} ›</text></view
+        ></LedgerPicker
       >
-      <picker
+      <LedgerPicker
+        label="选择日期"
         mode="date"
         start="1900-01-01"
         :value="fields.bookedOn"
         @change="fields.bookedOn = $event.detail.value"
-        ><view>日期　{{ fields.bookedOn }} ›</view></picker
+        ><view class="draft-field"
+          ><text>日期</text><text>{{ fields.bookedOn }} ›</text></view
+        ></LedgerPicker
       >
-      <picker
+      <LedgerPicker
+        label="选择账户"
+        :value="accounts.findIndex((a) => a.id === fields.accountId) + 1"
         :range="['不选账户', ...accounts.map((a) => a.name)]"
         @change="fields.accountId = accounts[Number($event.detail.value) - 1]?.id ?? null"
-        ><view>账户　{{ account || '不选账户' }} ›</view></picker
+        ><view class="draft-field"
+          ><text>账户</text><text>{{ account || '不选账户' }} ›</text></view
+        ></LedgerPicker
       >
-      <label>备注<input v-model="fields.note" maxlength="100" /></label>
+      <label class="draft-field"
+        ><text>备注</text><input v-model="fields.note" maxlength="100"
+      /></label>
       <text v-if="error">{{ error }}</text>
       <button :disabled="busy" @click="closeEditor">取消修改</button
       ><button :disabled="busy || !writable" @click="save">更新草稿</button>
@@ -111,26 +127,32 @@ function closeEditor() {
 .draft {
   margin: 12px 16px;
   padding: 14px;
+  border: 1px solid #dce6df;
   background: #fff;
   border-radius: 14px;
   color: #253b31;
 }
-.draft text,
-.draft label,
-.draft picker {
+.draft > text {
   display: block;
   margin: 7px 0;
 }
-.draft label,
-.draft picker {
-  padding: 6px 0;
+.draft-field {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 46px;
   border-bottom: 1px solid #e3e9e1;
+  font-size: 14px;
+}
+.draft-field input {
+  min-width: 0;
 }
 .title {
   font-size: 13px;
 }
 .amount {
-  font-size: 24px;
+  font-size: 30px;
   font-weight: 650;
 }
 .draft button {

@@ -93,3 +93,16 @@ export function listGiftActivity(
     'GET',
   );
 }
+
+// 读取当前账本内所有记礼入口共用的事由顺序。
+export function listGiftReasons(ledgerId: string) {
+  return request<string[]>(path(ledgerId) + '/reasons', 'GET');
+}
+// 同时提交原顺序，服务端据此识别过期编辑。
+export function saveGiftReasons(ledgerId: string, previous: string[], names: string[]) {
+  return request<string[]>(path(ledgerId) + '/reasons', 'PUT', { previous, names });
+}
+// 从亲友通讯录直接新增，无需生成一笔流水。
+export function createGiftContact(ledgerId: string, name: string, distinction: string) {
+  return request<GiftContact>(path(ledgerId) + '/contacts', 'POST', { name, distinction });
+}

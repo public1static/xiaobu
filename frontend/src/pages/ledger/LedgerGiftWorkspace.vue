@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { pinyin } from 'pinyin-pro';
+import GiftReasonPicker from './GiftReasonPicker.vue';
+import LedgerPicker from '../../components/LedgerPicker.vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   createGiftBook,
+  createGiftContact,
   dailyGiftBook,
   listGiftActivity,
   listGiftBooks,
@@ -53,11 +57,81 @@ const displayedBooks = computed(() => [
   dailyGiftBook('EXPENSE'),
   ...books.value,
 ]);
-const visibleContacts = computed(() =>
-  contacts.value.filter((person) =>
-    (person.name + person.distinction).includes(query.value.trim()),
-  ),
+// 姓名读音同时用于拼音搜索、首字母索引；组内保留服务端返回的排序。
+const alphabet = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '#'];
+const directory = computed(() =>
+  contacts.value.map((item) => {
+    const words = pinyin(item.name, { toneType: 'none', type: 'array' });
+    const initials = words
+      .map((word) => word[0])
+      .join('')
+      .toUpperCase();
+    return {
+      item,
+      initial: /^[A-Z]/.test(initials) ? initials[0] : '#',
+      terms: [item.name, item.distinction, words.join(''), initials].join(' ').toLowerCase(),
+    };
+  }),
 );
+const groups = computed(() => {
+  const result: Record<string, GiftContact[]> = {};
+  for (const entry of directory.value) {
+    if (entry.terms.includes(query.value.trim().toLowerCase()))
+      (result[entry.initial] ??= []).push(entry.item);
+  }
+  return result;
+});
+const scrollTarget = ref('');
+const activeInitial = ref('');
+// 滑过字母时只定位到存在的分组，与点击索引使用同一入口。
+function slideIndex(event: { touches: { clientY: number }[] }) {
+  const point = event.touches[0];
+  if (!point) return;
+  const viewport = uni.getWindowInfo().windowHeight;
+  const height = Math.min(viewport * 0.59, 430);
+  const index = Math.floor(
+    ((point.clientY - (viewport * 0.5 - height * 0.45)) / height) * alphabet.length,
+  );
+  const key = alphabet[index];
+  if (key && groups.value[key] && key !== activeInitial.value) void locate(key);
+}
+const contactForm = ref(false),
+  contactName = ref(''),
+  contactDistinction = ref('');
+// 同一字母可重复定位，适用于触屏与键盘按钮。
+async function locate(key: string) {
+  activeInitial.value = key;
+  scrollTarget.value = '';
+  await nextTick();
+  scrollTarget.value = 'people-' + (key === '#' ? 'other' : key);
+}
+// 通过现有账本亲友接口新增，成功后打开本人往来。
+async function saveContact() {
+  if (busy.value) return;
+  if (!contactName.value.trim()) {
+    error.value = '请输入姓名。';
+    return;
+  }
+  busy.value = true;
+  error.value = '';
+  try {
+    const item = await createGiftContact(
+      props.ledgerId,
+      contactName.value.trim(),
+      contactDistinction.value.trim(),
+    );
+    await refresh();
+    contactForm.value = false;
+    showContact(item);
+  } catch (e) {
+    error.value =
+      e instanceof ApiRequestError && e.status === 409
+        ? '请填写不同的称呼或关系，以区分同名亲友。'
+        : '亲友未保存，请重试。';
+  } finally {
+    busy.value = false;
+  }
+}
 function errorText(failure: unknown, fallback: string) {
   return failure instanceof ApiRequestError ? failure.message : fallback;
 }
@@ -126,6 +200,9 @@ async function refresh() {
 }
 
 function selectTab(selection: typeof tab.value) {
+  contactForm.value = false;
+  activeInitial.value = '';
+  scrollTarget.value = '';
   tab.value = selection;
   currentBook.value = null;
   currentContact.value = null;
@@ -238,12 +315,18 @@ onBeforeUnmount(() => {
     <view
       class="sheet gift-workspace"
       role="dialog"
-      :aria-label="creating ? '新建礼单' : currentBook?.name || currentContact?.name || '礼金往来'"
+      :aria-label="
+        contactForm
+          ? '新增亲友'
+          : creating
+            ? '新建礼单'
+            : currentBook?.name || (currentContact ? '亲友详情' : '礼金往来')
+      "
       aria-modal="true"
     >
       <view class="workspace-head">
         <button
-          v-if="creating || currentBook || currentContact"
+          v-if="contactForm || creating || currentBook || currentContact"
           class="text-button"
           aria-label="返回礼金往来"
           @click="selectTab(tab)"
@@ -251,13 +334,30 @@ onBeforeUnmount(() => {
           ‹
         </button>
         <button v-else class="text-button" aria-label="关闭礼金往来" @click="emit('close')">
-          ×
+          ‹
         </button>
         <text>{{
-          creating ? '新建礼单' : currentBook?.name || currentContact?.name || '礼金往来'
+          contactForm
+            ? '新增亲友'
+            : creating
+              ? '新建礼单'
+              : currentBook?.name || (currentContact ? '亲友详情' : '礼金往来')
         }}</text>
         <button
-          v-if="writable && tab === 'books' && !creating && !currentBook"
+          v-if="writable && tab === 'contacts' && !currentContact && !contactForm"
+          class="text-button"
+          aria-label="新增亲友"
+          @click="
+            contactForm = true;
+            contactName = '';
+            contactDistinction = '';
+            error = '';
+          "
+        >
+          新增
+        </button>
+        <button
+          v-else-if="writable && tab === 'books' && !creating && !currentBook"
           class="text-button"
           @click="showCreate"
         >
@@ -272,7 +372,10 @@ onBeforeUnmount(() => {
           新增
         </button>
       </view>
-      <view v-if="!creating && !currentBook && !currentContact" class="workspace-tabs">
+      <view
+        v-if="!creating && !currentBook && !currentContact && !contactForm"
+        class="workspace-tabs"
+      >
         <button
           class="text-button"
           :class="{ current: tab === 'activity' }"
@@ -296,7 +399,20 @@ onBeforeUnmount(() => {
         </button>
       </view>
 
-      <template v-if="creating">
+      <template v-if="contactForm"
+        ><view class="meta"
+          ><view class="form-row"
+            ><text>姓名<text class="star">*</text></text
+            ><input aria-label="亲友姓名" v-model="contactName" maxlength="60" /></view
+          ><view class="form-row"
+            ><text>称呼或关系</text
+            ><input
+              aria-label="称呼或关系"
+              v-model="contactDistinction"
+              maxlength="60" /></view></view
+        ><button class="primary" :disabled="busy" @click="saveContact">保存亲友</button></template
+      >
+      <template v-else-if="creating">
         <view class="meta">
           <view class="workspace-field"
             ><text>收送方向<text class="star">*</text></text>
@@ -328,18 +444,31 @@ onBeforeUnmount(() => {
           </view>
           <view class="workspace-field"
             ><text>默认日期</text>
-            <picker
-              mode="date"
-              :value="defaultDate || tailToday"
-              @change="defaultDate = $event.detail.value"
+            <view class="clear-field"
+              ><LedgerPicker
+                label="选择默认日期"
+                mode="date"
+                :value="defaultDate || tailToday"
+                @change="defaultDate = $event.detail.value"
+              >
+                <text>{{ defaultDate || '选择日期' }} ›</text> </LedgerPicker
+              ><button
+                v-if="defaultDate"
+                aria-label="清除默认日期"
+                class="clear-control"
+                @click="defaultDate = ''"
+              >
+                ⊗
+              </button></view
             >
-              <text>{{ defaultDate || '选择日期' }} ›</text>
-            </picker>
           </view>
-          <view class="workspace-field"
-            ><text>默认事由</text>
-            <input v-model="defaultReason" :maxlength="60" aria-label="默认事由" />
-          </view>
+          <GiftReasonPicker
+            :ledger-id="ledgerId"
+            label="默认事由"
+            :value="defaultReason"
+            :disabled="busy"
+            @select="defaultReason = $event"
+          />
         </view>
         <button class="primary save" :disabled="busy" @click="submitBook">创建礼单</button>
       </template>
@@ -362,44 +491,71 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="tab === 'contacts' && !currentContact">
-        <view class="workspace-search"
-          ><input v-model="query" placeholder="搜索亲友" aria-label="搜索亲友"
+        <view class="directory-search"
+          ><input v-model="query" placeholder="搜索姓名、称呼或拼音" aria-label="搜索亲友"
         /></view>
-        <view class="meta">
-          <button
-            v-for="contact in visibleContacts"
-            :key="contact.id"
-            class="workspace-row"
-            @click="showContact(contact)"
+        <scroll-view class="directory-list" scroll-y :scroll-into-view="scrollTarget">
+          <template v-for="key in alphabet" :key="key"
+            ><view
+              v-if="groups[key]"
+              :id="'people-' + (key === '#' ? 'other' : key)"
+              class="people-group"
+              ><text class="initial">{{ key }}</text>
+              <button
+                v-for="person in groups[key]"
+                :key="person.id"
+                class="person-link"
+                @click="showContact(person)"
+              >
+                <text class="avatar">{{ Array.from(person.name)[0] }}</text><view
+                  class="person-copy"
+                  ><text>{{ person.name }}</text
+                  ><text v-if="person.distinction" class="workspace-caption">{{
+                    person.distinction
+                  }}</text></view
+                ><text>›</text>
+              </button></view
+            ></template
           >
-            <view
-              ><text class="workspace-title">{{ contact.name }}</text
-              ><text v-if="contact.distinction" class="workspace-caption">{{
-                contact.distinction
-              }}</text></view
-            >
-            <text aria-hidden="true">›</text>
-          </button>
-          <text v-if="!visibleContacts.length" class="workspace-empty">没有匹配的亲友</text>
-        </view>
+          <text v-if="!Object.keys(groups).length" class="workspace-empty"
+            >没有匹配的亲友</text
+          ></scroll-view
+        >
+        <view
+          v-if="Object.keys(groups).length"
+          class="index-rail"
+          aria-label="亲友拼音索引"
+          @touchmove.stop.prevent="slideIndex"
+          ><button
+            v-for="key in alphabet"
+            :key="key"
+            :disabled="!groups[key]"
+            :class="{ located: activeInitial === key }"
+            :aria-label="'定位 ' + key"
+            @click="locate(key)"
+          >
+            {{ key }}
+          </button></view
+        >
       </template>
 
       <template v-else>
         <view v-if="currentBook" class="workspace-book-subtitle">
           <text>{{ bookLabel(currentBook) }}</text>
-          <button
+          <LedgerPicker
             v-if="writable && !currentBook.daily"
-            class="text-button"
+            label="礼单更多操作"
+            :range="[currentBook.archived ? '重新开放' : '归档礼单']"
             :disabled="busy"
-            @click="toggleArchive"
+            @change="toggleArchive"
+            ><text class="workspace-more">更多 ›</text></LedgerPicker
           >
-            {{ currentBook.archived ? '重新开放' : '归档礼单' }}
-          </button>
         </view>
-        <text v-if="currentContact?.distinction" class="workspace-caption">{{
-          currentContact.distinction
-        }}</text>
-        <view class="workspace-totals">
+        <view class="workspace-totals"
+          ><view v-if="currentContact" class="person-name"
+            ><text>{{ currentContact.name }}</text
+            ><text>{{ currentContact.distinction }}</text></view
+          >
           <view
             ><text>收礼</text
             ><text class="workspace-total-value"
@@ -451,12 +607,97 @@ onBeforeUnmount(() => {
   </view>
 </template>
 
-<style scoped src="./ledger.css"></style>
+<style scoped src="./ledger.css">
+.directory-search {
+  background: #edf1ec;
+  border-radius: 11px;
+  padding: 10px 13px;
+  font-size: 14px;
+}
+.gift-workspace .directory-list {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+}
+.people-group {
+  margin-right: 24px;
+}
+.initial {
+  display: block;
+  font: 650 12px/24px system-ui;
+  margin: 9px 0 2px 9px;
+  color: #596b5f;
+}
+.person-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  background: #fff;
+  text-align: left;
+  border-bottom: 1px solid #e4eae5;
+  color: #182623;
+  font-size: 15px;
+  line-height: 1.4;
+  border-radius: 0;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: #e1ece0;
+  color: #45654c;
+  font-size: 17px;
+}
+.person-copy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+.index-rail {
+  position: fixed;
+  right: max(2px, calc((100vw - 560px) / 2 + 2px));
+  top: 50%;
+  transform: translateY(-45%);
+  width: 27px;
+  height: min(59vh, 430px);
+  display: grid;
+  grid-template-rows: repeat(27, 1fr);
+}
+.index-rail button {
+  background: transparent;
+  color: #176a57;
+  font: 700 11px/1 system-ui;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+}
+.index-rail button.located {
+  background: #176a57;
+  color: #fff;
+  border-radius: 12px;
+}
+.index-rail button[disabled] {
+  color: #a6afa7;
+  background: transparent;
+}
+.person-name {
+  grid-column: 1/-1;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+</style>
 <style scoped>
 .overlay.gift-workspace-overlay {
   z-index: 2;
 }
 .gift-workspace {
+  padding-top: calc(8px + env(safe-area-inset-top));
   height: 100vh;
   height: 100dvh;
   max-height: 100dvh;
@@ -479,10 +720,20 @@ onBeforeUnmount(() => {
 .workspace-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  border-bottom: 1px solid #e4eae5;
+  gap: 4px;
+  padding: 4px;
+  background: #e8ede8;
+  border-radius: 13px;
+}
+.workspace-tabs button {
+  min-height: 37px;
+  border-radius: 10px;
+  color: var(--muted);
 }
 .workspace-tabs .current {
-  border-bottom: 2px solid #176a57;
+  background: #fff;
+  color: #176a57;
+  box-shadow: 0 1px 4px #39473716;
   font-weight: 700;
 }
 .workspace-row {
@@ -540,13 +791,22 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: #536660;
 }
+.workspace-book-subtitle > :last-child {
+  width: auto;
+}
+.workspace-more {
+  display: block;
+  min-height: 44px;
+  line-height: 44px;
+  color: #176a57;
+}
 .workspace-totals {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  background: #eaf4ee;
-  border-radius: 14px;
-  padding: 12px 13px;
-  color: #176a57;
+  background: #124334;
+  border-radius: 16px;
+  padding: 19px 17px;
+  color: white;
 }
 .workspace-totals view {
   display: grid;
@@ -562,5 +822,88 @@ onBeforeUnmount(() => {
   text-align: center;
   color: #536660;
   font-size: 14px;
+}
+.directory-search {
+  background: #edf1ec;
+  border-radius: 11px;
+  padding: 10px 13px;
+  font-size: 14px;
+}
+.gift-workspace .directory-list {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+}
+.people-group {
+  margin-right: 24px;
+}
+.initial {
+  display: block;
+  font: 650 12px/24px system-ui;
+  margin: 9px 0 2px 9px;
+  color: #596b5f;
+}
+.person-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  background: #fff;
+  text-align: left;
+  border-bottom: 1px solid #e4eae5;
+  color: #182623;
+  font-size: 15px;
+  line-height: 1.4;
+  border-radius: 0;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: #e1ece0;
+  color: #45654c;
+  font-size: 17px;
+}
+.person-copy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+.index-rail {
+  position: fixed;
+  right: max(2px, calc((100vw - 560px) / 2 + 2px));
+  top: 50%;
+  transform: translateY(-45%);
+  width: 27px;
+  height: min(59vh, 430px);
+  display: grid;
+  grid-template-rows: repeat(27, 1fr);
+}
+.index-rail button {
+  background: transparent;
+  color: #176a57;
+  font: 700 11px/1 system-ui;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+}
+.index-rail button.located {
+  background: #176a57;
+  color: #fff;
+  border-radius: 12px;
+}
+.index-rail button[disabled] {
+  color: #a6afa7;
+  background: transparent;
+}
+.person-name {
+  grid-column: 1/-1;
+  font-weight: 700;
+  margin-bottom: 8px;
 }
 </style>

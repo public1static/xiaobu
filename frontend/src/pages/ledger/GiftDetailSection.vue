@@ -7,7 +7,6 @@ defineProps<{ detail: TransactionExtensionDetail; direction: TransactionDirectio
 
 <template>
   <view class="gift-detail" aria-label="往来信息">
-    <text class="gift-title">往来信息</text>
     <view class="gift-line"
       ><text>礼单</text><text>{{ detail.bookName }}</text></view
     >
@@ -23,24 +22,28 @@ defineProps<{ detail: TransactionExtensionDetail; direction: TransactionDirectio
 
 <style scoped>
 .gift-detail {
-  padding: 10px 13px;
+  overflow: hidden;
   border: 1px solid var(--line, #e4eae5);
   border-radius: 14px;
   background: #fff;
-}
-.gift-title {
-  font-size: 14px;
-  font-weight: 700;
 }
 .gift-line {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);
   gap: 10px;
-  padding-top: 8px;
+  box-sizing: border-box;
+  align-items: center;
+  min-height: 46px;
+  padding: 6px 13px;
+  border-bottom: 1px solid #e4eae5;
   font-size: 14px;
   overflow-wrap: anywhere;
 }
-.gift-line text:first-child {
+.gift-line:last-child {
+  border-bottom: 0;
+}
+.gift-line text:last-child {
+  text-align: right;
   color: var(--muted, #536660);
 }
 </style>
