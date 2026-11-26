@@ -848,6 +848,10 @@ async function submit(continueEntry = false) {
         return;
       }
     }
+    if (error instanceof ApiRequestError && error.code === 'XIAOBU_FIXED_BILL_PAYMENT_DIRECTION') {
+      saveError.value = '请先在流水详情解除固定账单关联，再改为收入。';
+      return;
+    }
     if (error instanceof ApiRequestError && error.code === 'XIAOBU_TRANSACTION_HAS_REFUNDS') {
       saveError.value = '已有退款：只能保留支出，原付不能低于已退，付款日期不能晚于退款。';
       return;
@@ -1590,7 +1594,7 @@ const entryDateLabel = computed(() => {
       :ledger-id="ledgerId"
       :writable="!readOnly"
       :revision="fixedBillRevision"
-      :covered="Boolean(transactionDetailId)"
+      :covered="Boolean(open || transactionDetailId)"
       @close="fixedBillsOpen = false"
       @saved="refreshAfterTransactionChange"
       @detail="transactionDetailId = $event"

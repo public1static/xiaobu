@@ -166,6 +166,10 @@ public class LedgerTransactionApplicationService {
             command.transactionId(),
             command.expectedVersion(),
             false);
+    if (original.details().direction() == TransactionDirection.EXPENSE
+        && command.direction() == TransactionDirection.INCOME) {
+      fixedBillPayments.requireUnlinkedBeforeDirectionChange(original.id());
+    }
     var recordedRefunds = refunds.findByTransaction(command.ledgerId(), command.transactionId());
     if (!recordedRefunds.isEmpty()
         && (command.direction() != TransactionDirection.EXPENSE

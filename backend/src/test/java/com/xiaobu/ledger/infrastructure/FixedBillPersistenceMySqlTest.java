@@ -590,4 +590,54 @@ class FixedBillPersistenceMySqlTest {
     assertEquals(
         settled, bills.listFixedBillPeriods(ledger, actor, previous, true, 0).entries().getFirst());
   }
+
+  @Test
+  void requiresUnlinkBeforeConvertingPaymentIntoIncome() {
+    String actor = "bill-" + UUID.randomUUID();
+    String ledger = "book_" + UUID.randomUUID();
+    jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", ledger, actor);
+    var month = YearMonth.of(2025, 2);
+    var bill =
+        bills.createFixedBill(
+            new CreateFixedBillCommand(
+                ledger, actor, "家庭宽带", month.atEndOfMonth(), 9900, "DAILY", null));
+    var paid =
+        bills.payFixedBill(
+            new PayFixedBillCommand(
+                ledger, actor, bill.billId(), month, month.atDay(20), 9700, null));
+    var edit =
+        new EditLedgerTransactionCommand(
+            ledger,
+            actor,
+            paid.transactionId(),
+            0,
+            TransactionDirection.INCOME,
+            9700,
+            month.atDay(20),
+            "SALARY",
+            "更正",
+            null);
+    assertThrows(FoundationException.class, () -> transactions.editLedgerTransaction(edit));
+    assertEquals(
+        TransactionDirection.EXPENSE,
+        transactions
+            .getLedgerTransaction(ledger, actor, paid.transactionId())
+            .transaction()
+            .direction());
+    assertEquals(
+        paid, bills.listFixedBillPeriods(ledger, actor, month, true, 0).entries().getFirst());
+    var reference =
+        bills.findFixedBillPaymentReference(ledger, actor, paid.transactionId()).orElseThrow();
+    bills.unlinkFixedBillPayment(
+        new UnlinkFixedBillPaymentCommand(
+            ledger, actor, paid.transactionId(), reference.paymentId()));
+    transactions.editLedgerTransaction(edit);
+    assertEquals(
+        TransactionDirection.INCOME,
+        transactions
+            .getLedgerTransaction(ledger, actor, paid.transactionId())
+            .transaction()
+            .direction());
+    assertEquals(1, bills.listFixedBillPeriods(ledger, actor, month, false, 0).totalCount());
+  }
 }
