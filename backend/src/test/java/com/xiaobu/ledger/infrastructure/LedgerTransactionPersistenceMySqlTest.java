@@ -91,7 +91,9 @@ class LedgerTransactionPersistenceMySqlTest {
             saved.id(),
             "alice",
             new LedgerTransactionDetails(
-                TransactionDirection.EXPENSE, 9900, date, "DINING", "冲突记录", null));
+                TransactionDirection.EXPENSE, 9900, date, "DINING", "冲突记录", null),
+            0,
+            false);
     assertThrows(
         ConstraintViolationException.class,
         () -> {

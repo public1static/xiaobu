@@ -4,12 +4,15 @@ import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerSearchSheet from './LedgerSearchSheet.vue';
 import LedgerTransactionDetailSheet from './LedgerTransactionDetailSheet.vue';
+import LedgerRecycleSheet from './LedgerRecycleSheet.vue';
 import type { LedgerAccount } from '../../api/ledger-accounts';
 import {
+  editLedgerTransaction,
   listLedgerTransactions,
   recordLedgerTransaction,
   type LedgerTransaction,
   type LedgerTransactionFilter,
+  type LedgerTransactionDetail,
 } from '../../api/ledger-transactions';
 import {
   closeLocalSession,
@@ -261,6 +264,8 @@ function resetSession(next: LocalSession | null) {
   memberSheetOpen.value = false;
   accountView.value = null;
   transactionDetailId.value = '';
+  editing.value = null;
+  recycleOpen.value = false;
   filterOpen.value = false;
   filter.value = { from: '', through: '', keyword: '' };
   searchText.value = '';
@@ -331,6 +336,33 @@ const filter = ref<LedgerTransactionFilter>({ from: '', through: '', keyword: ''
 const filterOpen = ref(false);
 const searchText = ref('');
 const transactionDetailId = ref('');
+const editing = ref<LedgerTransactionDetail | null>(null);
+const editStale = ref(false);
+const recycleOpen = ref(false);
+
+function startEditing(detail: LedgerTransactionDetail) {
+  const row = detail.transaction;
+  transactionDetailId.value = '';
+  editing.value = detail;
+  editStale.value = false;
+  direction.value = row.direction;
+  amount.value = (row.amountCents / 100).toFixed(2);
+  date.value = row.bookedOn;
+  category.value = row.categoryCode;
+  note.value = row.note;
+  account.value = row.accountId
+    ? { id: row.accountId, name: detail.accountName ?? '账户', recordedBalanceCents: 0 }
+    : null;
+  fieldError.value = { amount: '', category: '' };
+  saveError.value = '';
+  open.value = true;
+}
+
+function onTransactionDeleted() {
+  transactionDetailId.value = '';
+  savedMessage.value = '已移到最近删除';
+  void refresh();
+}
 const filtered = computed(() => Boolean(filter.value.from || filter.value.keyword));
 
 function applyFilter(value: LedgerTransactionFilter) {
@@ -423,6 +455,8 @@ function startTransaction() {
 }
 
 function openTransactionForm() {
+  editing.value = null;
+  editStale.value = false;
   today.value = localDay();
   date.value = today.value;
   amount.value = '';
@@ -449,7 +483,7 @@ function closeTransactionForm() {
 
 async function submit() {
   const targetLedgerId = ledgerId.value;
-  if (saving.value || !targetLedgerId || readOnly.value) return;
+  if (saving.value || !targetLedgerId || readOnly.value || editStale.value) return;
   const cents = parseCents(amount.value);
   const selected = category.value;
   fieldError.value = {
@@ -473,6 +507,18 @@ async function submit() {
   saving.value = true;
   saveError.value = '';
   try {
+    if (editing.value) {
+      const target = editing.value;
+      await editLedgerTransaction(targetLedgerId, target.transaction.id, target.version, payload);
+      editing.value = null;
+      open.value = false;
+      filter.value = { from: '', through: '', keyword: '' };
+      searchText.value = '';
+      selectMonth(payload.bookedOn.slice(0, 7));
+      savedMessage.value = '已更新流水';
+      await refresh();
+      return;
+    }
     const stored = await recordLedgerTransaction(targetLedgerId, payload);
     today.value = localDay();
     filter.value = { from: '', through: '', keyword: '' };
@@ -487,6 +533,16 @@ async function submit() {
     savedMessage.value = '已记一笔';
     await refresh();
   } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 409 && editing.value) {
+      editStale.value = true;
+      saveError.value = '流水已变更，本次没有覆盖。请关闭后重新打开详情核对。';
+      return;
+    }
+    if (error instanceof ApiRequestError && error.code === 'XIAOBU_TRANSACTION_MODIFY_DENIED') {
+      editStale.value = true;
+      saveError.value = '你已没有修改这笔流水的权限。';
+      return;
+    }
     if (
       error instanceof ApiRequestError &&
       error.code === 'XIAOBU_LEDGER_READ_ONLY' &&
@@ -528,6 +584,7 @@ void restoreSession();
         <text class="brand">小簿</text>
         <view v-if="session" class="session-tools">
           <text>{{ session.displayName }}</text>
+          <button v-if="!readOnly" class="text-button" @click="recycleOpen = true">最近删除</button>
           <button class="text-button" :disabled="sessionBusy" @click="signOut">退出</button>
         </view>
       </view>
@@ -808,9 +865,14 @@ void restoreSession();
     <!-- #endif -->
 
     <view v-if="open" class="overlay">
-      <view class="sheet" role="dialog" :aria-label="`记一笔${directionLabel}`" aria-modal="true">
+      <view
+        class="sheet"
+        role="dialog"
+        :aria-label="editing ? '编辑流水' : `记一笔${directionLabel}`"
+        aria-modal="true"
+      >
         <view class="sheet-head"
-          ><text>记一笔</text
+          ><text>{{ editing ? '编辑流水' : '记一笔' }}</text
           ><button
             class="close"
             aria-label="关闭记账"
@@ -907,7 +969,7 @@ void restoreSession();
           /></view>
         </view>
         <text v-if="saveError" class="error" role="alert">{{ saveError }}</text>
-        <button class="primary save" :disabled="saving || readOnly" @click="submit">
+        <button class="primary save" :disabled="saving || readOnly || editStale" @click="submit">
           {{ saving ? '保存中…' : '保存账目' }}
         </button>
       </view>
@@ -933,6 +995,14 @@ void restoreSession();
       :ledger-id="ledgerId"
       :transaction-id="transactionDetailId"
       @close="transactionDetailId = ''"
+      @edit="startEditing"
+      @deleted="onTransactionDeleted"
+    />
+    <LedgerRecycleSheet
+      v-if="recycleOpen && ledgerId"
+      :ledger-id="ledgerId"
+      @close="recycleOpen = false"
+      @restored="refresh"
     />
   </view>
 </template>

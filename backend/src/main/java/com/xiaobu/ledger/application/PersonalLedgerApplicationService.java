@@ -73,6 +73,19 @@ public class PersonalLedgerApplicationService {
     }
   }
 
+  boolean hasOwnership(String ledgerId, String actorId) {
+    return ledgers.existsByIdAndOwnerId(ledgerId, actorId);
+  }
+
+  boolean canModifyTransaction(String ledgerId, String actorId, String creatorId) {
+    return hasOwnership(ledgerId, actorId)
+        || (actorId.equals(creatorId)
+            && memberships
+                .findByLedgerAndMember(ledgerId, actorId)
+                .filter(LedgerMembership::canRecord)
+                .isPresent());
+  }
+
   private FoundationException denied() {
     return new FoundationException(
         LEDGER_ACCESS_DENIED, ErrorCategory.FORBIDDEN, "无权访问这个账本", Map.of());
