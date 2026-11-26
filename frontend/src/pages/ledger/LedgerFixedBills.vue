@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import {
   createFixedBill,
+  getFixedBillPeriod,
   listFixedBillPeriods,
   listFixedBillPlans,
   payFixedBill,
@@ -36,6 +37,7 @@ const props = defineProps<{
   writable: boolean;
   covered: boolean;
   revision: number;
+  initialPeriod?: { billId: string; month: string };
   rental?: {
     billId: string;
     firstDueOn: string;
@@ -44,7 +46,7 @@ const props = defineProps<{
     dueDayOfMonth: number;
   };
 }>();
-const emit = defineEmits<{ close: []; saved: []; detail: [id: string] }>();
+const emit = defineEmits<{ close: []; saved: []; changed: []; detail: [id: string] }>();
 const today = ledgerToday();
 const cycleLabels: Record<number, string> = { 1: '每月', 3: '季付', 6: '半年付', 12: '年付' };
 const workspaceStyle: Record<string, string> = {};
@@ -54,7 +56,7 @@ workspaceStyle.paddingTop = uni.getMenuButtonBoundingClientRect().bottom + 'px';
 const month = ref(firstVisibleMonth());
 function firstVisibleMonth() {
   const current = today.slice(0, 7);
-  if (!props.rental) return current;
+  if (!props.rental) return props.initialPeriod?.month ?? current;
   const first = props.rental.firstDueOn.slice(0, 7);
   let period = first;
   let next = shiftLedgerMonth(period, props.rental.cycleMonths);
@@ -75,7 +77,9 @@ const previousPeriod = computed(() =>
 );
 const nextPeriod = computed(() => shiftLedgerMonth(month.value, props.rental?.cycleMonths ?? 1));
 const paid = ref(false);
-const view = ref<'list' | 'create' | 'period' | 'link' | 'plans' | 'edit'>('list');
+const view = ref<'list' | 'create' | 'period' | 'link' | 'plans' | 'edit' | 'target'>(
+  props.initialPeriod ? 'target' : 'list',
+);
 const selected = ref<FixedBillPeriod>();
 const plans = ref<FixedBillPlan[]>([]);
 const plansTotal = ref(0);
@@ -139,6 +143,10 @@ function onLinked(result: FixedBillPeriod) {
   view.value = 'list';
   if (paid.value) void load();
   else paid.value = true;
+  emit('saved');
+  if (props.initialPeriod) {
+    view.value = 'period';
+  }
   uni.showToast({ title: '已关联流水', icon: 'none' });
 }
 
@@ -194,10 +202,35 @@ async function loadCatalog() {
   }
 }
 
-watch([month, paid], () => void load(), { immediate: true });
+watch(
+  [month, paid],
+  () => {
+    if (!props.initialPeriod) void load();
+  },
+  { immediate: true },
+);
+async function loadInitialPeriod() {
+  const target = props.initialPeriod;
+  if (!target) return;
+  view.value = 'target';
+  loading.value = true;
+  error.value = '';
+  try {
+    openPeriod(await getFixedBillPeriod(props.ledgerId, target.billId, target.month));
+  } catch {
+    error.value = '账期不可用或加载失败，请返回待办刷新后重试。';
+  } finally {
+    loading.value = false;
+  }
+}
+if (props.initialPeriod) void loadInitialPeriod();
 watch(
   () => props.revision,
   () => {
+    if (props.initialPeriod) {
+      void loadInitialPeriod();
+      return;
+    }
     view.value = 'list';
     selected.value = undefined;
     if (!paid.value) void load();
@@ -283,7 +316,7 @@ function back() {
   if (saving.value || stopping.value || linking.value) return;
   if (view.value === 'edit') openPlans();
   else if (view.value === 'link') view.value = 'period';
-  else if (view.value === 'list') emit('close');
+  else if (view.value === 'list' || props.initialPeriod) emit('close');
   else {
     error.value = '';
     view.value = 'list';
@@ -333,6 +366,7 @@ async function stopPlan() {
     view.value = 'list';
     void loadPlans();
     await load();
+    emit('changed');
     uni.showToast({ title: '已停止后续账期', icon: 'none' });
   } catch (failure) {
     error.value =
@@ -382,6 +416,7 @@ async function save() {
       } else {
         await createFixedBill(props.ledgerId, form);
       }
+      emit('changed');
       void loadPlans();
       view.value = 'list';
       const nextMonth = date.value.slice(0, 7);
@@ -418,7 +453,7 @@ async function save() {
       <text>{{
         view === 'create'
           ? '新增固定账单'
-          : view === 'period'
+          : view === 'period' || view === 'target'
             ? '本期账单'
             : view === 'link'
               ? '关联已有流水'
@@ -439,7 +474,11 @@ async function save() {
       </button>
       <view v-else class="bill-header-space" />
     </view>
-    <view v-if="view === 'list'" class="bill-content">
+    <view v-if="view === 'target'" class="bill-content">
+      <text v-if="loading" class="bill-retry">加载中…</text>
+      <button v-else class="bill-retry" role="alert" @click="loadInitialPeriod">{{ error }}</button>
+    </view>
+    <view v-else-if="view === 'list'" class="bill-content">
       <button
         v-if="writable && !rental && (plansTotal || plansError)"
         class="bill-row bill-manage"

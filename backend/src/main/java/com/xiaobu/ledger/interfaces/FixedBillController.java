@@ -52,6 +52,17 @@ class FixedBillController {
             bills.listFixedBillPeriods(ledgerId, actor.actorId(), month, paid, page, billId)));
   }
 
+  @GetMapping("/{billId}/periods/{month}")
+  public ApiResponse<FixedBillPeriodResponse> getFixedBillPeriod(
+      @PathVariable String ledgerId,
+      @PathVariable String billId,
+      @PathVariable @DateTimeFormat(pattern = "uuuu-MM") YearMonth month,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(bills.getFixedBillPeriod(ledgerId, actor.actorId(), billId, month)));
+  }
+
   @PostMapping
   public ApiResponse<FixedBillPeriodResponse> createFixedBill(
       @PathVariable String ledgerId,

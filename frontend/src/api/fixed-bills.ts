@@ -88,6 +88,10 @@ interface FixedBillCandidatePage {
 const periodPath = (ledgerId: string, billId: string, month: string) =>
   path(ledgerId) + '/' + encodeURIComponent(billId) + '/periods/' + month;
 
+export function getFixedBillPeriod(ledgerId: string, billId: string, month: string) {
+  return request<FixedBillPeriod>(periodPath(ledgerId, billId, month), 'GET');
+}
+
 export function listFixedBillCandidates(
   ledgerId: string,
   billId: string,
