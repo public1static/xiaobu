@@ -60,10 +60,11 @@ export function recordAccountTransfer(ledgerId: string, draft: AccountTransferDr
 
 // 账户详情的资金变动，退款关联原始支出。
 export interface AccountHistoryEntry extends AccountTransfer {
-  kind: 'INCOME' | 'EXPENSE' | 'REFUND' | 'TRANSFER';
+  kind: 'INCOME' | 'EXPENSE' | 'REFUND' | 'TRANSFER' | 'DEPOSIT_PAY' | 'DEPOSIT_REFUND';
   transactionId: string | null;
   categoryCode: string;
   ownRecord: number;
+  relatedName: string | null;
 }
 // 查询当前账户全部日期的流水。
 export function listAccountHistory(ledgerId: string, id: string) {

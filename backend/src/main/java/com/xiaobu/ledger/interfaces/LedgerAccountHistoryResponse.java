@@ -10,4 +10,5 @@ record LedgerAccountHistoryResponse(
     String sourceAccountId,
     String targetAccountId,
     String note,
-    int ownRecord) {}
+    int ownRecord,
+    String relatedName) {}

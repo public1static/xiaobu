@@ -108,3 +108,54 @@ export function linkRentalBill(ledgerId: string, contractId: string, billId: str
 export function listPendingRentalPeriods(ledgerId: string, month: string, page = 0) {
   return request<FixedBillPage>(path(ledgerId) + '/payment-periods', 'GET', { month, page });
 }
+
+export interface RentalDepositDraft {
+  kind: 'PAY' | 'REFUND';
+  amountCents: number;
+  bookedOn: string;
+  accountId: string | null;
+  note: string;
+}
+
+export interface RentalDeposit extends RentalDepositDraft {
+  id: string;
+  accountName: string | null;
+  version: number;
+  canModify: boolean;
+}
+
+function depositsPath(ledgerId: string, contractId: string) {
+  return path(ledgerId) + '/contracts/' + encodeURIComponent(contractId) + '/deposits';
+}
+
+export function listRentalDeposits(ledgerId: string, contractId: string, page = 0) {
+  return request<RentalPage<RentalDeposit> & { heldCents: number }>(
+    depositsPath(ledgerId, contractId),
+    'GET',
+    { page },
+  );
+}
+
+export function recordRentalDeposit(
+  ledgerId: string,
+  contractId: string,
+  draft: RentalDepositDraft,
+) {
+  return request<void>(depositsPath(ledgerId, contractId), 'POST', draft);
+}
+
+export function editRentalDeposit(
+  ledgerId: string,
+  contractId: string,
+  entry: RentalDeposit,
+  draft: Omit<RentalDepositDraft, 'kind'>,
+) {
+  return request<void>(
+    depositsPath(ledgerId, contractId) + '/' + encodeURIComponent(entry.id),
+    'PUT',
+    {
+      ...draft,
+      expectedVersion: entry.version,
+    },
+  );
+}

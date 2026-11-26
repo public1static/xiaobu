@@ -18,6 +18,7 @@ import { ApiRequestError } from '../../api/request';
 import LedgerPicker from '../../components/LedgerPicker.vue';
 import LedgerIcon from '../../components/LedgerIcon.vue';
 import LedgerFixedBills from './LedgerFixedBills.vue';
+import LedgerRentalDeposits from './LedgerRentalDeposits.vue';
 import { formatCents, ledgerToday, parseCents } from './transaction';
 
 // #ifdef H5
@@ -47,6 +48,7 @@ type Screen =
   | 'chooseHome'
   | 'contract'
   | 'chooseBill'
+  | 'depositForm'
   | 'configureBill'
   | 'periods';
 const screen = ref<Screen>('homes');
@@ -55,6 +57,8 @@ const home = ref<RentalHome>();
 const contract = ref<RentalContract>();
 const formHome = ref<RentalHome>();
 const formHomeEdit = ref(false);
+const depositTitle = ref('');
+const depositBusy = ref(false);
 const billFirstDueOn = ref('');
 const billChoices = ['暂不设置', '生成固定账单', '关联已有固定账单'];
 const setupChoices = billChoices.slice(1);
@@ -99,6 +103,7 @@ const title = computed(
       chooseHome: '选择房屋',
       contract: '租房合同',
       configureBill: '设置房租账单',
+      depositForm: depositTitle.value,
       chooseBill: '选择已有房租账单',
       periods: '房租账期',
     })[screen.value],
@@ -214,14 +219,22 @@ function runTopAction() {
   else showContractForm();
 }
 function back() {
-  if (saving.value) return;
+  if (saving.value || depositBusy.value) return;
   if (screen.value === 'home') go('homes');
   else if (screen.value === 'homeForm') go(formHomeEdit.value ? 'home' : 'homes');
   else if (screen.value === 'contractForm' || screen.value === 'contract') go(contractOrigin.value);
   else if (screen.value === 'chooseHome') go('contractForm');
-  else if (screen.value === 'configureBill') go('contract');
+  else if (screen.value === 'configureBill' || screen.value === 'depositForm') go('contract');
   else if (screen.value === 'chooseBill') go(billPickerOrigin.value);
   else emit('close');
+}
+function showDepositForm(title: string) {
+  depositTitle.value = title;
+  go('depositForm');
+}
+function onDepositSaved() {
+  go('contract');
+  emit('saved');
 }
 function leaseStatus(row: RentalContract) {
   return today < row.startsOn ? '待入住' : today > row.endsOn ? '已到期' : '租期中';
@@ -461,7 +474,9 @@ async function save() {
   />
   <view v-else v-show="!covered" class="rental-workspace" :style="workspaceStyle">
     <view class="rental-header">
-      <button aria-label="返回" class="rental-back" :disabled="saving" @click="back">‹</button>
+      <button aria-label="返回" class="rental-back" :disabled="saving || depositBusy" @click="back">
+        ‹
+      </button>
       <text class="rental-title">{{ title }}</text>
       <button v-if="topAction" class="rental-action" @click="runTopAction">{{ topAction }}</button>
       <view v-else class="rental-space" />
@@ -586,11 +601,22 @@ async function save() {
           <view v-else class="rental-row"
             ><text>房租账单</text><text class="rental-secondary">未设置</text></view
           >
-          <view v-if="contract.depositCents" class="rental-row"
-            ><text>约定押金</text><text>¥{{ formatCents(contract.depositCents) }}</text></view
-          >
         </view>
       </template>
+
+      <LedgerRentalDeposits
+        v-if="(screen === 'contract' || screen === 'depositForm') && contract"
+        :key="contract.id"
+        :ledger-id="ledgerId"
+        :contract-id="contract.id"
+        :home-name="contract.homeName"
+        :agreed-cents="contract.depositCents"
+        :writable="writable"
+        :form="screen === 'depositForm'"
+        @open="showDepositForm"
+        @saved="onDepositSaved"
+        @busy="depositBusy = $event"
+      />
 
       <template v-if="screen === 'chooseBill'">
         <view class="rental-card">
