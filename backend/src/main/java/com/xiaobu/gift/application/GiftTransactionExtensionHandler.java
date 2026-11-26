@@ -90,11 +90,12 @@ class GiftTransactionExtensionHandler implements TransactionExtensionHandler<Gif
         detail.contactId() != null
             ? directory.requireContact(context.ledgerId(), detail.contactId())
             : Boolean.TRUE.equals(detail.createContact())
-                ? directory.createContact(
-                    context.ledgerId(),
-                    context.actorId(),
-                    detail.personName(),
-                    detail.distinction())
+                ? directory.registerContact(
+                    new CreateGiftContactCommand(
+                        context.ledgerId(),
+                        context.actorId(),
+                        detail.personName(),
+                        detail.distinction()))
                 : null;
     details.save(
         context.ledgerId(),

@@ -5,6 +5,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 
@@ -165,9 +166,9 @@ def main():
     recorded = call(alpha, "POST", path, targeted)
     book_filter = f"{gifts}/activity?bookId={book['id']}"
     person_filter = f"{gifts}/activity?contactId={second_person['id']}"
-    assert [row["transactionId"] for row in call(alpha, "GET", book_filter)] == [recorded["id"]]
-    assert [row["transactionId"] for row in call(alpha, "GET", person_filter)] == [recorded["id"]]
-    assert call(alpha, "GET", f"{gifts}/activity?contactId={first_person['id']}") == []
+    assert [row["transactionId"] for row in call(alpha, "GET", book_filter)["entries"]] == [recorded["id"]]
+    assert [row["transactionId"] for row in call(alpha, "GET", person_filter)["entries"]] == [recorded["id"]]
+    assert call(alpha, "GET", f"{gifts}/activity?contactId={first_person['id']}")["entries"] == []
     call(beta, "GET", book_filter, status=403)
     locked = f"{gifts}/books/{book['id']}/archive"
     call(alpha, "PUT", locked, {"archived": True}, 204)
@@ -178,10 +179,41 @@ def main():
     call(alpha, "PUT", locked, {"archived": False}, 204)
     assert call(alpha, "GET", linked)["canModify"]
     call(alpha, "DELETE", linked + "?version=0", status=204)
-    assert call(alpha, "GET", book_filter) == []
+    assert call(alpha, "GET", book_filter)["entries"] == []
     call(alpha, "POST", linked + "/restore", {"version": 1}, 204)
-    assert [row["transactionId"] for row in call(alpha, "GET", book_filter)] == [recorded["id"]]
-    print("PASS: capabilities, single-entry gift write, rollback, version, old client, permissions, restore and explicit removal")
+    assert [row["transactionId"] for row in call(alpha, "GET", book_filter)["entries"]] == [recorded["id"]]
+    # Over 100 real postings: first page totals must not depend on visible row count,
+    # and a literal keyword containing percent/underscore must find the oldest row.
+    large = call(alpha, "POST", gifts + "/books",
+        {"name": "分页验收礼单", "direction": "INCOME"}, 201)
+    large_filter = f"{gifts}/activity?bookId={large['id']}"
+    def for_large(amount, day, note):
+        return {
+            **received, "amountCents": amount, "bookedOn": day, "note": note,
+            "extensions": [{**gift, "detail": {"bookId": large["id"]}}],
+        }
+    oldest_day = (datetime.date.fromisoformat(today) - datetime.timedelta(days=10)).isoformat()
+    oldest = call(alpha, "POST", path, for_large(777, oldest_day, "独特旧记录 %_小簿"))
+    newer = {
+        call(alpha, "POST", path, for_large(100, today, "最近流水"))["id"]
+        for _ in range(102)
+    }
+    all_ids = set()
+    for number in range(6):
+        result = call(alpha, "GET", large_filter + f"&page={number}&pageSize=20")
+        assert result["incomeCents"] == 10977 and result["expenseCents"] == 0
+        assert result["totalCount"] == 103
+        ids = {row["transactionId"] for row in result["entries"]}
+        assert not all_ids.intersection(ids)
+        all_ids.update(ids)
+        assert len(result["entries"]) == (3 if number == 5 else 20)
+    assert all_ids == newer | {oldest["id"]}
+    unique = call(alpha, "GET", large_filter + "&keyword=" + quote("%_小簿"))
+    assert unique["totalCount"] == 1 and unique["incomeCents"] == 777
+    assert unique["entries"][0]["transactionId"] == oldest["id"]
+    for bad_query in ("&page=-1", "&pageSize=101"):
+        call(alpha, "GET", large_filter + bad_query, status=400)
+    print("PASS: capabilities, single-entry gift write, rollback, version, old client, permissions, restore, directory, archive and a full 103-entry search / pagination")
 
 
 if __name__ == "__main__":

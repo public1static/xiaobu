@@ -68,12 +68,27 @@ export function listGiftContacts(ledgerId: string) {
   return request<GiftContact[]>(path(ledgerId) + '/contacts', 'GET');
 }
 
+export interface GiftActivityPage {
+  entries: GiftActivity[];
+  incomeCents: number;
+  expenseCents: number;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export function listGiftActivity(
   ledgerId: string,
-  filter: { bookId?: string; contactId?: string } = {},
+  filter: {
+    bookId?: string;
+    contactId?: string;
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
 ) {
-  const parts = Object.entries(filter).map(([k, v]) => k + '=' + encodeURIComponent(v));
-  return request<GiftActivity[]>(
+  const parts = Object.entries(filter).map(([key, value]) => key + '=' + encodeURIComponent(value));
+  return request<GiftActivityPage>(
     path(ledgerId) + '/activity' + (parts.length ? '?' + parts.join('&') : ''),
     'GET',
   );

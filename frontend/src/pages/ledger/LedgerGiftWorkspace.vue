@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   createGiftBook,
   dailyGiftBook,
@@ -11,6 +11,8 @@ import {
   type GiftBook,
   type GiftContact,
 } from '../../api/ledger-gifts';
+import { giftEntryPreset } from './gift-entry-extension';
+import type { TransactionEntryPreset } from './transaction-extension-ui';
 import { ApiRequestError } from '../../api/request';
 import { formatCents, localDay, type TransactionDirection } from './transaction';
 
@@ -22,7 +24,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   (event: 'close'): void;
-  (event: 'quick', book: GiftBook): void;
+  (event: 'quick', preset: TransactionEntryPreset): void;
   (event: 'detail', id: string): void;
 }>();
 const tab = ref<'activity' | 'books' | 'contacts'>('activity');
@@ -31,6 +33,9 @@ const currentContact = ref<GiftContact | null>(null);
 const books = ref<GiftBook[]>([]);
 const contacts = ref<GiftContact[]>([]);
 const rows = ref<GiftActivity[]>([]);
+const summary = ref({ incomeCents: 0, expenseCents: 0, totalCount: 0 });
+const currentPage = ref(0);
+let searchDelay: ReturnType<typeof setTimeout> | undefined;
 const query = ref('');
 const busy = ref(false);
 const error = ref('');
@@ -48,44 +53,44 @@ const displayedBooks = computed(() => [
   dailyGiftBook('EXPENSE'),
   ...books.value,
 ]);
-const visibleRows = computed(() =>
-  rows.value.filter((row) =>
-    [row.personName, row.distinction, row.note, row.reason].some((value) =>
-      (value ?? '').includes(query.value.trim()),
-    ),
-  ),
-);
 const visibleContacts = computed(() =>
   contacts.value.filter((person) =>
     (person.name + person.distinction).includes(query.value.trim()),
   ),
 );
-const summary = computed(() => ({
-  income: visibleRows.value
-    .filter((item) => item.direction === 'INCOME')
-    .reduce((amount, item) => amount + item.amountCents, 0),
-  expense: visibleRows.value
-    .filter((item) => item.direction === 'EXPENSE')
-    .reduce((amount, item) => amount + item.amountCents, 0),
-}));
-
 function errorText(failure: unknown, fallback: string) {
   return failure instanceof ApiRequestError ? failure.message : fallback;
 }
 
-async function loadRows() {
+async function loadRows(append = false) {
+  clearTimeout(searchDelay);
   const sequence = ++requestSequence;
   loading.value = true;
   error.value = '';
-  rows.value = [];
+  if (!append) {
+    rows.value = [];
+    summary.value = { incomeCents: 0, expenseCents: 0, totalCount: 0 };
+  }
   try {
     const filter = currentBook.value
       ? { bookId: currentBook.value.id }
       : currentContact.value
         ? { contactId: currentContact.value.id }
         : {};
-    const result = await listGiftActivity(props.ledgerId, filter);
-    if (sequence === requestSequence) rows.value = result;
+    const result = await listGiftActivity(props.ledgerId, {
+      ...filter,
+      keyword: query.value.trim(),
+      page: append ? currentPage.value + 1 : 0,
+      pageSize: 20,
+    });
+    if (sequence !== requestSequence) return;
+    rows.value = append ? [...rows.value, ...result.entries] : result.entries;
+    currentPage.value = result.page;
+    summary.value = {
+      incomeCents: result.incomeCents,
+      expenseCents: result.expenseCents,
+      totalCount: result.totalCount,
+    };
   } catch (failure) {
     if (sequence === requestSequence) error.value = errorText(failure, '往来加载失败。');
   } finally {
@@ -201,6 +206,18 @@ function rowTitle(row: GiftActivity) {
 }
 onMounted(refresh);
 watch(() => props.revision, refresh);
+watch(query, () => {
+  if (creating.value || (!currentBook.value && !currentContact.value && tab.value !== 'activity'))
+    return;
+  requestSequence++;
+  clearTimeout(searchDelay);
+  loading.value = true;
+  searchDelay = setTimeout(() => void loadRows(), 250);
+});
+onBeforeUnmount(() => {
+  requestSequence++;
+  clearTimeout(searchDelay);
+});
 </script>
 
 <template>
@@ -237,7 +254,7 @@ watch(() => props.revision, refresh);
           v-else-if="writable && currentBook && !currentBook.archived"
           class="text-button"
           aria-label="新增礼单往来"
-          @click="emit('quick', currentBook)"
+          @click="emit('quick', giftEntryPreset(currentBook))"
         >
           新增
         </button>
@@ -372,19 +389,23 @@ watch(() => props.revision, refresh);
         <view class="workspace-totals">
           <view
             ><text>收礼</text
-            ><text class="workspace-total-value">¥{{ formatCents(summary.income) }}</text></view
+            ><text class="workspace-total-value"
+              >¥{{ formatCents(summary.incomeCents) }}</text
+            ></view
           >
           <view
             ><text>送礼</text
-            ><text class="workspace-total-value">¥{{ formatCents(summary.expense) }}</text></view
+            ><text class="workspace-total-value"
+              >¥{{ formatCents(summary.expenseCents) }}</text
+            ></view
           >
         </view>
         <view class="workspace-search"
-          ><input v-model="query" placeholder="找人或备注" aria-label="找人或备注"
+          ><input v-model="query" placeholder="找人或备注" aria-label="找人或备注" :maxlength="100"
         /></view>
         <view class="meta">
           <button
-            v-for="row in visibleRows"
+            v-for="row in rows"
             :key="row.transactionId"
             class="workspace-row"
             @click="emit('detail', row.transactionId)"
@@ -400,9 +421,16 @@ watch(() => props.revision, refresh);
             >
           </button>
           <text v-if="loading" class="workspace-empty">正在加载往来</text>
-          <text v-else-if="!visibleRows.length" class="workspace-empty">这段还没有往来</text>
+          <text v-else-if="!rows.length" class="workspace-empty">这段还没有往来</text>
         </view>
-        <text v-if="rows.length >= 100" class="workspace-caption">显示最近 100 条</text>
+        <button
+          v-if="rows.length < summary.totalCount"
+          class="text-button"
+          :disabled="loading"
+          @click="loadRows(true)"
+        >
+          加载更多
+        </button>
       </template>
       <text v-if="error" class="error" role="alert">{{ error }}</text>
       <button v-if="error && !creating" class="text-button" @click="refresh">重新加载</button>

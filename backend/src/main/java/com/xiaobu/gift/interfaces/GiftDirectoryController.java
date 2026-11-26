@@ -1,10 +1,8 @@
 package com.xiaobu.gift.interfaces;
 
 import com.aegisid.foundation.web.api.ApiResponse;
-import com.xiaobu.gift.application.GiftActivityResult;
 import com.xiaobu.gift.application.GiftDirectoryApplicationService;
-import com.xiaobu.gift.domain.GiftActivityBook;
-import com.xiaobu.gift.domain.GiftContact;
+import com.xiaobu.gift.application.ListGiftActivitiesQuery;
 import com.xiaobu.identity.interfaces.LedgerSessionContext;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,80 +29,86 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/ledgers/{ledgerId}/gifts")
 class GiftDirectoryController {
   private final GiftDirectoryApplicationService gifts;
+  private final GiftDirectoryWebMapper mapper;
 
-  GiftDirectoryController(GiftDirectoryApplicationService gifts) {
+  GiftDirectoryController(GiftDirectoryApplicationService gifts, GiftDirectoryWebMapper mapper) {
     this.gifts = gifts;
+    this.mapper = mapper;
   }
 
   @GetMapping("/books")
-  ApiResponse<List<GiftActivityBook>> listBooks(
+  ApiResponse<List<GiftBookResponse>> listGiftBooks(
       @PathVariable String ledgerId, HttpServletRequest request) {
-    return ApiResponse.success(gifts.listBooks(ledgerId, actor(request)));
+    return ApiResponse.success(
+        gifts.listGiftBooks(ledgerId, actor(request)).stream().map(mapper::toResponse).toList());
   }
 
   @PostMapping("/books")
   @ResponseStatus(HttpStatus.CREATED)
-  ApiResponse<GiftActivityBook> createBook(
+  ApiResponse<GiftBookResponse> createGiftBook(
       @PathVariable String ledgerId,
-      @Valid @RequestBody CreateBookRequest input,
+      @Valid @RequestBody CreateGiftBookRequest input,
       HttpServletRequest request) {
     return ApiResponse.success(
-        gifts.createBook(
-            ledgerId,
-            actor(request),
-            input.name(),
-            input.direction(),
-            input.defaultDate(),
-            input.defaultReason()));
+        mapper.toResponse(gifts.createGiftBook(mapper.toCommand(input, ledgerId, actor(request)))));
   }
 
   @PutMapping("/books/{id}/archive")
   @ResponseStatus(HttpStatus.NO_CONTENT)
-  void changeArchive(
+  void changeGiftBookArchive(
       @PathVariable String ledgerId,
-      @PathVariable String id,
-      @Valid @RequestBody ArchiveBookRequest input,
+      @PathVariable("id") String bookId,
+      @Valid @RequestBody ChangeGiftBookArchiveRequest input,
       HttpServletRequest request) {
-    gifts.changeBookArchive(ledgerId, actor(request), id, input.archived());
+    gifts.changeGiftBookArchive(mapper.toCommand(input, ledgerId, actor(request), bookId));
   }
 
   @GetMapping("/contacts")
-  ApiResponse<List<GiftContact>> listContacts(
+  ApiResponse<List<GiftContactResponse>> listGiftContacts(
       @PathVariable String ledgerId, HttpServletRequest request) {
-    return ApiResponse.success(gifts.listContacts(ledgerId, actor(request)));
+    return ApiResponse.success(
+        gifts.listGiftContacts(ledgerId, actor(request)).stream().map(mapper::toResponse).toList());
   }
 
   @PostMapping("/contacts")
   @ResponseStatus(HttpStatus.CREATED)
-  ApiResponse<GiftContact> createContact(
+  ApiResponse<GiftContactResponse> createGiftContact(
       @PathVariable String ledgerId,
-      @Valid @RequestBody CreateContactRequest input,
+      @Valid @RequestBody CreateGiftContactRequest input,
       HttpServletRequest request) {
     return ApiResponse.success(
-        gifts.createContact(ledgerId, actor(request), input.name(), input.distinction()));
+        mapper.toResponse(
+            gifts.createGiftContact(mapper.toCommand(input, ledgerId, actor(request)))));
   }
 
   @GetMapping("/activity")
-  ApiResponse<List<GiftActivityResult>> listActivity(
+  ApiResponse<GiftActivityPageResponse> listGiftActivities(
       @PathVariable String ledgerId,
       @RequestParam(required = false) String bookId,
       @RequestParam(required = false) String contactId,
+      @RequestParam(defaultValue = "") String keyword,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int pageSize,
       HttpServletRequest request) {
-    return ApiResponse.success(gifts.listActivities(ledgerId, actor(request), bookId, contactId));
+    return ApiResponse.success(
+        mapper.toResponse(
+            gifts.listGiftActivities(
+                new ListGiftActivitiesQuery(
+                    ledgerId, actor(request), bookId, contactId, keyword, page, pageSize))));
   }
 
   private static String actor(HttpServletRequest request) {
     return LedgerSessionContext.require(request).actorId();
   }
 
-  record CreateBookRequest(
+  record CreateGiftBookRequest(
       @NotBlank @Size(max = 60) String name,
       @NotNull TransactionDirection direction,
       LocalDate defaultDate,
       @Size(max = 60) String defaultReason) {}
 
-  record ArchiveBookRequest(@NotNull Boolean archived) {}
+  record ChangeGiftBookArchiveRequest(@NotNull Boolean archived) {}
 
-  record CreateContactRequest(
+  record CreateGiftContactRequest(
       @NotBlank @Size(max = 60) String name, @Size(max = 60) String distinction) {}
 }

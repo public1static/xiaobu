@@ -7,10 +7,11 @@ import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerCategoriesSheet from './LedgerCategoriesSheet.vue';
 import LedgerGiftWorkspace from './LedgerGiftWorkspace.vue';
-import type { GiftBook } from '../../api/ledger-gifts';
 import LedgerExtensionFields from './LedgerExtensionFields.vue';
 import {
   extensionDraft,
+  extensionErrorMessage,
+  type TransactionEntryPreset,
   extensionPayload,
   supportsTransactionExtension,
   validateExtensionDraft,
@@ -122,45 +123,38 @@ const accountView = ref<'manage' | 'select' | null>(null);
 const ledgerHubOpen = ref(false);
 const giftWorkspaceOpen = ref(false);
 const giftRevision = ref(0);
-const quickGiftBook = ref<GiftBook | null>(null);
+const entryPreset = ref<TransactionEntryPreset | null>(null);
 
 function openGiftWorkspace() {
   ledgerHubOpen.value = false;
   giftWorkspaceOpen.value = true;
 }
 
-function startGiftEntry(book: GiftBook) {
-  if (readOnly.value) return;
-  startTransaction();
-  quickGiftBook.value = book;
-  direction.value = book.direction;
-  const giftCategory = categoryCatalog.value?.find(
+function startPresetEntry(preset: TransactionEntryPreset) {
+  if (readOnly.value || !session.value) return;
+  const presetCategory = categoryCatalog.value?.find(
     (item) =>
       item.active &&
-      item.direction === book.direction &&
-      item.capabilities?.some(({ type }) => type === 'GIFT'),
+      item.direction === preset.direction &&
+      item.capabilities?.some(({ type }) => type === preset.type),
   );
-  if (!giftCategory) {
-    open.value = false;
-    uni.showToast({ title: '请先恢复该方向的礼金分类', icon: 'none' });
+  if (!presetCategory) {
+    uni.showToast({ title: preset.unavailableMessage, icon: 'none' });
     return;
   }
-  category.value = giftCategory.code;
-  extensionDrafts.value = {
-    GIFT: {
-      bookId: book.daily ? null : book.id,
-      bookName: book.name,
-      reason: book.defaultReason ?? '',
-    },
-  };
-  if (book.defaultDate) applyExtensionDateDefault(book.defaultDate);
+  openTransactionForm();
+  entryPreset.value = preset;
+  direction.value = preset.direction;
+  category.value = presetCategory.code;
+  extensionDrafts.value = { [preset.type]: { ...preset.detail } };
+  if (preset.defaultDate) applyExtensionDateDefault(preset.defaultDate);
 }
 
 function applyExtensionDateDefault(value: string) {
   if (value > '1900-01-01' && value <= today.value) date.value = value;
 }
 
-function refreshGiftActivity() {
+function refreshAfterTransactionChange() {
   giftRevision.value++;
   void refresh();
 }
@@ -507,7 +501,7 @@ const recycleOpen = ref(false);
 function startEditing(detail: LedgerTransactionDetail) {
   const row = detail.transaction;
   transactionDetailId.value = '';
-  quickGiftBook.value = null;
+  entryPreset.value = null;
   editing.value = detail;
   extensionDrafts.value = Object.fromEntries(
     (detail.extensions ?? [])
@@ -529,7 +523,7 @@ function startEditing(detail: LedgerTransactionDetail) {
 function onTransactionDeleted() {
   transactionDetailId.value = '';
   savedMessage.value = '已移到最近删除';
-  refreshGiftActivity();
+  refreshAfterTransactionChange();
 }
 const filtered = computed(() => Boolean(filter.value.from || filter.value.keyword));
 
@@ -622,7 +616,7 @@ function startTransaction() {
 }
 
 function openTransactionForm() {
-  quickGiftBook.value = null;
+  entryPreset.value = null;
   editing.value = null;
   extensionDrafts.value = {};
   editStale.value = false;
@@ -687,12 +681,10 @@ async function submit(continueEntry = false) {
     saveError.value = '当前版本不支持这项业务，升级后再试。';
     return;
   }
-  if (quickGiftBook.value && !String(extensionDrafts.value.GIFT?.personName ?? '').trim()) {
-    saveError.value = '快速登记请填写送礼人或随礼对象。';
-    return;
-  }
   for (const capability of editableCapabilities.value) {
-    const issue = validateExtensionDraft(capability.type, extensionDrafts.value[capability.type]);
+    const issue = validateExtensionDraft(capability.type, extensionDrafts.value[capability.type], {
+      fromPreset: entryPreset.value?.type === capability.type,
+    });
     if (issue) {
       saveError.value = issue;
       return;
@@ -749,20 +741,22 @@ async function submit(continueEntry = false) {
     open.value = false;
     savedMessage.value = '已记一笔';
     giftRevision.value++;
-    const continuation = continueEntry ? quickGiftBook.value : null;
+    const continuation = continueEntry ? entryPreset.value : null;
     if (continuation) {
-      startGiftEntry(continuation);
-      uni.showToast({ title: '已登记，可记下一位', icon: 'none' });
+      startPresetEntry(continuation);
+      uni.showToast({ title: continuation.continuedMessage, icon: 'none' });
     }
     await refresh();
   } catch (error) {
-    if (error instanceof ApiRequestError && error.code === 'XIAOBU_TRANSACTION_EXTENSION_LOCKED') {
-      saveError.value = '礼单已归档，重新开放后再修改。';
-      return;
-    }
-    if (error instanceof ApiRequestError && error.code === 'XIAOBU_GIFT_DIRECTORY_CONFLICT') {
-      saveError.value = '同名亲友的称呼或关系已被使用，请修改后再保存。';
-      return;
+    if (error instanceof ApiRequestError) {
+      const message = extensionErrorMessage(
+        [...previousExtensions.map(({ type }) => type), ...supported],
+        error.code,
+      );
+      if (message) {
+        saveError.value = message;
+        return;
+      }
     }
     if (error instanceof ApiRequestError && error.code === 'XIAOBU_TRANSACTION_HAS_REFUNDS') {
       saveError.value = '已有退款：只能保留支出，原付不能低于已退，付款日期不能晚于退款。';
@@ -801,8 +795,7 @@ async function submit(continueEntry = false) {
       return;
     }
     saveError.value =
-      error instanceof ApiRequestError &&
-      (error.status === 400 || error.code === 'XIAOBU_GIFT_DIRECTORY_CONFLICT')
+      error instanceof ApiRequestError && error.status === 400
         ? error.message
         : '保存结果未确认。请先返回刷新流水，避免重复记账。';
   } finally {
@@ -1194,11 +1187,11 @@ const entryDateLabel = computed(() => {
       <view
         class="sheet entry-sheet"
         role="dialog"
-        :aria-label="editing ? '编辑流水' : quickGiftBook ? '登记礼金' : `记一笔${directionLabel}`"
+        :aria-label="editing ? '编辑流水' : (entryPreset?.title ?? `记一笔${directionLabel}`)"
         aria-modal="true"
       >
         <view class="sheet-head"
-          ><text>{{ editing ? '编辑流水' : quickGiftBook ? '登记礼金' : '记一笔' }}</text
+          ><text>{{ editing ? '编辑流水' : (entryPreset?.title ?? '记一笔') }}</text
           ><button
             class="close"
             aria-label="关闭记账"
@@ -1208,7 +1201,7 @@ const entryDateLabel = computed(() => {
             ×
           </button></view
         >
-        <view v-if="!quickGiftBook" class="entry-direction">
+        <view v-if="!entryPreset" class="entry-direction">
           <text>收支类型<text class="star">*</text></text>
           <view class="direction-tabs" role="group" aria-label="收支类型">
             <button
@@ -1232,10 +1225,10 @@ const entryDateLabel = computed(() => {
           </view>
         </view>
         <LedgerExtensionFields
-          v-for="capability in quickGiftBook ? editableCapabilities : []"
+          v-for="capability in entryPreset ? editableCapabilities : []"
           :key="capability.type"
           :ledger-id="ledgerId!"
-          :quick="Boolean(quickGiftBook)"
+          :quick="Boolean(entryPreset)"
           :type="capability.type"
           :detail="extensionDrafts[capability.type] ?? {}"
           :direction="direction"
@@ -1258,7 +1251,7 @@ const entryDateLabel = computed(() => {
           /></view>
           <text v-if="fieldError.amount" class="error" role="alert">{{ fieldError.amount }}</text>
         </view>
-        <view v-if="!quickGiftBook" class="entry-categories">
+        <view v-if="!entryPreset" class="entry-categories">
           <view class="category-head">
             <text>分类<text class="star">*</text></text>
             <button class="text-button" :disabled="saving" @click="categorySheetOpen = true">
@@ -1312,10 +1305,10 @@ const entryDateLabel = computed(() => {
           /></view>
         </view>
         <LedgerExtensionFields
-          v-for="capability in quickGiftBook ? [] : editableCapabilities"
+          v-for="capability in entryPreset ? [] : editableCapabilities"
           :key="capability.type"
           :ledger-id="ledgerId!"
-          :quick="Boolean(quickGiftBook)"
+          :quick="Boolean(entryPreset)"
           :type="capability.type"
           :detail="extensionDrafts[capability.type] ?? {}"
           :direction="direction"
@@ -1324,7 +1317,7 @@ const entryDateLabel = computed(() => {
           @date-default="applyExtensionDateDefault"
         />
         <text v-if="saveError" class="error" role="alert">{{ saveError }}</text>
-        <view v-if="quickGiftBook" class="quick-entry-actions">
+        <view v-if="entryPreset" class="quick-entry-actions">
           <button class="primary secondary save" :disabled="saving || readOnly" @click="submit()">
             保存
           </button>
@@ -1367,14 +1360,14 @@ const entryDateLabel = computed(() => {
       @close="transactionDetailId = ''"
       @edit="startEditing"
       @deleted="onTransactionDeleted"
-      @refunded="refreshGiftActivity"
+      @refunded="refreshAfterTransactionChange"
     />
     <LedgerRecycleSheet
       v-if="recycleOpen && ledgerId"
       :ledger-id="ledgerId"
       @close="recycleOpen = false"
       :category-names="categoryNames"
-      @restored="refreshGiftActivity"
+      @restored="refreshAfterTransactionChange"
     />
     <LedgerGiftWorkspace
       v-if="giftWorkspaceOpen && ledgerId"
@@ -1383,7 +1376,7 @@ const entryDateLabel = computed(() => {
       :revision="giftRevision"
       :covered="Boolean(open || transactionDetailId)"
       @close="giftWorkspaceOpen = false"
-      @quick="startGiftEntry"
+      @quick="startPresetEntry"
       @detail="transactionDetailId = $event"
     />
     <LedgerCategoriesSheet

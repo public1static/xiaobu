@@ -10,7 +10,6 @@ import com.xiaobu.gift.domain.GiftBook;
 import com.xiaobu.gift.domain.GiftContact;
 import com.xiaobu.ledger.application.PersonalLedgerApplicationService;
 import com.xiaobu.ledger.domain.TransactionDirection;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -39,22 +38,19 @@ public class GiftDirectoryApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public List<GiftActivityBook> listBooks(String ledgerId, String actorId) {
+  public List<GiftBookResult> listGiftBooks(String ledgerId, String actorId) {
     ledgers.requireReadAccess(ledgerId, actorId);
-    return directory.findBooks(ledgerId);
+    return directory.findBooks(ledgerId).stream().map(GiftBookResult::from).toList();
   }
 
   @Transactional
-  public GiftActivityBook createBook(
-      String ledgerId,
-      String actorId,
-      String rawName,
-      TransactionDirection direction,
-      LocalDate defaultDate,
-      String rawReason) {
+  public GiftBookResult createGiftBook(CreateGiftBookCommand command) {
+    String ledgerId = command.ledgerId();
+    String actorId = command.actorId();
+    TransactionDirection direction = command.direction();
     ledgers.requireWriteAccess(ledgerId, actorId);
-    String name = validateText(rawName, true);
-    String reason = validateText(rawReason, false);
+    String name = validateText(command.name(), true);
+    String reason = validateText(command.defaultReason(), false);
     if (GiftBook.dailyFor(direction).displayName().equalsIgnoreCase(name)
         || directory.findBooks(ledgerId).stream()
             .anyMatch(
@@ -63,30 +59,45 @@ public class GiftDirectoryApplicationService {
     }
     var book =
         new GiftActivityBook(
-            ids.next(BOOK), name, direction, defaultDate, reason.isEmpty() ? null : reason, false);
+            ids.next(BOOK),
+            name,
+            direction,
+            command.defaultDate(),
+            reason.isEmpty() ? null : reason,
+            false);
     directory.saveBook(ledgerId, actorId, book);
-    return book;
+    return GiftBookResult.from(book);
   }
 
   @Transactional
-  public void changeBookArchive(String ledgerId, String actorId, String bookId, boolean archived) {
+  public void changeGiftBookArchive(ChangeGiftBookArchiveCommand command) {
+    String ledgerId = command.ledgerId();
+    String actorId = command.actorId();
+    String bookId = command.bookId();
+    boolean archived = command.archived();
     ledgers.requireWriteAccess(ledgerId, actorId);
     requireBook(ledgerId, bookId);
     directory.changeBookArchive(ledgerId, actorId, bookId, archived);
   }
 
   @Transactional(readOnly = true)
-  public List<GiftContact> listContacts(String ledgerId, String actorId) {
+  public List<GiftContactResult> listGiftContacts(String ledgerId, String actorId) {
     ledgers.requireReadAccess(ledgerId, actorId);
-    return directory.findContacts(ledgerId);
+    return directory.findContacts(ledgerId).stream().map(GiftContactResult::from).toList();
   }
 
   @Transactional
-  public GiftContact createContact(
-      String ledgerId, String actorId, String rawName, String rawDistinction) {
+  public GiftContactResult createGiftContact(CreateGiftContactCommand command) {
+    return GiftContactResult.from(registerContact(command));
+  }
+
+  // Inline registration runs in the already-open transaction of the main ledger write.
+  GiftContact registerContact(CreateGiftContactCommand command) {
+    String ledgerId = command.ledgerId();
+    String actorId = command.actorId();
     ledgers.requireWriteAccess(ledgerId, actorId);
-    String name = validateText(rawName, true);
-    String distinction = validateText(rawDistinction, false);
+    String name = validateText(command.name(), true);
+    String distinction = validateText(command.distinction(), false);
     for (var row : directory.findContacts(ledgerId)) {
       if (!row.name().equalsIgnoreCase(name)) continue;
       if (distinction.isEmpty() || row.distinction().equalsIgnoreCase(distinction)) {
@@ -99,18 +110,44 @@ public class GiftDirectoryApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public List<GiftActivityResult> listActivities(
-      String ledgerId, String actorId, String book, String contact) {
-    ledgers.requireReadAccess(ledgerId, actorId);
-    String activity = null;
-    String daily = null;
-    if (book != null) {
-      if (GiftBook.DAILY_SENT.name().equals(book) || GiftBook.DAILY_RECEIVED.name().equals(book))
-        daily = book;
-      else activity = requireBook(ledgerId, book).id();
+  public GiftActivityPageResult listGiftActivities(ListGiftActivitiesQuery query) {
+    String ledgerId = query.ledgerId();
+    ledgers.requireReadAccess(ledgerId, query.actorId());
+    if (query.page() < 0
+        || query.pageSize() < 1
+        || query.pageSize() > 100
+        || (long) query.page() * query.pageSize() > Integer.MAX_VALUE) {
+      throw invalid("分页参数无效");
     }
-    if (contact != null) requireContact(ledgerId, contact);
-    return activities.findRecent(ledgerId, activity, daily, contact);
+    String keyword = query.keyword() == null ? "" : query.keyword().strip();
+    if (keyword.length() > 100) throw invalid("搜索词最多 100 字");
+    String activity = null;
+    GiftBook daily = null;
+    if (query.bookId() != null) {
+      if (GiftBook.DAILY_SENT.name().equals(query.bookId())
+          || GiftBook.DAILY_RECEIVED.name().equals(query.bookId())) {
+        daily = GiftBook.valueOf(query.bookId());
+      } else {
+        activity = requireBook(ledgerId, query.bookId()).id();
+      }
+    }
+    if (query.contactId() != null) requireContact(ledgerId, query.contactId());
+    var filter = new GiftActivityFilter(ledgerId, activity, daily, query.contactId(), keyword);
+    var totals = activities.findTotals(filter);
+    long count = 0;
+    long income = 0;
+    long expense = 0;
+    for (var total : totals) {
+      count += total.entryCount();
+      if (total.direction() == TransactionDirection.INCOME) income = total.amountCents();
+      else expense = total.amountCents();
+    }
+    var items =
+        (long) query.page() * query.pageSize() < count
+            ? activities.findPage(filter, query.page(), query.pageSize())
+            : List.<GiftActivityResult>of();
+    return new GiftActivityPageResult(
+        items, income, expense, count, query.page(), query.pageSize());
   }
 
   GiftActivityBook requireBook(String ledgerId, String bookId) {
