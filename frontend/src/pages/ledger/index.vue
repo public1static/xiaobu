@@ -7,6 +7,7 @@ import { onLoad, onShareAppMessage } from '@dcloudio/uni-app';
 import { closeWechatSession, getWechatSession, openWechatSession } from '../../api/wechat-session';
 import { setWechatSessionToken, wechatPreviewApiBase } from '../../api/preview-transport';
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
+import LedgerFixedBills from './LedgerFixedBills.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerCategoriesSheet from './LedgerCategoriesSheet.vue';
 import LedgerGiftWorkspace from './LedgerGiftWorkspace.vue';
@@ -136,6 +137,7 @@ const note = ref('');
 const account = ref<Pick<LedgerAccount, 'id' | 'name'> | null>(null);
 const accountView = ref<'manage' | 'select' | null>(null);
 const ledgerHubOpen = ref(false);
+const fixedBillsOpen = ref(false);
 const giftWorkspaceOpen = ref(false);
 const giftRevision = ref(0);
 const entryPreset = ref<TransactionEntryPreset | null>(null);
@@ -407,6 +409,7 @@ async function copyInvitation() {
 function resetSession(next: LocalSession | null) {
   ++generation;
   ++membershipGeneration;
+  fixedBillsOpen.value = false;
   ledgerHubOpen.value = false;
   giftWorkspaceOpen.value = false;
   sharedLedger.value = null;
@@ -1129,6 +1132,11 @@ const entryDateLabel = computed(() => {
             ><text>礼金往来</text><text class="preview-label">往来 · 礼单 · 亲友</text></view
           ><text>›</text>
         </button>
+        <button class="hub-link" @click="fixedBillsOpen = true">
+          <LedgerIcon class="page-icon" src="/static/ledger/vant/BILL_CALENDAR.svg" /><view
+            ><text>固定账单</text><text class="preview-label">周期付款与流水关联</text></view
+          ><text>›</text>
+        </button>
         <button class="hub-link" @click="accountView = 'manage'">
           <LedgerIcon class="page-icon" src="/static/ledger/vant/SALARY.svg" /><view
             ><text>账户管理</text><text class="preview-label">支付账户与收支流水</text></view
@@ -1566,6 +1574,16 @@ const entryDateLabel = computed(() => {
       @close="recycleOpen = false"
       :category-names="categoryNames"
       @restored="refreshAfterTransactionChange"
+    />
+    <LedgerFixedBills
+      v-if="fixedBillsOpen && ledgerId"
+      :key="ledgerId"
+      :ledger-id="ledgerId"
+      :writable="!readOnly"
+      :covered="Boolean(transactionDetailId)"
+      @close="fixedBillsOpen = false"
+      @saved="refreshAfterTransactionChange"
+      @detail="transactionDetailId = $event"
     />
     <LedgerGiftWorkspace
       v-if="giftWorkspaceOpen && ledgerId"

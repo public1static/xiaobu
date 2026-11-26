@@ -8,7 +8,7 @@ import {
 } from '../../api/ledger-transactions';
 import { ApiRequestError } from '../../api/request';
 import LedgerRefundForm from './LedgerRefundForm.vue';
-import { categoryLabel, formatCents, refundToday } from './transaction';
+import { categoryLabel, formatCents, ledgerToday } from './transaction';
 
 const props = defineProps<{
   ledgerId?: string;
@@ -44,7 +44,7 @@ const canRefund = computed(
     detail.value?.canModify &&
     detail.value.transaction.direction === 'EXPENSE' &&
     remainingCents.value > 0 &&
-    detail.value.transaction.bookedOn <= refundToday(),
+    detail.value.transaction.bookedOn <= ledgerToday(),
 );
 
 async function onRefundSaved() {

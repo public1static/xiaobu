@@ -84,8 +84,8 @@ export function formatSignedCurrency(cents: number) {
   return `${cents < 0 ? '−' : ''}¥${formatCents(Math.abs(cents))}`;
 }
 
-// 退款以北京时间的自然日为准，与服务端到账日期校验保持一致。
-export function refundToday(now = new Date()) {
+// 退款与固定账单付款使用北京时间自然日，与后端的日期校验一致。
+export function ledgerToday(now = new Date()) {
   return new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
