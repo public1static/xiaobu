@@ -2,11 +2,14 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
+import LedgerSearchSheet from './LedgerSearchSheet.vue';
+import LedgerTransactionDetailSheet from './LedgerTransactionDetailSheet.vue';
 import type { LedgerAccount } from '../../api/ledger-accounts';
 import {
   listLedgerTransactions,
   recordLedgerTransaction,
   type LedgerTransaction,
+  type LedgerTransactionFilter,
 } from '../../api/ledger-transactions';
 import {
   closeLocalSession,
@@ -211,6 +214,7 @@ function selectLedger(ledger: JoinedLedger | null) {
   ledgerNotice.value = '';
   items.value = [];
   savedMessage.value = '';
+  transactionDetailId.value = '';
   open.value = false;
   void refresh();
 }
@@ -256,6 +260,10 @@ function resetSession(next: LocalSession | null) {
   shareOpen.value = false;
   memberSheetOpen.value = false;
   accountView.value = null;
+  transactionDetailId.value = '';
+  filterOpen.value = false;
+  filter.value = { from: '', through: '', keyword: '' };
+  searchText.value = '';
   ledgerNotice.value = '';
   shareLink.value = '';
   session.value = next;
@@ -319,6 +327,20 @@ async function signOut() {
   }
 }
 
+const filter = ref<LedgerTransactionFilter>({ from: '', through: '', keyword: '' });
+const filterOpen = ref(false);
+const searchText = ref('');
+const transactionDetailId = ref('');
+const filtered = computed(() => Boolean(filter.value.from || filter.value.keyword));
+
+function applyFilter(value: LedgerTransactionFilter) {
+  filter.value = value;
+  searchText.value = value.keyword;
+  filterOpen.value = false;
+  items.value = [];
+  void refresh();
+}
+
 const summary = computed(() => summarizeTransactions(items.value));
 const showTotals = computed(() => !loading.value && !listError.value);
 const groups = computed(() => {
@@ -343,7 +365,7 @@ async function refresh() {
   loading.value = true;
   listError.value = '';
   try {
-    const rows = await listLedgerTransactions(targetLedgerId, selectedMonth);
+    const rows = await listLedgerTransactions(targetLedgerId, selectedMonth, filter.value);
     if (request === generation) items.value = rows;
   } catch (error) {
     if (request !== generation) return;
@@ -385,6 +407,7 @@ function changeMonth(offset: -1 | 1) {
   today.value = localDay();
   const target = shiftLedgerMonth(month.value, offset);
   if (target < FIRST_LEDGER_MONTH || target > currentMonth.value) return;
+  filter.value = { ...filter.value, from: '', through: '' };
   selectMonth(target);
   void refresh();
 }
@@ -452,6 +475,8 @@ async function submit() {
   try {
     const stored = await recordLedgerTransaction(targetLedgerId, payload);
     today.value = localDay();
+    filter.value = { from: '', through: '', keyword: '' };
+    searchText.value = '';
     const nextMonth = stored.bookedOn.slice(0, 7);
     const current = nextMonth === month.value ? items.value : [];
     selectMonth(nextMonth);
@@ -525,7 +550,7 @@ void restoreSession();
       <template v-else>
         <view class="summary">
           <view class="summary-line">
-            <text class="summary-label">收支结余</text>
+            <text class="summary-label">{{ filtered ? '筛选结余' : '收支结余' }}</text>
             <view class="month-switcher">
               <button
                 class="month-arrow"
@@ -540,7 +565,14 @@ void restoreSession();
               >
                 ‹
               </button>
-              <text class="period" role="status">{{ monthText }}</text>
+              <button
+                class="period period-button"
+                role="button"
+                aria-label="选择日期"
+                @click="filterOpen = true"
+              >
+                {{ filter.from ? '自定义日期' : monthText }}⌄
+              </button>
               <button
                 class="month-arrow"
                 role="button"
@@ -586,10 +618,34 @@ void restoreSession();
             </template>
           </view>
         </view>
+        <view class="search-toolbar">
+          <input
+            v-model="searchText"
+            :maxlength="80"
+            placeholder="搜索流水备注"
+            aria-label="搜索流水备注"
+            @confirm="applyFilter({ ...filter, keyword: searchText.trim() })"
+          />
+          <button
+            class="text-button"
+            @click="applyFilter({ ...filter, keyword: searchText.trim() })"
+          >
+            搜索
+          </button>
+        </view>
+        <view v-if="filtered" class="filter-bar">
+          <text v-if="filter.from">{{ filter.from }} 至 {{ filter.through }}</text>
+          <text v-if="filter.keyword">备注：{{ filter.keyword }}</text>
+          <button class="text-button" @click="applyFilter({ from: '', through: '', keyword: '' })">
+            清除筛选
+          </button>
+        </view>
         <text v-if="savedMessage" class="sr-only" role="status">{{ savedMessage }}</text>
         <button v-if="listError" class="empty retry" @click="refresh">{{ listError }}</button>
         <view v-else-if="loading && !items.length" class="empty">正在加载流水</view>
-        <view v-else-if="!items.length" class="empty">这段时间还没有流水</view>
+        <view v-else-if="!items.length" class="empty">{{
+          filter.keyword ? '未找到匹配流水' : '这段时间还没有流水'
+        }}</view>
         <view v-for="group in groups" :key="group.day" class="day">
           <view class="day-head">
             <text>{{ showDay(group.day) }}</text>
@@ -599,7 +655,16 @@ void restoreSession();
             </view>
           </view>
           <view class="rows">
-            <view v-for="row in group.transactions" :key="row.id" class="row">
+            <view
+              v-for="row in group.transactions"
+              :key="row.id"
+              class="row"
+              role="button"
+              tabindex="0"
+              @click="transactionDetailId = row.id"
+              @keydown.enter.prevent="transactionDetailId = row.id"
+              @keydown.space.prevent="transactionDetailId = row.id"
+            >
               <view class="row-icon" aria-hidden="true">
                 <image :src="`/static/ledger/${row.categoryCode}.svg`" />
               </view>
@@ -854,6 +919,20 @@ void restoreSession();
       :selectable="accountView === 'select'"
       @close="accountView = null"
       @select="selectAccount"
+    />
+    <LedgerSearchSheet
+      v-if="filterOpen"
+      :filter="filter"
+      :today="today"
+      @close="filterOpen = false"
+      @apply="applyFilter"
+    />
+    <LedgerTransactionDetailSheet
+      v-if="transactionDetailId && ledgerId"
+      :key="transactionDetailId"
+      :ledger-id="ledgerId"
+      :transaction-id="transactionDetailId"
+      @close="transactionDetailId = ''"
     />
   </view>
 </template>

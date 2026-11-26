@@ -16,9 +16,34 @@ function transactionPath(ledgerId: string) {
   return `/ledgers/${encodeURIComponent(ledgerId)}/transactions`;
 }
 
-export function listLedgerTransactions(ledgerId: string, month: string) {
-  return request<LedgerTransaction[]>(
-    `${transactionPath(ledgerId)}?month=${encodeURIComponent(month)}`,
+export interface LedgerTransactionFilter {
+  from: string;
+  through: string;
+  keyword: string;
+}
+
+export interface LedgerTransactionDetail {
+  transaction: LedgerTransaction;
+  authorName: string;
+  accountName: string | null;
+}
+
+export function listLedgerTransactions(
+  ledgerId: string,
+  month: string,
+  filter: LedgerTransactionFilter,
+) {
+  const dates =
+    filter.from && filter.through
+      ? `from=${encodeURIComponent(filter.from)}&through=${encodeURIComponent(filter.through)}`
+      : `month=${encodeURIComponent(month)}`;
+  const query = filter.keyword ? `${dates}&keyword=${encodeURIComponent(filter.keyword)}` : dates;
+  return request<LedgerTransaction[]>(`${transactionPath(ledgerId)}?${query}`, 'GET');
+}
+
+export function getLedgerTransaction(ledgerId: string, transactionId: string) {
+  return request<LedgerTransactionDetail>(
+    `${transactionPath(ledgerId)}/${encodeURIComponent(transactionId)}`,
     'GET',
   );
 }
