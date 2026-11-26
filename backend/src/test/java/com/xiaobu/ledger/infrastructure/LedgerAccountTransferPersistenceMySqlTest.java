@@ -127,6 +127,32 @@ class LedgerAccountTransferPersistenceMySqlTest {
     assertEquals(2200, account(ledgerId, "beta", target.id()).balanceCents());
   }
 
+  // 改名或停用保留账户历史；改转账和撤销同时修正两个余额。
+  @Test
+  void managesAccountHistoryAcrossCorrections() {
+    String ledger = createLedger("alpha");
+    var cash = addAccount(ledger, "alpha", "现金", 4000);
+    var card = addAccount(ledger, "alpha", "信用卡", -500);
+    var original = transfers.recordTransfer(command(ledger, "alpha", cash.id(), card.id()));
+    var history = accounts.listAccountHistory(ledger, "alpha", card.id());
+    assertEquals(original.id(), history.getFirst().getId());
+    assertEquals(1, history.getFirst().getOwnRecord());
+    assertEquals(DATE.toString(), history.getFirst().getBookedOn());
+    accounts.updateLedgerAccount(ledger, "alpha", cash.id(), "我的现金", "现金", false, null, true);
+    assertEquals(2800, account(ledger, "alpha", cash.id()).balanceCents());
+    transfers.updateTransfer(
+        original.id(),
+        new RecordLedgerAccountTransferCommand(
+            ledger, "alpha", cash.id(), card.id(), 300, DATE, "修改"));
+    assertEquals(-200, account(ledger, "alpha", card.id()).balanceCents());
+    transfers.cancelTransfer(ledger, "alpha", original.id());
+    assertEquals(4000, account(ledger, "alpha", cash.id()).balanceCents());
+    assertEquals(0, accounts.listAccountHistory(ledger, "alpha", cash.id()).size());
+    assertThrows(
+        FoundationException.class,
+        () -> transfers.recordTransfer(command(ledger, "alpha", cash.id(), card.id())));
+  }
+
   private RecordLedgerAccountTransferCommand command(
       String ledgerId, String actorId, String source, String target) {
     return new RecordLedgerAccountTransferCommand(

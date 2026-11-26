@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -174,7 +175,8 @@ public class LedgerTransactionApplicationService {
           "这笔支出已有退款，不能改为收入、缩减至已退款金额以下，或把付款日期改到退款之后",
           Map.of());
     }
-    accounts.requireAccountInLedger(command.ledgerId(), command.accountId());
+    if (!Objects.equals(command.accountId(), original.details().accountId()))
+      accounts.requireAccountInLedger(command.ledgerId(), command.accountId());
     var details =
         new LedgerTransactionDetails(
             command.direction(),

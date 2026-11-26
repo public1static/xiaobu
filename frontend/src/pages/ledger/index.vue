@@ -538,6 +538,7 @@ const editStale = ref(false);
 const recycleOpen = ref(false);
 
 function startEditing(detail: LedgerTransactionDetail) {
+  accountView.value = null;
   const row = detail.transaction;
   transactionDetailId.value = '';
   entryPreset.value = null;
@@ -1526,6 +1527,10 @@ const entryDateLabel = computed(() => {
       </view>
     </view>
     <LedgerAccountsSheet
+      v-show="!transactionDetailId"
+      :category-names="categoryNames"
+      :revision="giftRevision"
+      @row="transactionDetailId = $event"
       v-if="accountView && ledgerId"
       :ledger-id="ledgerId"
       :allow-create="!sharedLedger"

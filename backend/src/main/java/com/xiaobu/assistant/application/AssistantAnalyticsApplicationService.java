@@ -60,13 +60,15 @@ public class AssistantAnalyticsApplicationService {
               .map(r ->
                   new Item(
                       Map.of("name", r.name()),
-                      Map.of(
-                          "openingBalanceCents",
-                          r.openingBalanceCents(),
-                          "recordedBalanceCents",
-                          r.recordedBalanceCents(),
-                          "balanceCents",
-                          r.balanceCents())))
+                      r.balanceKnown()
+                          ? Map.of(
+                              "openingBalanceCents",
+                              r.openingBalanceCents(),
+                              "recordedBalanceCents",
+                              r.recordedBalanceCents(),
+                              "balanceCents",
+                              r.balanceCents())
+                          : Map.of("recordedBalanceCents", r.recordedBalanceCents())))
               .toList();
       case CATEGORIES ->
           categories.listLedgerCategories(ledger, actor).stream()
@@ -272,6 +274,10 @@ public class AssistantAnalyticsApplicationService {
                   .filter(s -> !s.isEmpty())
                   .toList());
       if (p.keyword() != null && !label.contains(p.keyword())) continue;
+      // 待填余额仍计入账户数，只对已知金额求和或排行。
+      if (data == AssistantDataset.ACCOUNTS
+          && !"entryCount".equals(a.metric())
+          && !item.amounts().containsKey(a.metric())) continue;
       var value = BigDecimal.valueOf(item.amounts().getOrDefault(a.metric(), 1L));
       count++;
       sum = sum.add(value);

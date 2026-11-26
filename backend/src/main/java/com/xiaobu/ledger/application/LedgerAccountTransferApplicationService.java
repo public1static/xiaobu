@@ -2,6 +2,8 @@ package com.xiaobu.ledger.application;
 
 import com.aegisid.foundation.data.id.EntityIdGenerator;
 import com.aegisid.foundation.data.id.IdPrefix;
+import com.aegisid.foundation.shared.error.ErrorCode;
+import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.LedgerAccountTransfer;
 import java.util.List;
 import org.springframework.context.annotation.Profile;
@@ -55,5 +57,45 @@ public class LedgerAccountTransferApplicationService {
     return transfers.findRecentByLedger(ledgerId).stream()
         .map(LedgerAccountTransferResult::from)
         .toList();
+  }
+
+  // 修改历史转账时允许保留原来使用的已停用账户。
+  @Transactional
+  public void updateTransfer(String id, RecordLedgerAccountTransferCommand command) {
+    var previous = requireMutableTransfer(command.ledgerId(), command.actorId(), id);
+    var updated =
+        new LedgerAccountTransfer(
+            id,
+            command.ledgerId(),
+            command.sourceAccountId(),
+            command.targetAccountId(),
+            command.amountCents(),
+            command.bookedOn(),
+            command.note(),
+            previous.createdBy());
+    if (!previous.sourceAccountId().equals(updated.sourceAccountId()))
+      accounts.requireAccountInLedger(command.ledgerId(), updated.sourceAccountId());
+    if (!previous.targetAccountId().equals(updated.targetAccountId()))
+      accounts.requireAccountInLedger(command.ledgerId(), updated.targetAccountId());
+    transfers.update(updated);
+  }
+
+  // 在同一账本事务内撤销转账。
+  @Transactional
+  public void cancelTransfer(String ledgerId, String actorId, String id) {
+    requireMutableTransfer(ledgerId, actorId, id);
+    transfers.cancel(ledgerId, id);
+  }
+
+  // 成员仅可维护自己创建的转账，账本管理者可维护全部。
+  private LedgerAccountTransfer requireMutableTransfer(String ledgerId, String actorId, String id) {
+    ledgers.requireWriteAccess(ledgerId, actorId);
+    var previous =
+        transfers
+            .findByLedgerAndId(ledgerId, id)
+            .orElseThrow(
+                () -> new FoundationException(new ErrorCode("XIAOBU_TRANSFER_MISSING"), "转账记录不存在"));
+    if (!actorId.equals(previous.createdBy())) ledgers.requireOwnership(ledgerId, actorId);
+    return previous;
   }
 }

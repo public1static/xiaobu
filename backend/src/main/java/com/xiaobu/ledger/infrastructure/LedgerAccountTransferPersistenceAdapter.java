@@ -5,6 +5,7 @@ import com.xiaobu.ledger.domain.LedgerAccountTransfer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -41,5 +42,23 @@ class LedgerAccountTransferPersistenceAdapter implements LedgerAccountTransferRe
     return transfers.findTop50ByLedgerIdOrderByBookedOnDescIdDesc(ledgerId).stream()
         .map(mapper::toDomain)
         .toList();
+  }
+
+  // 加载原始转账资料以验证修改权限。
+  public Optional<LedgerAccountTransfer> findByLedgerAndId(String ledgerId, String id) {
+    return transfers.findByLedgerIdAndId(ledgerId, id).map(mapper::toDomain);
+  }
+
+  // 在持有账本锁的事务中更新现有记录。
+  public void update(LedgerAccountTransfer transfer) {
+    transfers
+        .findByLedgerIdAndId(transfer.ledgerId(), transfer.id())
+        .orElseThrow()
+        .revise(transfer);
+  }
+
+  // 移除转账后余额汇总自动撤回两端影响。
+  public void cancel(String ledgerId, String id) {
+    transfers.deleteByLedgerIdAndId(ledgerId, id);
   }
 }

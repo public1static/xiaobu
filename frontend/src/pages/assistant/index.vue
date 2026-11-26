@@ -286,7 +286,7 @@ onShow(() => {
       listLedgerCategories(ledger.value),
     ]);
     if (t !== epoch) return;
-    accounts.value = accts;
+    accounts.value = accts.filter((a) => a.active);
     categories.value = cats.filter(
       (c) => c.active && c.direction === 'EXPENSE' && !c.capabilities?.length,
     );
