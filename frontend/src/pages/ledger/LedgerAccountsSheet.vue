@@ -22,7 +22,7 @@ import {
   parseOpeningBalance,
 } from './transaction';
 import { typeGroups, symbols, palette, amountTitle } from './account-types';
-import 'vant/es/icon/style';
+import LedgerIcon from '../../components/LedgerIcon.vue';
 
 const props = defineProps<{
   ledgerId: string;
@@ -397,10 +397,13 @@ function confirmCancel() {
               :disabled="busy"
               @click="choose(a)"
             >
-              <text
-                :class="['type-icon', 'van-icon', 'van-icon-' + (symbols[a.type] || 'balance-o')]"
-                :style="{ color: palette[a.type] || '#617573' }"
-              />
+              <view
+                class="type-icon"
+                :style="{ backgroundColor: (palette[a.type] || '#617573') + '19' }"
+                ><LedgerIcon
+                  class="account-icon"
+                  :src="'/static/ledger/accounts/' + (symbols[a.type] || 'balance-o') + '.svg'"
+              /></view>
               <view class="item-name">
                 <text>{{ a.name }}</text>
                 <text class="muted">
@@ -428,10 +431,11 @@ function confirmCancel() {
           <text class="group-title">{{ group }}</text>
           <view class="type-grid">
             <button v-for="t in types" :key="t" @click="setType(t)">
-              <text
-                :class="['type-icon', 'van-icon', 'van-icon-' + (symbols[t] || 'balance-o')]"
-                :style="{ color: palette[t] || '#617573' }"
-              />
+              <view class="type-icon" :style="{ backgroundColor: (palette[t] || '#617573') + '19' }"
+                ><LedgerIcon
+                  class="account-icon"
+                  :src="'/static/ledger/accounts/' + (symbols[t] || 'balance-o') + '.svg'"
+              /></view>
               {{ t }}
             </button>
           </view>
@@ -768,6 +772,10 @@ function confirmCancel() {
   background: #eef3f0;
   border-radius: 10px;
   font-size: 21px;
+}
+.account-icon {
+  width: 21px;
+  height: 21px;
 }
 .type-grid {
   display: grid;
