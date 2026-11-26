@@ -13,7 +13,7 @@ defineProps<{ detail: TransactionExtensionDetail; direction: TransactionDirectio
     >
     <view v-if="detail.personName" class="gift-line">
       <text>{{ direction === 'EXPENSE' ? '随礼对象' : '送礼人' }}</text>
-      <text>{{ detail.personName }}</text>
+      <text>{{ [detail.personName, detail.distinction].filter(Boolean).join(' · ') }}</text>
     </view>
     <view v-if="detail.reason" class="gift-line"
       ><text>事由</text><text>{{ detail.reason }}</text></view

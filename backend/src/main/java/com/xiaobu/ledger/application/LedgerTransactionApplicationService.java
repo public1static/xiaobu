@@ -121,7 +121,9 @@ public class LedgerTransactionApplicationService {
         entry.createdBy(),
         accounts.findAccountName(ledgerId, entry.details().accountId()),
         entry.version(),
-        ledgers.canModifyTransaction(ledgerId, actorId, entry.createdBy()),
+        ledgers.canModifyTransaction(ledgerId, actorId, entry.createdBy())
+            && extensions.allowsModification(
+                extensionContext(ledgerId, actorId, entry.id(), entry.details())),
         recordedRefunds,
         extensions.read(extensionContext(ledgerId, actorId, entry.id(), entry.details())));
   }
@@ -234,6 +236,14 @@ public class LedgerTransactionApplicationService {
           new ErrorCode("XIAOBU_TRANSACTION_CHANGED"),
           ErrorCategory.CONFLICT,
           "流水已变更，请重新查看后再操作",
+          Map.of());
+    }
+    if (!extensions.allowsModification(
+        extensionContext(ledgerId, actorId, entry.id(), entry.details()))) {
+      throw new FoundationException(
+          new ErrorCode("XIAOBU_TRANSACTION_EXTENSION_LOCKED"),
+          ErrorCategory.CONFLICT,
+          "关联业务已归档，请重新开放后再修改",
           Map.of());
     }
     return entry;

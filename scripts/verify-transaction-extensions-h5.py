@@ -39,7 +39,7 @@ def main():
             return body.get("data") if body else None
 
     ledger = call(alpha, "POST", "/local-session", {"account": "alpha"})["ledgerId"]
-    call(beta, "POST", "/local-session", {"account": "beta"})
+    beta_ledger = call(beta, "POST", "/local-session", {"account": "beta"})["ledgerId"]
     root = f"/ledgers/{ledger}"
     catalog = call(alpha, "GET", root + "/categories")
     mapped = {item["code"]: item["capabilities"] for item in catalog}
@@ -76,6 +76,9 @@ def main():
             "detail": {
                 "bookCode": "DAILY_SENT",
                 "bookName": "日常送礼",
+                "bookId": None,
+                "contactId": None,
+                "distinction": None,
                 "personName": None,
                 "reason": "婚礼",
             },
@@ -126,6 +129,58 @@ def main():
     income = call(alpha, "POST", path, {**received, "extensions": [{**gift, "detail": {}}]})
     result = call(alpha, "GET", f"{path}/{income['id']}")["extensions"][0]["detail"]
     assert result["bookCode"] == "DAILY_RECEIVED" and result["personName"] is None
+    gifts = f"{root}/gifts"
+    book = call(
+        alpha, "POST", gifts + "/books",
+        {"name": "活动验收", "direction": "INCOME", "defaultReason": "婚礼"},
+        201,
+    )
+    contact_path = gifts + "/contacts"
+    first_person = call(alpha, "POST", contact_path, {"name": "测试同名"}, 201)
+    call(alpha, "POST", contact_path, {"name": "测试同名"}, 409)
+    second_person = call(
+        alpha, "POST", contact_path, {"name": "测试同名", "distinction": "同事"}, 201
+    )
+    assert first_person["id"] != second_person["id"]
+    targeted = {
+        **received,
+        "extensions": [{
+            **gift, "detail": {
+                "bookId": book["id"], "contactId": second_person["id"], "reason": "婚礼"
+            },
+        }],
+    }
+    beta_path = f"/ledgers/{beta_ledger}/transactions"
+    call(beta, "POST", beta_path, targeted, status=400)
+    failed_contact = {
+        **received, "extensions": [{**gift, "detail": {
+            "personName": "不应遗留的亲友", "createContact": True, "reason": "字" * 61,
+        }}],
+    }
+    call(alpha, "POST", path, failed_contact, status=400)
+    assert all(
+        item["name"] != "不应遗留的亲友"
+        for item in call(alpha, "GET", contact_path)
+    )
+    recorded = call(alpha, "POST", path, targeted)
+    book_filter = f"{gifts}/activity?bookId={book['id']}"
+    person_filter = f"{gifts}/activity?contactId={second_person['id']}"
+    assert [row["transactionId"] for row in call(alpha, "GET", book_filter)] == [recorded["id"]]
+    assert [row["transactionId"] for row in call(alpha, "GET", person_filter)] == [recorded["id"]]
+    assert call(alpha, "GET", f"{gifts}/activity?contactId={first_person['id']}") == []
+    call(beta, "GET", book_filter, status=403)
+    locked = f"{gifts}/books/{book['id']}/archive"
+    call(alpha, "PUT", locked, {"archived": True}, 204)
+    call(alpha, "POST", path, targeted, status=400)
+    linked = f"{path}/{recorded['id']}"
+    assert not call(alpha, "GET", linked)["canModify"]
+    call(alpha, "DELETE", linked + "?version=0", status=409)
+    call(alpha, "PUT", locked, {"archived": False}, 204)
+    assert call(alpha, "GET", linked)["canModify"]
+    call(alpha, "DELETE", linked + "?version=0", status=204)
+    assert call(alpha, "GET", book_filter) == []
+    call(alpha, "POST", linked + "/restore", {"version": 1}, 204)
+    assert [row["transactionId"] for row in call(alpha, "GET", book_filter)] == [recorded["id"]]
     print("PASS: capabilities, single-entry gift write, rollback, version, old client, permissions, restore and explicit removal")
 
 

@@ -3,9 +3,16 @@ package com.xiaobu.gift.domain;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 
-public record GiftDetail(GiftBook book, String personName, String reason) {
+public record GiftDetail(
+    GiftBook book,
+    String bookId,
+    String contactId,
+    String personName,
+    String distinction,
+    String reason) {
   public GiftDetail {
     personName = optionalText(personName);
+    distinction = optionalText(distinction);
     reason = optionalText(reason);
   }
 
