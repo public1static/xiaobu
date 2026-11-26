@@ -58,13 +58,7 @@ public class FixedBillApplicationService {
   @Transactional
   public FixedBillPeriodResult createFixedBill(CreateFixedBillCommand command) {
     ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
-    accounts.requireAccountInLedger(command.ledgerId(), command.accountId());
-    categories.requireActiveCategory(
-        command.ledgerId(), TransactionDirection.EXPENSE, command.categoryCode());
-    if (extensions.capabilities(TransactionDirection.EXPENSE, command.categoryCode()).stream()
-        .anyMatch(TransactionExtensionCapability::required)) {
-      throw invalid("当前分类需要专用业务明细，不能用于固定账单");
-    }
+    requirePlanCatalog(command.ledgerId(), command.categoryCode(), command.accountId());
     var bill =
         new FixedBill(
             ids.next(BILL_PREFIX),
@@ -76,6 +70,49 @@ public class FixedBillApplicationService {
             command.accountId());
     bills.addBill(bill, command.actorId());
     return FixedBillPeriodResult.from(bill, YearMonth.from(bill.firstDueOn()), null);
+  }
+
+  @Transactional(readOnly = true)
+  public FixedBillPlanPageResult listFixedBillPlans(String ledgerId, String actorId, int page) {
+    ledgers.requireReadAccess(ledgerId, actorId);
+    return bills.listPlans(ledgerId, YearMonth.now(LEDGER_ZONE), page);
+  }
+
+  @Transactional
+  public FixedBillPeriodResult reviseFixedBillPlan(ReviseFixedBillPlanCommand command) {
+    ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
+    var previous =
+        bills
+            .findBill(command.ledgerId(), command.billId())
+            .filter(bill -> bill.stopMonth() == null)
+            .orElseThrow(() -> conflict("计划已变更，请重新打开"));
+    var earliest =
+        previous.earliestRevision(
+            YearMonth.now(LEDGER_ZONE), bills.findLatestProtectedMonth(previous.id()).orElse(null));
+    requirePlanCatalog(command.ledgerId(), command.categoryCode(), command.accountId());
+    var replacement =
+        new FixedBill(
+            ids.next(BILL_PREFIX),
+            command.ledgerId(),
+            command.name(),
+            command.firstDueOn(),
+            command.amountCents(),
+            command.categoryCode(),
+            command.accountId());
+    if (replacement.firstDueOn().isBefore(earliest)) throw conflict("生效日期不能早于 " + earliest);
+    var effective = YearMonth.from(replacement.firstDueOn());
+    bills.closePlan(previous.ledgerId(), previous.id(), effective.atDay(1), command.actorId());
+    bills.addBill(replacement, command.actorId());
+    return FixedBillPeriodResult.from(replacement, effective, null);
+  }
+
+  private void requirePlanCatalog(String ledgerId, String categoryCode, String accountId) {
+    accounts.requireAccountInLedger(ledgerId, accountId);
+    categories.requireActiveCategory(ledgerId, TransactionDirection.EXPENSE, categoryCode);
+    if (extensions.capabilities(TransactionDirection.EXPENSE, categoryCode).stream()
+        .anyMatch(TransactionExtensionCapability::required)) {
+      throw invalid("当前分类需要专用业务明细，不能用于固定账单");
+    }
   }
 
   @Transactional(readOnly = true)
@@ -199,7 +236,7 @@ public class FixedBillApplicationService {
     requirePeriod(month);
     return bills
         .findBill(ledgerId, billId)
-        .filter(row -> !row.firstDueOn().isAfter(month.atEndOfMonth()))
+        .filter(row -> row.covers(month))
         .orElseThrow(() -> invalid("找不到该账期"));
   }
 

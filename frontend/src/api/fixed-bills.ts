@@ -124,3 +124,32 @@ export function unlinkFixedBillPayment(ledgerId: string, transactionId: string, 
     'DELETE',
   );
 }
+
+export interface FixedBillPlan {
+  billId: string;
+  name: string;
+  firstDueOn: string;
+  earliestFirstDueOn: string;
+  amountCents: number;
+  categoryCode: string;
+  accountId?: string | null;
+}
+
+interface FixedBillPlanPage {
+  entries: FixedBillPlan[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export function listFixedBillPlans(ledgerId: string, page: number) {
+  return request<FixedBillPlanPage>(path(ledgerId) + '/plans', 'GET', { page });
+}
+
+export function reviseFixedBillPlan(ledgerId: string, billId: string, plan: BillPlan) {
+  return request<FixedBillPeriod>(
+    path(ledgerId) + '/plans/' + encodeURIComponent(billId),
+    'PUT',
+    plan,
+  );
+}

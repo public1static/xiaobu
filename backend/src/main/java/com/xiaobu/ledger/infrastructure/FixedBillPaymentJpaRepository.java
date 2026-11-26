@@ -26,6 +26,13 @@ interface FixedBillPaymentJpaRepository extends Repository<FixedBillPaymentEntit
   Optional<FixedBillPaymentReferenceResult> findPaymentReference(
       String ledgerId, String transactionId);
 
+  @Query(
+      """
+      select max(p.period) from FixedBillPaymentEntity p
+      where p.billId = :billId and (p.deleted = false or p.awaitingSourceRestore = true)
+      """)
+  Optional<LocalDate> findLatestProtectedMonth(String billId);
+
   String PAYMENT_BY_SOURCE =
       """
       from FixedBillPaymentEntity p join FixedBillEntity b on b.id = p.billId

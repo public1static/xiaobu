@@ -4,6 +4,8 @@ import com.xiaobu.ledger.application.FixedBillCandidatePageResult;
 import com.xiaobu.ledger.application.FixedBillPageResult;
 import com.xiaobu.ledger.application.FixedBillPaymentReferenceResult;
 import com.xiaobu.ledger.application.FixedBillPeriodResult;
+import com.xiaobu.ledger.application.FixedBillPlanPageResult;
+import com.xiaobu.ledger.application.FixedBillPlanResult;
 import com.xiaobu.ledger.application.FixedBillRepository;
 import com.xiaobu.ledger.domain.FixedBill;
 import com.xiaobu.ledger.domain.FixedBillPayment;
@@ -36,6 +38,32 @@ class FixedBillPersistenceAdapter implements FixedBillRepository {
     return bills
         .findByLedgerIdAndIdAndDeletedFalse(ledgerId, billId)
         .map(FixedBillEntity::toDomain);
+  }
+
+  @Override
+  public void closePlan(String ledgerId, String billId, LocalDate stopMonth, String actorId) {
+    bills
+        .findByLedgerIdAndIdAndDeletedFalse(ledgerId, billId)
+        .orElseThrow()
+        .closePlan(stopMonth, actorId);
+  }
+
+  @Override
+  public Optional<LocalDate> findLatestProtectedMonth(String billId) {
+    return payments.findLatestProtectedMonth(billId);
+  }
+
+  @Override
+  public FixedBillPlanPageResult listPlans(String ledgerId, YearMonth currentMonth, int page) {
+    var rows = bills.listPlans(ledgerId, PageRequest.of(page, PAGE_SIZE));
+    return new FixedBillPlanPageResult(
+        rows.map(row ->
+                FixedBillPlanResult.from(
+                    row.getBill().toDomain(), currentMonth, row.getLatestProtected()))
+            .getContent(),
+        rows.getTotalElements(),
+        page,
+        PAGE_SIZE);
   }
 
   @Override

@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -59,6 +60,28 @@ class FixedBillController {
     return ApiResponse.success(
         mapper.toResponse(
             bills.createFixedBill(mapper.toCommand(ledgerId, actor.actorId(), body))));
+  }
+
+  @GetMapping("/plans")
+  public ApiResponse<FixedBillPlanPageResponse> listFixedBillPlans(
+      @PathVariable String ledgerId,
+      @RequestParam(defaultValue = "0") @Min(0) @Max(1_000_000) int page,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(bills.listFixedBillPlans(ledgerId, actor.actorId(), page)));
+  }
+
+  @PutMapping("/plans/{billId}")
+  public ApiResponse<FixedBillPeriodResponse> reviseFixedBillPlan(
+      @PathVariable String ledgerId,
+      @PathVariable String billId,
+      @Valid @RequestBody ReviseFixedBillPlanRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            bills.reviseFixedBillPlan(mapper.toCommand(ledgerId, actor.actorId(), billId, body))));
   }
 
   @PostMapping("/{billId}/periods/{month}/payment")

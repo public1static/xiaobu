@@ -19,6 +19,7 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
       from FixedBillEntity b left join FixedBillPaymentEntity p
           on p.billId = b.id and p.period = :period and p.deleted = false
       where b.ledgerId = :ledgerId and b.deleted = false and b.firstDueOn <= :monthEnd
+          and (b.stopMonth is null or b.stopMonth > :period)
           and ((:paid = true and p.id is not null) or (:paid = false and p.id is null))
       """;
 
@@ -27,6 +28,29 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
       countQuery = "select count(b.id) " + PERIODS)
   Page<PeriodRow> listPeriods(
       String ledgerId, LocalDate period, LocalDate monthEnd, boolean paid, Pageable pageable);
+
+  String OPEN_PLANS =
+      """
+      from FixedBillEntity b
+      where b.ledgerId = :ledgerId and b.deleted = false and b.stopMonth is null
+      """;
+
+  @Query(
+      value =
+          """
+          select b as bill, (select max(p.period) from FixedBillPaymentEntity p
+              where p.billId = b.id and (p.deleted = false or p.awaitingSourceRestore = true)) as latestProtected
+          """
+              + OPEN_PLANS
+              + " order by b.id",
+      countQuery = "select count(b.id) " + OPEN_PLANS)
+  Page<PlanRow> listPlans(String ledgerId, Pageable pageable);
+
+  interface PlanRow {
+    FixedBillEntity getBill();
+
+    LocalDate getLatestProtected();
+  }
 
   String CANDIDATES =
       """
