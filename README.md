@@ -1,5 +1,7 @@
 # 小生活记账簿
 
+本机联调可执行 `./scripts/local.sh start`，然后打开 <http://127.0.0.1:18211/>。同一脚本支持 `restart`、`stop`、`status` 和 `logs`。[运行环境与数据保存说明](docs/development/本地继续开发.md#本机服务管理)
+
 小簿是一款支持个人记账和多人共记的生活账本。当前可体验 Vant H5 交互原型。正式客户端采用 uni-app，后端采用 Spring Boot、Foundation 和 MySQL。
 
 | 目录 | 用途 |
