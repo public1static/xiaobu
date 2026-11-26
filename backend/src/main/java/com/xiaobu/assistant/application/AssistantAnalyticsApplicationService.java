@@ -181,10 +181,18 @@ public class AssistantAnalyticsApplicationService {
     if (p.keyword() != null && !p.keyword().isBlank()) conditions.add("关键词 " + p.keyword());
     if (a.filters() != null) a.filters().forEach((k, v) -> conditions.add(k + "=" + v));
     String title = String.join(" · ", conditions);
-    var rows =
-        def.dated()
-            ? repository.query(ledger, actor, p, category, account, p.from(), p.through())
-            : snapshot(data, ledger, actor, p);
+    List<Value> rows;
+    if (def.dated()) {
+      rows = repository.query(ledger, actor, p, category, account, p.from(), p.through());
+    } else {
+      var snapshot = snapshot(data, ledger, actor, p);
+      rows = snapshot.rows();
+      if (snapshot.unknownCount() > 0) {
+        if (rows.isEmpty() || rows.getFirst().count() == 0)
+          return title + "\n匹配的 " + snapshot.unknownCount() + " 个账户余额均待填。";
+        title += "（仅统计已知金额，另有 " + snapshot.unknownCount() + " 个账户余额待填）";
+      }
+    }
     if ("compare".equals(a.operation())) {
       var base =
           repository
@@ -255,14 +263,17 @@ public class AssistantAnalyticsApplicationService {
           "openingBalanceCents",
           "期初余额");
 
+  private record Snapshot(List<Value> rows, long unknownCount) {}
+
   // 当前目录含业务派生值，按完整目录分组后再截取排行。
-  private List<Value> snapshot(
+  private Snapshot snapshot(
       AssistantDataset data, String ledger, String actor, AssistantQueryPlan p) {
     var a = p.analysis();
     var grouped = new TreeMap<String, BigDecimal>();
     var rows = new ArrayList<Value>();
     long count = 0;
     BigDecimal sum = BigDecimal.ZERO;
+    long unknownCount = 0;
     for (var item : items(data, ledger, actor)) {
       if (a.filters() != null && !item.fields().entrySet().containsAll(a.filters().entrySet()))
         continue;
@@ -277,7 +288,10 @@ public class AssistantAnalyticsApplicationService {
       // 待填余额仍计入账户数，只对已知金额求和或排行。
       if (data == AssistantDataset.ACCOUNTS
           && !"entryCount".equals(a.metric())
-          && !item.amounts().containsKey(a.metric())) continue;
+          && !item.amounts().containsKey(a.metric())) {
+        unknownCount++;
+        continue;
+      }
       var value = BigDecimal.valueOf(item.amounts().getOrDefault(a.metric(), 1L));
       count++;
       sum = sum.add(value);
@@ -285,11 +299,13 @@ public class AssistantAnalyticsApplicationService {
       else if ("rank".equals(a.operation()))
         grouped.merge(item.fields().get(a.groupBy()), value, BigDecimal::add);
     }
-    if ("total".equals(a.operation())) return List.of(new Value("", sum, count));
+    if ("total".equals(a.operation()))
+      return new Snapshot(List.of(new Value("", sum, count)), unknownCount);
     if ("rank".equals(a.operation())) {
       grouped.forEach((k, v) -> rows.add(new Value(k, v, 1)));
       rows.sort(Comparator.comparing(Value::value).reversed().thenComparing(Value::label));
     }
-    return rows.stream().limit(a.limit() == null ? 10 : a.limit()).toList();
+    return new Snapshot(
+        rows.stream().limit(a.limit() == null ? 10 : a.limit()).toList(), unknownCount);
   }
 }
