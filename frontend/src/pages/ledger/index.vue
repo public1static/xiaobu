@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { onLoad, onShareAppMessage } from '@dcloudio/uni-app';
 import { closeWechatSession, getWechatSession, openWechatSession } from '../../api/wechat-session';
 import { setWechatSessionToken, wechatPreviewApiBase } from '../../api/preview-transport';
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
+import LedgerCategoriesSheet from './LedgerCategoriesSheet.vue';
+import { listLedgerCategories, type LedgerCategory } from '../../api/ledger-categories';
 import LedgerSearchSheet from './LedgerSearchSheet.vue';
 import LedgerTransactionDetailSheet from './LedgerTransactionDetailSheet.vue';
 import LedgerRecycleSheet from './LedgerRecycleSheet.vue';
@@ -70,7 +72,21 @@ const amount = ref('');
 const date = ref(today.value);
 const direction = ref<TransactionDirection>('EXPENSE');
 const directionLabel = computed(() => (direction.value === 'INCOME' ? '收入' : '支出'));
-const directionCategories = computed(() => categoriesFor(direction.value));
+const categorySheetOpen = ref(false);
+const categoryCatalog = ref<LedgerCategory[] | null>(null);
+const categoryNames = computed(() =>
+  Object.fromEntries((categoryCatalog.value ?? []).map((item) => [item.code, item.name])),
+);
+const directionCategories = computed<[string, string][]>(() => {
+  const rows = categoryCatalog.value;
+  if (!rows) return categoriesFor(direction.value).map(([code, name]) => [code, name]);
+  const choices = rows.filter((item) => item.direction === direction.value && item.active);
+  const current = rows.find(
+    (item) => item.code === category.value && item.direction === direction.value,
+  );
+  if (current && !current.active) choices.push(current);
+  return choices.map(({ code, name }) => [code, name]);
+});
 const category = ref<CategoryCode | ''>('');
 const note = ref('');
 const account = ref<LedgerAccount | null>(null);
@@ -90,6 +106,34 @@ const sessionError = ref('');
 const sharedLedger = ref<JoinedLedger | null>(null);
 const joinedLedgers = ref<JoinedLedger[]>([]);
 const ledgerId = computed(() => sharedLedger.value?.ledgerId ?? session.value?.ledgerId);
+watch(ledgerId, async (target) => {
+  categoryCatalog.value = null;
+  categorySheetOpen.value = false;
+  if (!target) return;
+  try {
+    const rows = await listLedgerCategories(target);
+    if (target === ledgerId.value) categoryCatalog.value = rows;
+  } catch {
+    // Defaults keep the quick rail available; submission is always checked on the server.
+  }
+});
+
+function applyCategoryCatalog(rows: LedgerCategory[]) {
+  categoryCatalog.value = rows;
+  if (
+    category.value !== editing.value?.transaction.categoryCode &&
+    rows.some((item) => item.code === category.value && !item.active)
+  ) {
+    category.value = '';
+  }
+}
+
+function chooseCategory(code: string) {
+  category.value = code;
+  fieldError.value.category = '';
+  categorySheetOpen.value = false;
+}
+
 const ledgerLabel = computed(() =>
   sharedLedger.value ? `${sharedLedger.value.inviterName}的账本` : '个人账',
 );
@@ -780,10 +824,14 @@ onShareAppMessage(() => ({
               @keydown.space.prevent="transactionDetailId = row.id"
             >
               <view class="row-icon" aria-hidden="true">
-                <image :src="`/static/ledger/${row.categoryCode}.svg`" />
+                <image
+                  :src="`/static/ledger/${row.categoryCode.startsWith('CUS_') ? 'OTHER' : row.categoryCode}.svg`"
+                />
               </view>
               <view class="row-copy">
-                <text>{{ categoryLabel(row.categoryCode, row.direction) }}</text>
+                <text>{{
+                  categoryNames[row.categoryCode] || categoryLabel(row.categoryCode, row.direction)
+                }}</text>
                 <text v-if="row.note">{{ row.note }}</text>
               </view>
               <text class="row-amount" :class="{ income: row.direction === 'INCOME' }">
@@ -976,7 +1024,12 @@ onShareAppMessage(() => ({
           /></view>
           <text v-if="fieldError.amount" class="error" role="alert">{{ fieldError.amount }}</text>
         </view>
-        <view class="category-head">分类 <text class="star">*</text></view>
+        <view class="category-head">
+          <text>分类 <text class="star">*</text></text>
+          <button class="text-button" :disabled="saving" @click="categorySheetOpen = true">
+            {{ sharedLedger ? '选择分类' : '分类管理' }} ›
+          </button>
+        </view>
         <scroll-view scroll-x class="category-rail">
           <view class="category-inner">
             <button
@@ -990,9 +1043,10 @@ onShareAppMessage(() => ({
                 fieldError.category = '';
               "
             >
-              <image :src="`/static/ledger/${item[0]}.svg`" aria-hidden="true" /><text>{{
-                item[1]
-              }}</text>
+              <image
+                :src="`/static/ledger/${item[0].startsWith('CUS_') ? 'OTHER' : item[0]}.svg`"
+                aria-hidden="true"
+              /><text>{{ item[1] }}</text>
             </button>
           </view>
         </scroll-view>
@@ -1054,6 +1108,7 @@ onShareAppMessage(() => ({
       :key="transactionDetailId"
       :ledger-id="ledgerId"
       :transaction-id="transactionDetailId"
+      :category-names="categoryNames"
       @close="transactionDetailId = ''"
       @edit="startEditing"
       @deleted="onTransactionDeleted"
@@ -1062,7 +1117,18 @@ onShareAppMessage(() => ({
       v-if="recycleOpen && ledgerId"
       :ledger-id="ledgerId"
       @close="recycleOpen = false"
+      :category-names="categoryNames"
       @restored="refresh"
+    />
+    <LedgerCategoriesSheet
+      v-if="categorySheetOpen && ledgerId"
+      :ledger-id="ledgerId"
+      :direction="direction"
+      :selected="category"
+      :allow-manage="!sharedLedger"
+      @close="categorySheetOpen = false"
+      @select="chooseCategory"
+      @catalog="applyCategoryCatalog"
     />
   </view>
 </template>

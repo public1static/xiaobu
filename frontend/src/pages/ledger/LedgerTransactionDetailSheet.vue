@@ -8,7 +8,11 @@ import {
 import { ApiRequestError } from '../../api/request';
 import { categoryLabel, formatCents } from './transaction';
 
-const props = defineProps<{ ledgerId: string; transactionId: string }>();
+const props = defineProps<{
+  ledgerId: string;
+  transactionId: string;
+  categoryNames?: Record<string, string>;
+}>();
 const emit = defineEmits<{
   (event: 'close'): void;
   (event: 'edit', detail: LedgerTransactionDetail): void;
@@ -74,6 +78,7 @@ onMounted(load);
       <template v-else-if="detail">
         <view class="detail-caption"
           ><text>{{
+            categoryNames?.[detail.transaction.categoryCode] ||
             categoryLabel(detail.transaction.categoryCode, detail.transaction.direction)
           }}</text></view
         >

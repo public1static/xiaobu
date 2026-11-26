@@ -601,3 +601,20 @@ button::after {
 .search-toolbar .text-button {
   min-height: 34px;
 }
+
+.category-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.category-inner {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, minmax(48px, auto));
+}
+.category-inner .category {
+  min-height: 50px;
+  max-width: 100px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

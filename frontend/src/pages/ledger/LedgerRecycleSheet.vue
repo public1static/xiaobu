@@ -8,7 +8,7 @@ import {
 import { ApiRequestError } from '../../api/request';
 import { categoryLabel, formatCents } from './transaction';
 
-const props = defineProps<{ ledgerId: string }>();
+const props = defineProps<{ ledgerId: string; categoryNames?: Record<string, string> }>();
 const emit = defineEmits<{ (event: 'close'): void; (event: 'restored'): void }>();
 const items = ref<DeletedLedgerTransaction[]>([]);
 const loading = ref(true);
@@ -64,9 +64,11 @@ onMounted(refresh);
       <view v-for="entry in items" :key="entry.transaction.id" class="meta-row recycle-row">
         <view class="recycle-label">
           <text
-            >{{ categoryLabel(entry.transaction.categoryCode, entry.transaction.direction) }} · ¥{{
-              formatCents(entry.transaction.amountCents)
-            }}</text
+            >{{
+              categoryNames?.[entry.transaction.categoryCode] ||
+              categoryLabel(entry.transaction.categoryCode, entry.transaction.direction)
+            }}
+            · ¥{{ formatCents(entry.transaction.amountCents) }}</text
           >
           <text class="preview-label">{{
             entry.transaction.note || entry.transaction.bookedOn

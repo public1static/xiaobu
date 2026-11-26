@@ -23,16 +23,19 @@ public class LedgerTransactionApplicationService {
   private final EntityIdGenerator idGenerator;
   private final PersonalLedgerApplicationService ledgers;
   private final LedgerAccountApplicationService accounts;
+  private final LedgerCategoryApplicationService categories;
 
   public LedgerTransactionApplicationService(
       LedgerTransactionRepository repository,
       EntityIdGenerator idGenerator,
       PersonalLedgerApplicationService ledgers,
-      LedgerAccountApplicationService accounts) {
+      LedgerAccountApplicationService accounts,
+      LedgerCategoryApplicationService categories) {
     this.repository = repository;
     this.idGenerator = idGenerator;
     this.ledgers = ledgers;
     this.accounts = accounts;
+    this.categories = categories;
   }
 
   @Transactional
@@ -47,6 +50,8 @@ public class LedgerTransactionApplicationService {
             command.categoryCode(),
             command.note(),
             command.accountId());
+    categories.requireActiveCategory(
+        command.ledgerId(), details.direction(), details.categoryCode());
     var transaction =
         new LedgerTransaction(
             idGenerator.next(TRANSACTION_PREFIX), command.actorId(), details, 0, false);
@@ -101,12 +106,13 @@ public class LedgerTransactionApplicationService {
 
   @Transactional
   public void editLedgerTransaction(EditLedgerTransactionCommand command) {
-    requireEditable(
-        command.ledgerId(),
-        command.actorId(),
-        command.transactionId(),
-        command.expectedVersion(),
-        false);
+    var original =
+        requireEditable(
+            command.ledgerId(),
+            command.actorId(),
+            command.transactionId(),
+            command.expectedVersion(),
+            false);
     accounts.requireAccountInLedger(command.ledgerId(), command.accountId());
     var details =
         new LedgerTransactionDetails(
@@ -116,6 +122,11 @@ public class LedgerTransactionApplicationService {
             command.categoryCode(),
             command.note(),
             command.accountId());
+    if (original.details().direction() != details.direction()
+        || !original.details().categoryCode().equals(details.categoryCode())) {
+      categories.requireActiveCategory(
+          command.ledgerId(), details.direction(), details.categoryCode());
+    }
     repository.edit(command.ledgerId(), command.transactionId(), command.actorId(), details);
   }
 
@@ -141,7 +152,7 @@ public class LedgerTransactionApplicationService {
         command.ledgerId(), command.transactionId(), command.actorId(), deleted);
   }
 
-  private void requireEditable(
+  private LedgerTransaction requireEditable(
       String ledgerId,
       String actorId,
       String transactionId,
@@ -167,6 +178,7 @@ public class LedgerTransactionApplicationService {
           "流水已变更，请重新查看后再操作",
           Map.of());
     }
+    return entry;
   }
 
   private FoundationException denied() {
