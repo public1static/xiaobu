@@ -20,10 +20,15 @@ public class PersonalLedgerApplicationService {
 
   private final PersonalLedgerRepository ledgers;
   private final EntityIdGenerator ids;
+  private final LedgerMembershipRepository memberships;
 
-  PersonalLedgerApplicationService(PersonalLedgerRepository ledgers, EntityIdGenerator ids) {
+  PersonalLedgerApplicationService(
+      PersonalLedgerRepository ledgers,
+      EntityIdGenerator ids,
+      LedgerMembershipRepository memberships) {
     this.ledgers = ledgers;
     this.ids = ids;
+    this.memberships = memberships;
   }
 
   public PersonalLedger openPersonalLedger(String ownerId) {
@@ -34,8 +39,19 @@ public class PersonalLedgerApplicationService {
 
   public void requireOwnership(String ledgerId, String actorId) {
     if (!ledgers.existsByIdAndOwnerId(ledgerId, actorId)) {
-      throw new FoundationException(
-          LEDGER_ACCESS_DENIED, ErrorCategory.FORBIDDEN, "无权访问这个账本", Map.of());
+      throw denied();
     }
+  }
+
+  public void requireReadAccess(String ledgerId, String actorId) {
+    if (!ledgers.existsByIdAndOwnerId(ledgerId, actorId)
+        && !memberships.existsByLedgerAndMember(ledgerId, actorId)) {
+      throw denied();
+    }
+  }
+
+  private FoundationException denied() {
+    return new FoundationException(
+        LEDGER_ACCESS_DENIED, ErrorCategory.FORBIDDEN, "无权访问这个账本", Map.of());
   }
 }

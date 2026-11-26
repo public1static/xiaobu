@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { listExpenses, saveExpense, type Expense } from '../../api/expenses';
 import {
   closeLocalSession,
@@ -8,6 +8,14 @@ import {
   type LocalSession,
   type PreviewAccount,
 } from '../../api/local-session';
+import {
+  acceptLedgerInvitation,
+  createLedgerInvitation,
+  listJoinedLedgers,
+  previewLedgerInvitation,
+  type JoinedLedger,
+  type LedgerInvitationPreview,
+} from '../../api/ledger-invitations';
 import { ApiRequestError } from '../../api/request';
 import {
   CATEGORIES,
@@ -54,10 +62,175 @@ const checkingSession = ref(true);
 const loginOpen = ref(false);
 const sessionBusy = ref(false);
 const sessionError = ref('');
+const sharedLedger = ref<JoinedLedger | null>(null);
+const joinedLedgers = ref<JoinedLedger[]>([]);
+const ledgerId = computed(() => sharedLedger.value?.ledgerId ?? session.value?.ledgerId);
+const ledgerLabel = computed(() =>
+  sharedLedger.value ? `${sharedLedger.value.inviterName}的账本` : '个人账',
+);
+const ledgerPickerOpen = ref(false);
+const shareOpen = ref(false);
+const shareLink = ref('');
+const inviteBusy = ref(false);
+const inviteError = ref('');
+const inviteFeedback = ref('');
+const incomingToken = ref(readInviteFromUrl());
+const invitePreview = ref<LedgerInvitationPreview | null>(null);
+const inviteLoading = ref(false);
 let generation = 0;
+let membershipGeneration = 0;
+
+function readInviteFromUrl() {
+  // #ifdef H5
+  const fragment = window.location.hash.split('?')[1] ?? '';
+  return new URLSearchParams(fragment).get('invite') ?? '';
+  // #endif
+  // #ifndef H5
+  return '';
+  // #endif
+}
+
+function syncInviteFromUrl() {
+  const token = readInviteFromUrl();
+  if (token === incomingToken.value) return;
+  incomingToken.value = token;
+  invitePreview.value = null;
+  inviteError.value = '';
+  if (token) void loadInvitePreview();
+}
+
+// #ifdef H5
+onMounted(() => window.addEventListener('hashchange', syncInviteFromUrl));
+onUnmounted(() => window.removeEventListener('hashchange', syncInviteFromUrl));
+// #endif
+
+async function loadInvitePreview() {
+  const token = incomingToken.value;
+  if (!token) return;
+  inviteLoading.value = true;
+  inviteError.value = '';
+  try {
+    const result = await previewLedgerInvitation(token);
+    if (token === incomingToken.value) invitePreview.value = result;
+  } catch (error) {
+    if (token !== incomingToken.value) return;
+    invitePreview.value = null;
+    inviteError.value =
+      error instanceof ApiRequestError && (error.status === 404 || error.status === 400)
+        ? '这条邀请已失效或已被使用。'
+        : '暂时无法查看邀请，请重试。';
+  } finally {
+    if (token === incomingToken.value) inviteLoading.value = false;
+  }
+}
+
+function finishInvitation() {
+  incomingToken.value = '';
+  invitePreview.value = null;
+  inviteError.value = '';
+  // #ifdef H5
+  const url = new URL(window.location.href);
+  const [path, query] = url.hash.split('?');
+  const params = new URLSearchParams(query);
+  params.delete('invite');
+  url.hash = params.size ? `${path}?${params}` : path;
+  window.history.replaceState(window.history.state, '', url);
+  // #endif
+}
+
+async function joinInvitation() {
+  if (!session.value) {
+    loginOpen.value = true;
+    return;
+  }
+  if (inviteBusy.value || !invitePreview.value) return;
+  inviteBusy.value = true;
+  inviteError.value = '';
+  try {
+    const joined = await acceptLedgerInvitation(incomingToken.value);
+    joinedLedgers.value = [
+      ...joinedLedgers.value.filter((row) => row.ledgerId !== joined.ledgerId),
+      joined,
+    ];
+    finishInvitation();
+    selectLedger(joined);
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 401) {
+      resetSession(null);
+      loginOpen.value = true;
+      inviteError.value = '请重新登录后加入。';
+    } else if (error instanceof ApiRequestError && error.status === 409) {
+      inviteError.value = '不能接受自己发出的邀请。';
+    } else {
+      inviteError.value = '无法加入，这条邀请可能已失效。';
+    }
+  } finally {
+    inviteBusy.value = false;
+  }
+}
+
+async function openLedgerPicker() {
+  const request = ++membershipGeneration;
+  inviteError.value = '';
+  ledgerPickerOpen.value = true;
+  try {
+    const ledgers = await listJoinedLedgers();
+    if (request === membershipGeneration) joinedLedgers.value = ledgers;
+  } catch {
+    if (request === membershipGeneration) inviteError.value = '无法更新已加入的账本。';
+  }
+}
+
+function selectLedger(ledger: JoinedLedger | null) {
+  ledgerPickerOpen.value = false;
+  if (sharedLedger.value?.ledgerId === ledger?.ledgerId) return;
+  sharedLedger.value = ledger;
+  items.value = [];
+  savedMessage.value = '';
+  open.value = false;
+  void refresh();
+}
+
+async function generateInviteLink() {
+  // #ifdef H5
+  if (!session.value || sharedLedger.value || inviteBusy.value) return;
+  inviteBusy.value = true;
+  shareOpen.value = true;
+  shareLink.value = '';
+  inviteError.value = '';
+  inviteFeedback.value = '';
+  try {
+    const invite = await createLedgerInvitation(session.value.ledgerId);
+    const url = new URL(window.location.href);
+    url.hash = `/?invite=${encodeURIComponent(invite.token)}`;
+    shareLink.value = url.toString();
+  } catch {
+    inviteError.value = '生成邀请失败，请重试。';
+  } finally {
+    inviteBusy.value = false;
+  }
+  // #endif
+}
+
+async function copyInvitation() {
+  // #ifdef H5
+  try {
+    await navigator.clipboard.writeText(shareLink.value);
+    inviteFeedback.value = '链接已复制';
+  } catch {
+    inviteFeedback.value = '无法自动复制，请手动复制链接。';
+  }
+  // #endif
+}
 
 function resetSession(next: LocalSession | null) {
   ++generation;
+  ++membershipGeneration;
+  sharedLedger.value = null;
+  joinedLedgers.value = [];
+  ledgerPickerOpen.value = false;
+  shareOpen.value = false;
+  shareLink.value = '';
   session.value = next;
   items.value = [];
   listError.value = '';
@@ -77,6 +250,7 @@ async function restoreSession() {
     }
   } finally {
     checkingSession.value = false;
+    void loadInvitePreview();
   }
   // #endif
   // #ifndef H5
@@ -91,7 +265,11 @@ async function signIn(account: PreviewAccount) {
   try {
     resetSession(await openLocalSession(account));
     loginOpen.value = false;
-    openExpenseForm();
+    if (incomingToken.value) {
+      await loadInvitePreview();
+    } else {
+      openExpenseForm();
+    }
     await refresh();
   } catch {
     sessionError.value = '登录失败，请重试。';
@@ -133,14 +311,14 @@ const groups = computed(() => {
 });
 
 async function refresh() {
-  const ledgerId = session.value?.ledgerId;
-  if (!ledgerId) return;
+  const targetLedgerId = ledgerId.value;
+  if (!targetLedgerId) return;
   const request = ++generation;
   const selectedMonth = month.value;
   loading.value = true;
   listError.value = '';
   try {
-    const rows = await listExpenses(ledgerId, selectedMonth);
+    const rows = await listExpenses(targetLedgerId, selectedMonth);
     if (request === generation) items.value = rows;
   } catch (error) {
     if (request !== generation) return;
@@ -177,7 +355,7 @@ function changeMonth(offset: -1 | 1) {
 }
 
 function newExpense() {
-  if (checkingSession.value || sessionBusy.value) return;
+  if (checkingSession.value || sessionBusy.value || sharedLedger.value) return;
   if (!session.value) {
     loginOpen.value = true;
     sessionError.value = '';
@@ -204,7 +382,7 @@ function closeExpense() {
 
 async function submit() {
   const ledgerId = session.value?.ledgerId;
-  if (saving.value || !ledgerId) return;
+  if (saving.value || !ledgerId || sharedLedger.value) return;
   const cents = parseCents(amount.value);
   const selected = category.value;
   fieldError.value = {
@@ -334,7 +512,15 @@ void restoreSession();
             >
           </view>
         </view>
-        <view class="section-title"><text>流水</text><text>个人账</text></view>
+        <view class="section-title">
+          <text>流水</text>
+          <view class="ledger-actions">
+            <button class="text-button" @click="openLedgerPicker">{{ ledgerLabel }} · 切换</button>
+            <button v-if="!sharedLedger" class="text-button" @click="generateInviteLink">
+              邀请只读成员
+            </button>
+          </view>
+        </view>
         <text v-if="savedMessage" class="sr-only" role="status">{{ savedMessage }}</text>
         <button v-if="listError" class="empty retry" @click="refresh">{{ listError }}</button>
         <view v-else-if="loading && !items.length" class="empty">正在加载流水</view>
@@ -362,9 +548,92 @@ void restoreSession();
 
     <!-- #ifdef H5 -->
     <view class="dock">
-      <button class="primary" :disabled="checkingSession || sessionBusy" @click="newExpense">
+      <view v-if="sharedLedger" class="readonly-banner">只读账本 · 不能新增或修改流水</view>
+      <button v-else class="primary" :disabled="checkingSession || sessionBusy" @click="newExpense">
         ＋ 记一笔
       </button>
+    </view>
+
+    <view v-if="ledgerPickerOpen && !incomingToken" class="overlay">
+      <view class="sheet login-sheet" role="dialog" aria-label="切换账本" aria-modal="true">
+        <view class="sheet-head">
+          <text>切换账本</text>
+          <button class="close" aria-label="关闭账本列表" @click="ledgerPickerOpen = false">
+            ×
+          </button>
+        </view>
+        <button class="primary secondary" @click="selectLedger(null)">我的个人账</button>
+        <button
+          v-for="joined in joinedLedgers"
+          :key="joined.ledgerId"
+          class="primary secondary"
+          @click="selectLedger(joined)"
+        >
+          {{ joined.inviterName }}的账本 · 只读
+        </button>
+        <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
+      </view>
+    </view>
+
+    <view v-if="shareOpen && !incomingToken" class="overlay">
+      <view class="sheet login-sheet" role="dialog" aria-label="邀请只读成员" aria-modal="true">
+        <view class="sheet-head">
+          <text>邀请只读成员</text>
+          <button
+            class="close"
+            aria-label="关闭邀请"
+            :disabled="inviteBusy"
+            @click="shareOpen = false"
+          >
+            ×
+          </button>
+        </view>
+        <text class="preview-label"
+          >对方接受后，可查看此账本的所有流水，但不能修改。链接仅供本地测试，24
+          小时有效，只能加入一人。</text
+        >
+        <input
+          v-if="shareLink"
+          class="invitation-link"
+          :value="shareLink"
+          readonly
+          aria-label="邀请链接"
+        />
+        <button v-if="shareLink" class="primary" @click="copyInvitation">复制链接</button>
+        <text v-if="inviteBusy" class="preview-label" role="status">正在生成邀请</text>
+        <text v-if="inviteFeedback" class="preview-label" role="status">{{ inviteFeedback }}</text>
+        <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
+        <button v-if="inviteError" class="primary secondary" @click="generateInviteLink">
+          重新生成
+        </button>
+      </view>
+    </view>
+
+    <view v-if="incomingToken && !loginOpen && !checkingSession" class="overlay">
+      <view class="sheet login-sheet" role="dialog" aria-label="账本邀请" aria-modal="true">
+        <view class="sheet-head">
+          <text>账本邀请</text>
+          <button
+            class="close"
+            aria-label="关闭邀请"
+            :disabled="inviteBusy"
+            @click="finishInvitation"
+          >
+            ×
+          </button>
+        </view>
+        <text v-if="inviteLoading" class="preview-label" role="status">正在查看邀请</text>
+        <template v-else-if="invitePreview">
+          <text class="guest-title">{{ invitePreview.inviterName }}的账本</text>
+          <text class="preview-label"
+            >权限：只读。接受前看不到账本内容；加入后可随时切回个人账。</text
+          >
+          <button class="primary" :disabled="inviteBusy" @click="joinInvitation">
+            {{ !session ? '登录后加入' : invitePreview.accepted ? '进入账本' : '接受邀请' }}
+          </button>
+        </template>
+        <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
+      </view>
     </view>
 
     <view v-if="loginOpen" class="overlay">

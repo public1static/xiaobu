@@ -479,3 +479,26 @@ button::after {
   background: #fff;
   color: var(--green);
 }
+
+.ledger-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ledger-actions .text-button {
+  min-height: 40px;
+}
+.readonly-banner {
+  padding: 12px 8px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.invitation-link {
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+}
