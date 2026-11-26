@@ -53,7 +53,7 @@ class LedgerInvitationPersistenceMySqlTest {
     var record =
         expenses.recordLedgerTransaction(
             new RecordLedgerTransactionCommand(
-                ledgerId, "alpha", TransactionDirection.EXPENSE, 1230, date, "DINING", "午饭"));
+                ledgerId, "alpha", TransactionDirection.EXPENSE, 1230, date, "DINING", "午饭", null));
 
     var invite =
         invites.createLedgerInvitation(new CreateLedgerInvitationCommand(ledgerId, "alpha", "测试甲"));
@@ -96,7 +96,8 @@ class LedgerInvitationPersistenceMySqlTest {
                             200,
                             date,
                             "DINING",
-                            "")))
+                            "",
+                            null)))
             .category());
     assertEquals(
         ErrorCategory.NOT_FOUND,
@@ -161,7 +162,7 @@ class LedgerInvitationPersistenceMySqlTest {
 
     var draft =
         new RecordLedgerTransactionCommand(
-            ledgerId, "beta", TransactionDirection.EXPENSE, 5400, date, "DINING", "乙记账");
+            ledgerId, "beta", TransactionDirection.EXPENSE, 5400, date, "DINING", "乙记账", null);
     assertEquals(
         "XIAOBU_LEDGER_READ_ONLY",
         assertThrows(FoundationException.class, () -> expenses.recordLedgerTransaction(draft))

@@ -22,4 +22,15 @@ interface LedgerTransactionJpaRepository extends Repository<LedgerTransactionEnt
       @Param("ledgerId") String ledgerId,
       @Param("startInclusive") LocalDate startInclusive,
       @Param("endInclusive") LocalDate endInclusive);
+
+  @Query(
+      """
+      select t.accountId as accountId,
+          sum(case when t.direction = com.xiaobu.ledger.domain.TransactionDirection.INCOME
+              then t.amountCents else -t.amountCents end) as balanceCents
+      from LedgerTransactionEntity t
+      where t.ledgerId = :ledgerId and t.deleted = false and t.accountId is not null
+      group by t.accountId
+      """)
+  List<LedgerAccountBalanceRow> findAccountBalancesByLedger(@Param("ledgerId") String ledgerId);
 }

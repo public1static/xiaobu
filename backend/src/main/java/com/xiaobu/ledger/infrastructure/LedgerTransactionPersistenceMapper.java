@@ -18,6 +18,7 @@ interface LedgerTransactionPersistenceMapper {
   @Mapping(target = "amountCents", source = "transaction.details.amountCents")
   @Mapping(target = "bookedOn", source = "transaction.details.bookedOn")
   @Mapping(target = "categoryCode", source = "transaction.details.categoryCode")
+  @Mapping(target = "accountId", source = "transaction.details.accountId")
   @Mapping(target = "note", source = "transaction.details.note")
   @Mapping(target = "createdBy", source = "actorId")
   @Mapping(target = "updatedBy", source = "actorId")

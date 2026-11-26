@@ -10,4 +10,5 @@ public record RecordLedgerTransactionCommand(
     long amountCents,
     LocalDate bookedOn,
     String categoryCode,
-    String note) {}
+    String note,
+    String accountId) {}

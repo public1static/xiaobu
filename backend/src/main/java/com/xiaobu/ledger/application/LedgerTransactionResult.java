@@ -10,7 +10,8 @@ public record LedgerTransactionResult(
     long amountCents,
     LocalDate bookedOn,
     String categoryCode,
-    String note) {
+    String note,
+    String accountId) {
 
   static LedgerTransactionResult from(LedgerTransaction transaction) {
     var details = transaction.details();
@@ -20,6 +21,7 @@ public record LedgerTransactionResult(
         details.amountCents(),
         details.bookedOn(),
         details.categoryCode(),
-        details.note());
+        details.note(),
+        details.accountId());
   }
 }

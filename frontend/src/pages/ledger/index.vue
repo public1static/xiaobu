@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
+import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
+import type { LedgerAccount } from '../../api/ledger-accounts';
 import {
   listLedgerTransactions,
   recordLedgerTransaction,
@@ -65,6 +67,13 @@ const directionLabel = computed(() => (direction.value === 'INCOME' ? '收入' :
 const directionCategories = computed(() => categoriesFor(direction.value));
 const category = ref<CategoryCode | ''>('');
 const note = ref('');
+const account = ref<LedgerAccount | null>(null);
+const accountView = ref<'manage' | 'select' | null>(null);
+
+function selectAccount(value: LedgerAccount | null) {
+  account.value = value;
+  accountView.value = null;
+}
 const fieldError = ref({ amount: '', category: '' });
 const saveError = ref('');
 const session = ref<LocalSession | null>(null);
@@ -246,6 +255,7 @@ function resetSession(next: LocalSession | null) {
   ledgerPickerOpen.value = false;
   shareOpen.value = false;
   memberSheetOpen.value = false;
+  accountView.value = null;
   ledgerNotice.value = '';
   shareLink.value = '';
   session.value = next;
@@ -396,6 +406,7 @@ function openTransactionForm() {
   direction.value = 'EXPENSE';
   category.value = '';
   note.value = '';
+  account.value = null;
   fieldError.value = { amount: '', category: '' };
   saveError.value = '';
   savedMessage.value = '';
@@ -429,6 +440,7 @@ async function submit() {
     categoryCode: selected,
     bookedOn: date.value,
     note: note.value.trim(),
+    accountId: account.value?.id ?? null,
   };
   // The current preview has no server-side replay contract.
   // #ifndef H5
@@ -567,6 +579,7 @@ void restoreSession();
           <text>流水</text>
           <view class="ledger-actions">
             <button class="text-button" @click="openLedgerPicker">{{ ledgerLabel }} · 切换</button>
+            <button class="text-button" @click="accountView = 'manage'">账户</button>
             <template v-if="!sharedLedger">
               <button class="text-button" @click="memberSheetOpen = true">成员</button>
               <button class="text-button" @click="generateInviteLink">邀请只读成员</button>
@@ -813,6 +826,16 @@ void restoreSession();
           <view class="meta-row"
             ><text>账本</text><text>{{ ledgerLabel }}</text></view
           >
+          <view class="meta-row">
+            <text>账户</text>
+            <button
+              class="text-button account-field"
+              :disabled="saving"
+              @click="accountView = 'select'"
+            >
+              {{ account?.name ?? '选填' }} ›
+            </button>
+          </view>
           <view class="meta-row"
             ><text>备注</text
             ><input v-model="note" :maxlength="100" placeholder="选填" aria-label="备注"
@@ -824,6 +847,14 @@ void restoreSession();
         </button>
       </view>
     </view>
+    <LedgerAccountsSheet
+      v-if="accountView && ledgerId"
+      :ledger-id="ledgerId"
+      :allow-create="!sharedLedger"
+      :selectable="accountView === 'select'"
+      @close="accountView = null"
+      @select="selectAccount"
+    />
   </view>
 </template>
 

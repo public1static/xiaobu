@@ -18,26 +18,31 @@ public class LedgerTransactionApplicationService {
   private final LedgerTransactionRepository repository;
   private final EntityIdGenerator idGenerator;
   private final PersonalLedgerApplicationService ledgers;
+  private final LedgerAccountApplicationService accounts;
 
   public LedgerTransactionApplicationService(
       LedgerTransactionRepository repository,
       EntityIdGenerator idGenerator,
-      PersonalLedgerApplicationService ledgers) {
+      PersonalLedgerApplicationService ledgers,
+      LedgerAccountApplicationService accounts) {
     this.repository = repository;
     this.idGenerator = idGenerator;
     this.ledgers = ledgers;
+    this.accounts = accounts;
   }
 
   @Transactional
   public LedgerTransactionResult recordLedgerTransaction(RecordLedgerTransactionCommand command) {
     ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
+    accounts.requireAccountInLedger(command.ledgerId(), command.accountId());
     var details =
         new LedgerTransactionDetails(
             command.direction(),
             command.amountCents(),
             command.bookedOn(),
             command.categoryCode(),
-            command.note());
+            command.note(),
+            command.accountId());
     var transaction = new LedgerTransaction(idGenerator.next(TRANSACTION_PREFIX), details);
     repository.add(command.ledgerId(), command.actorId(), transaction);
     return LedgerTransactionResult.from(transaction);

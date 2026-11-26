@@ -542,3 +542,14 @@ button::after {
   color: var(--green);
   font-size: 13px;
 }
+
+.account-field {
+  justify-content: end;
+  min-height: 35px;
+  max-width: 70%;
+  text-align: right;
+}
+.ledger-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}

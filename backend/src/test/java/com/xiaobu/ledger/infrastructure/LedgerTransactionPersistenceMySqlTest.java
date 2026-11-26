@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.boot.XiaobuApplication;
+import com.xiaobu.ledger.application.CreateLedgerAccountCommand;
+import com.xiaobu.ledger.application.LedgerAccountApplicationService;
 import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
 import com.xiaobu.ledger.application.LedgerTransactionResult;
 import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
@@ -45,6 +47,7 @@ class LedgerTransactionPersistenceMySqlTest {
   @Autowired private LedgerTransactionApplicationService expenses;
   @Autowired private LedgerTransactionPersistenceAdapter expensePersistence;
   @Autowired private PersonalLedgerApplicationService ledgers;
+  @Autowired private LedgerAccountApplicationService accounts;
   @Autowired private EntityManager entityManager;
   @Autowired private JdbcTemplate jdbc;
 
@@ -87,7 +90,7 @@ class LedgerTransactionPersistenceMySqlTest {
         new LedgerTransaction(
             saved.id(),
             new LedgerTransactionDetails(
-                TransactionDirection.EXPENSE, 9900, date, "DINING", "冲突记录"));
+                TransactionDirection.EXPENSE, 9900, date, "DINING", "冲突记录", null));
     assertThrows(
         ConstraintViolationException.class,
         () -> {
@@ -113,7 +116,8 @@ class LedgerTransactionPersistenceMySqlTest {
                 500000,
                 october.atDay(5),
                 "SALARY",
-                "工资"));
+                "工资",
+                null));
     record(ledgerId, "alice", october.atDay(1).minusDays(1));
     record(ledgerId, "alice", october.plusMonths(1).atDay(1));
     record(newLedgerId("bob"), "bob", october.atDay(5));
@@ -138,7 +142,7 @@ class LedgerTransactionPersistenceMySqlTest {
   private LedgerTransactionResult record(String ledgerId, String actorId, LocalDate date) {
     return expenses.recordLedgerTransaction(
         new RecordLedgerTransactionCommand(
-            ledgerId, actorId, TransactionDirection.EXPENSE, 1230, date, "DINING", " 午饭 "));
+            ledgerId, actorId, TransactionDirection.EXPENSE, 1230, date, "DINING", " 午饭 ", null));
   }
 
   @Test
@@ -182,6 +186,67 @@ class LedgerTransactionPersistenceMySqlTest {
           });
       assertEquals(first.get(12, TimeUnit.SECONDS), second.get(12, TimeUnit.SECONDS));
     }
+  }
+
+  @Test
+  void accountsRespectLedgerOwnershipAndNetAmounts() {
+    String alpha = newLedgerId();
+    String beta = newLedgerId("bob");
+    var cash = accounts.createLedgerAccount(new CreateLedgerAccountCommand(alpha, "alice", "现金"));
+    var other = accounts.createLedgerAccount(new CreateLedgerAccountCommand(beta, "bob", "现金"));
+    var date = LocalDate.of(2026, 10, 31);
+    assertEquals(
+        ErrorCategory.CONFLICT,
+        assertThrows(
+                FoundationException.class,
+                () ->
+                    accounts.createLedgerAccount(
+                        new CreateLedgerAccountCommand(alpha, "alice", " 现金 ")))
+            .category());
+    assertEquals(
+        ErrorCategory.FORBIDDEN,
+        assertThrows(FoundationException.class, () -> accounts.listLedgerAccounts(alpha, "bob"))
+            .category());
+    assertEquals(
+        "XIAOBU_ACCOUNT_UNAVAILABLE",
+        assertThrows(
+                FoundationException.class,
+                () ->
+                    expenses.recordLedgerTransaction(
+                        new RecordLedgerTransactionCommand(
+                            alpha,
+                            "alice",
+                            TransactionDirection.EXPENSE,
+                            1230,
+                            date,
+                            "DINING",
+                            "",
+                            other.id())))
+            .errorCode()
+            .value());
+    expenses.recordLedgerTransaction(
+        new RecordLedgerTransactionCommand(
+            alpha, "alice", TransactionDirection.INCOME, 10000, date, "SALARY", "工资", cash.id()));
+    var deleted =
+        expenses.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                alpha,
+                "alice",
+                TransactionDirection.EXPENSE,
+                1230,
+                date,
+                "DINING",
+                "午饭",
+                cash.id()));
+    record(alpha, "alice", date);
+    assertEquals(
+        8770, accounts.listLedgerAccounts(alpha, "alice").getFirst().recordedBalanceCents());
+    entityManager.flush();
+    jdbc.update("UPDATE ledger_transactions SET deleted = 1 WHERE id = ?", deleted.id());
+    entityManager.clear();
+    assertEquals(
+        10000, accounts.listLedgerAccounts(alpha, "alice").getFirst().recordedBalanceCents());
+    assertEquals(0, accounts.listLedgerAccounts(beta, "bob").getFirst().recordedBalanceCents());
   }
 
   private String newLedgerId() {

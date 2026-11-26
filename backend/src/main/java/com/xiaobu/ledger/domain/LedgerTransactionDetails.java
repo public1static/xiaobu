@@ -11,7 +11,8 @@ public record LedgerTransactionDetails(
     long amountCents,
     LocalDate bookedOn,
     String categoryCode,
-    String note) {
+    String note,
+    String accountId) {
 
   private static final long MAX_AMOUNT_CENTS = 9_999_999_999L;
   private static final Set<String> EXPENSE_CATEGORIES =
