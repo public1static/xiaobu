@@ -31,7 +31,7 @@ class WechatIdentityHttpGatewayTest {
                 """
                 {"openid":"fixture-openid","session_key":"fixture-key","unionid":"fixture-union"}
                 """,
-                MediaType.APPLICATION_JSON));
+                MediaType.TEXT_PLAIN));
     var gateway = new WechatIdentityHttpGateway("wx-test", "dummy-fixture", builder.build());
     String actorId = gateway.resolveActorId("code-a");
     assertEquals(46, actorId.length());

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { exampleDetails, exampleStatement } from './example-ledger';
 import LedgerIcon from '../../components/LedgerIcon.vue';
 import LedgerPicker from '../../components/LedgerPicker.vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -66,10 +67,18 @@ import {
   type TransactionDirection,
 } from './transaction';
 
+// 自定义导航避开微信状态栏和右侧胶囊。
+const headerStyle: Record<string, string> = {};
+// #ifdef MP-WEIXIN
+const menuButton = uni.getMenuButtonBoundingClientRect();
+headerStyle.paddingTop = menuButton.top + 'px';
+headerStyle.paddingRight = uni.getWindowInfo().windowWidth - menuButton.left + 8 + 'px';
+// #endif
+
 const MONTH_PREFERENCE_KEY = 'xiaobu.ledger.last-month';
 const today = ref(localDay());
 const currentMonth = computed(() => today.value.slice(0, 7));
-const month = ref(readMonthPreference());
+const month = ref(currentMonth.value);
 
 function readMonthPreference() {
   try {
@@ -415,6 +424,7 @@ function resetSession(next: LocalSession | null) {
   ledgerNotice.value = '';
   shareLink.value = '';
   shareToken.value = '';
+  month.value = next ? readMonthPreference() : currentMonth.value;
   session.value = next;
   items.value = [];
   statement.value = null;
@@ -447,14 +457,12 @@ async function restoreSession() {
   }
 }
 
-function beginSignIn() {
-  // #ifdef H5
+// 只在从「记一笔」进入时接回表单；邀请及账本入口保留各自去向。
+const resumeEntry = ref(false);
+function beginSignIn(forEntry = false) {
+  resumeEntry.value = forEntry;
   loginOpen.value = true;
   sessionError.value = '';
-  // #endif
-  // #ifdef MP-WEIXIN
-  void signInWithWechat();
-  // #endif
 }
 
 async function signInWithWechat() {
@@ -467,8 +475,9 @@ async function signInWithWechat() {
   sessionError.value = '';
   try {
     resetSession(await openWechatSession());
+    loginOpen.value = false;
     if (incomingToken.value) await loadInvitePreview();
-    else openTransactionForm();
+    else if (resumeEntry.value) openTransactionForm();
     await refresh();
   } catch {
     sessionError.value = '微信登录未完成，请重试。';
@@ -488,7 +497,7 @@ async function signIn(account: PreviewAccount) {
     loginOpen.value = false;
     if (incomingToken.value) {
       await loadInvitePreview();
-    } else {
+    } else if (resumeEntry.value) {
       openTransactionForm();
     }
     await refresh();
@@ -566,21 +575,33 @@ function applyFilter(value: LedgerTransactionFilter) {
   void refresh();
 }
 
+const examples = computed(() => exampleDetails(today.value));
+const selectedExample = computed(() =>
+  session.value
+    ? undefined
+    : examples.value.find((row) => row.transaction.id === transactionDetailId.value),
+);
+const visibleStatement = computed(() =>
+  session.value ? statement.value : exampleStatement(examples.value, month.value, filter.value),
+);
+const visibleItems = computed(() =>
+  session.value ? items.value : (visibleStatement.value?.entries ?? []),
+);
 const summary = computed(() => ({
-  income: statement.value?.incomeCents ?? 0,
-  expense: statement.value?.expenseCents ?? 0,
-  balance: statement.value?.balanceCents ?? 0,
+  income: visibleStatement.value?.incomeCents ?? 0,
+  expense: visibleStatement.value?.expenseCents ?? 0,
+  balance: visibleStatement.value?.balanceCents ?? 0,
 }));
-const hasMore = computed(() => hasNextStatementPage(statement.value));
-const showTotals = computed(() => statement.value !== null && !listError.value);
+const hasMore = computed(() => hasNextStatementPage(visibleStatement.value));
+const showTotals = computed(() => visibleStatement.value !== null && !listError.value);
 const groups = computed(() => {
   const dates = new Map<string, LedgerTransaction[]>();
-  for (const transaction of items.value) {
+  for (const transaction of visibleItems.value) {
     const list = dates.get(transaction.bookedOn) ?? [];
     list.push(transaction);
     dates.set(transaction.bookedOn, list);
   }
-  const totals = new Map(statement.value?.days.map((day) => [day.bookedOn, day]));
+  const totals = new Map(visibleStatement.value?.days.map((day) => [day.bookedOn, day]));
   return [...dates].map(([day, transactions]) => ({
     day,
     transactions,
@@ -650,6 +671,7 @@ function selectMonth(value: string) {
     items.value = [];
     statement.value = null;
   }
+  if (!session.value) return;
   try {
     // A preference only: the server remains the source of truth for the list.
     uni.setStorageSync(MONTH_PREFERENCE_KEY, value);
@@ -670,7 +692,7 @@ function changeMonth(offset: -1 | 1) {
 function startTransaction() {
   if (checkingSession.value || sessionBusy.value || readOnly.value) return;
   if (!session.value) {
-    beginSignIn();
+    beginSignIn(true);
     return;
   }
   openTransactionForm();
@@ -908,11 +930,13 @@ const entryDateLabel = computed(() => {
 
 <template>
   <view class="shell">
-    <view v-show="!ledgerHubOpen" class="head">
+    <view v-show="!ledgerHubOpen" class="head" :style="headerStyle">
       <button v-if="session" class="book-entry" aria-label="切换账本" @click="openLedgerPicker">
         <text class="brand-dot" />{{ ledgerLabel }}<text aria-hidden="true">⌄</text>
       </button>
-      <text v-else class="brand">小簿</text>
+      <button v-else class="book-entry" :disabled="checkingSession" @click="beginSignIn()">
+        <text class="brand-dot" />示例账本<text aria-hidden="true">⌄</text>
+      </button>
       <button
         v-if="session && !readOnly"
         class="recycle-button"
@@ -927,16 +951,6 @@ const entryDateLabel = computed(() => {
       <text v-if="ledgerNotice" class="ledger-notice" role="status">{{ ledgerNotice }}</text>
       <text v-if="sessionError && !loginOpen" class="error" role="alert">{{ sessionError }}</text>
       <view v-if="checkingSession" class="empty" role="status">正在检查登录状态</view>
-      <view v-else-if="!session" class="guest">
-        <text class="guest-title">你的个人账本</text>
-        <text>登录后才能查看和记录个人流水。</text>
-        <!-- #ifdef H5 -->
-        <text class="preview-label">云电脑联调 · 仅测试身份</text>
-        <!-- #endif -->
-        <!-- #ifdef MP-WEIXIN -->
-        <text v-if="!wechatPreviewApiBase()" class="preview-label">尚未配置微信联调服务</text>
-        <!-- #endif -->
-      </view>
       <template v-else>
         <view class="summary">
           <view class="summary-line">
@@ -1022,8 +1036,10 @@ const entryDateLabel = computed(() => {
         </view>
         <text v-if="savedMessage" class="sr-only" role="status">{{ savedMessage }}</text>
         <button v-if="listError" class="empty retry" @click="refresh()">{{ listError }}</button>
-        <view v-else-if="loading && !items.length" class="empty">正在加载流水</view>
-        <view v-else-if="!items.length" class="empty">{{
+        <view v-else-if="session && loading && !visibleItems.length" class="empty"
+          >正在加载流水</view
+        >
+        <view v-else-if="!visibleItems.length" class="empty">{{
           filter.keyword ? '未找到匹配流水' : '这段时间还没有流水'
         }}</view>
         <view v-for="group in groups" :key="group.day" class="day">
@@ -1071,6 +1087,7 @@ const entryDateLabel = computed(() => {
             </view>
           </view>
         </view>
+        <text v-if="!session" class="preview-label">示例数据，仅供浏览</text>
         <button
           v-if="hasMore && !listError"
           class="text-button statement-more"
@@ -1285,11 +1302,10 @@ const entryDateLabel = computed(() => {
       </view>
     </view>
 
-    <!-- #ifdef H5 -->
     <view v-if="loginOpen" class="overlay">
-      <view class="sheet login-sheet" role="dialog" aria-label="测试登录" aria-modal="true">
+      <view class="sheet login-sheet" role="dialog" aria-label="登录小生活记账簿" aria-modal="true">
         <view class="sheet-head sheet-child">
-          <text>测试登录</text>
+          <text>登录小生活记账簿</text>
           <button
             class="close"
             aria-label="取消登录"
@@ -1299,6 +1315,19 @@ const entryDateLabel = computed(() => {
             ×
           </button>
         </view>
+        <text class="preview-label sheet-child">{{
+          incomingToken
+            ? '登录后，确认是否加入账本。'
+            : resumeEntry
+              ? '登录后，在自己的账本记一笔。'
+              : '登录后，进入自己的账本。'
+        }}</text>
+        <!-- #ifdef MP-WEIXIN -->
+        <button class="primary sheet-child" :disabled="sessionBusy" @click="signInWithWechat">
+          微信登录
+        </button>
+        <!-- #endif -->
+        <!-- #ifdef H5 -->
         <text class="preview-label sheet-child">选择测试身份。两个身份各有独立的个人账本。</text>
         <button class="primary sheet-child" :disabled="sessionBusy" @click="signIn('alpha')">
           以测试甲登录
@@ -1310,10 +1339,17 @@ const entryDateLabel = computed(() => {
         >
           以测试乙登录
         </button>
+        <!-- #endif -->
+        <button
+          class="primary secondary sheet-child"
+          :disabled="sessionBusy"
+          @click="loginOpen = false"
+        >
+          {{ incomingToken ? '返回邀请' : '继续浏览示例' }}
+        </button>
         <text v-if="sessionError" class="error sheet-child" role="alert">{{ sessionError }}</text>
       </view>
     </view>
-    <!-- #endif -->
 
     <view v-if="open" class="overlay entry-overlay">
       <view
@@ -1507,7 +1543,9 @@ const entryDateLabel = computed(() => {
       @apply="applyFilter"
     />
     <LedgerTransactionDetailSheet
-      v-if="transactionDetailId && ledgerId"
+      v-if="transactionDetailId && (ledgerId || selectedExample)"
+      :example="selectedExample"
+      :browse-only="!!selectedExample"
       :key="transactionDetailId"
       :ledger-id="ledgerId"
       :transaction-id="transactionDetailId"

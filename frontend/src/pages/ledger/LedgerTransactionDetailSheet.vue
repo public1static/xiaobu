@@ -11,7 +11,9 @@ import LedgerRefundForm from './LedgerRefundForm.vue';
 import { categoryLabel, formatCents, refundToday } from './transaction';
 
 const props = defineProps<{
-  ledgerId: string;
+  ledgerId?: string;
+  // 游客详情来自内存中的只读示例。
+  example?: LedgerTransactionDetail;
   transactionId: string;
   browseOnly?: boolean;
   categoryNames?: Record<string, string>;
@@ -52,6 +54,10 @@ async function onRefundSaved() {
 }
 
 async function load() {
+  if (props.example || !props.ledgerId) {
+    detail.value = props.example ?? null;
+    return;
+  }
   loading.value = true;
   error.value = '';
   try {
@@ -69,7 +75,7 @@ async function load() {
 }
 
 async function completeDeletion() {
-  if (!detail.value || deleting.value) return;
+  if (!props.ledgerId || !detail.value || deleting.value) return;
   deleting.value = true;
   error.value = '';
   try {
@@ -117,7 +123,7 @@ onMounted(load);
       <text v-if="loading" class="preview-label sheet-child" role="status">正在加载详情</text>
       <LedgerRefundForm
         class="sheet-child"
-        v-else-if="refunding && detail"
+        v-else-if="refunding && detail && ledgerId"
         :ledger-id="ledgerId"
         :detail="detail"
         :remaining-cents="remainingCents"

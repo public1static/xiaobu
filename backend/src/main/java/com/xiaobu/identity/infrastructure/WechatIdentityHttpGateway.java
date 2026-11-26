@@ -17,6 +17,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 @Component
 @Profile("wechat-preview")
@@ -24,6 +26,9 @@ class WechatIdentityHttpGateway implements WechatIdentityGateway {
 
   private static final ErrorCode LOGIN_INVALID = new ErrorCode("XIAOBU_WECHAT_LOGIN_INVALID");
   private static final ErrorCode LOGIN_UNAVAILABLE = new ErrorCode("XIAOBU_WECHAT_UNAVAILABLE");
+
+  // 微信可能以 text/plain 返回 JSON，按响应内容解析。
+  private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private final String appId;
   private final String appSecret;
@@ -55,11 +60,12 @@ class WechatIdentityHttpGateway implements WechatIdentityGateway {
         .build();
   }
 
+  // 交换一次性凭证，仅返回当前应用范围内的身份摘要。
   @Override
   public String resolveActorId(String loginCode) {
     WechatIdentityResponse response;
     try {
-      response =
+      var payload =
           client
               .get()
               .uri(builder ->
@@ -71,8 +77,9 @@ class WechatIdentityHttpGateway implements WechatIdentityGateway {
                       .queryParam("grant_type", "authorization_code")
                       .build())
               .retrieve()
-              .body(WechatIdentityResponse.class);
-    } catch (RestClientException ex) {
+              .body(String.class);
+      response = payload == null ? null : JSON.readValue(payload, WechatIdentityResponse.class);
+    } catch (RestClientException | JacksonException ex) {
       // Don't attach the exception: an HTTP error can carry the credential-bearing URL.
       throw new FoundationException(
           LOGIN_UNAVAILABLE, ErrorCategory.UPSTREAM_FAILURE, "微信登录暂不可用，请稍后重试", Map.of());
