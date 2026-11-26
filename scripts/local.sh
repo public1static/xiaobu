@@ -23,6 +23,14 @@ owned() {
   esac
 }
 
+# 检查容器的持久配置，即使停止状态也能先核对监听地址和数据卷。
+require_project_database() {
+  local bindings storage
+  bindings=$(docker_local container inspect -f '{{range index .HostConfig.PortBindings "3306/tcp"}}{{println .HostIp .HostPort}}{{end}}' "$db")
+  storage=$(docker_local container inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$db")
+  [[ "$bindings" == "127.0.0.1 18325" && "$storage" == "$volume" ]] || fail "同名数据库容器的端口或数据卷与项目配置不符。"
+}
+
 database() {
   docker_local info >/dev/null 2>&1 || colima start
   if ! docker_local container inspect "$db" >/dev/null 2>&1; then
@@ -37,6 +45,7 @@ database() {
       -e MYSQL_PASSWORD -e MYSQL_ROOT_PASSWORD mysql:5.7.44 >/dev/null
     unset MYSQL_ROOT_PASSWORD MYSQL_PASSWORD
   fi
+  require_project_database
   docker_local start "$db" >/dev/null
   [[ "$(docker_local port "$db" 3306/tcp)" == 127.0.0.1:18325 ]] || fail "数据库端口映射与项目配置不符。"
   for ((i=0;i<90;i++)); do
@@ -112,7 +121,10 @@ stop_app() {
 stop() {
   stop_app frontend 18211
   stop_app backend 18125
-  if docker_local container inspect "$db" >/dev/null 2>&1; then docker_local stop "$db" >/dev/null; fi
+  if docker_local container inspect "$db" >/dev/null 2>&1; then
+    require_project_database
+    docker_local stop "$db" >/dev/null
+  fi
 }
 
 status() {
