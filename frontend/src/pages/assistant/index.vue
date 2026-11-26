@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ChatScroll from './ChatScroll.vue';
+import LedgerIcon from '../../components/LedgerIcon.vue';
 import { computed, ref } from 'vue';
 import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app';
 import { assistantApi, chatRequestId, type Conversation, type Message } from '../../api/assistant';
@@ -313,18 +315,20 @@ onUnload(hide);
 <template>
   <view class="chat">
     <view class="bar">
-      <button aria-label="返回" @click="back"><image src="/static/assistant/back.svg" /></button>
+      <button aria-label="返回" @click="back">
+        <LedgerIcon class="page-icon" src="/static/assistant/back.svg" />
+      </button>
       <view class="heading"
         >小簿<text>{{ name }}</text></view
       >
       <button aria-label="历史对话" :disabled="busy || denied" @click="histories()">
-        <image src="/static/assistant/history.svg" />
+        <LedgerIcon class="page-icon" src="/static/assistant/history.svg" />
       </button>
       <button aria-label="新对话" :disabled="busy || denied" @click="fresh">
-        <image src="/static/assistant/new.svg" />
+        <LedgerIcon class="page-icon" src="/static/assistant/new.svg" />
       </button>
     </view>
-    <scroll-view v-if="result" class="thread" scroll-y>
+    <ChatScroll v-if="result" class="thread">
       <button @click="result = null">‹ 返回回答</button>
       <view class="card"
         >当前匹配 {{ result.totalCount }} 笔 · 净支出 ¥{{ formatCents(result.expenseCents) }}</view
@@ -351,11 +355,13 @@ onUnload(hide);
       >
         下一页
       </button>
-    </scroll-view>
-    <scroll-view v-else class="thread" scroll-y :scroll-into-view="anchor">
+    </ChatScroll>
+    <ChatScroll v-else class="thread" :anchor="anchor">
       <button v-if="older" :disabled="busy" @click="previousTurns">更早的消息</button>
       <view v-if="!turns.length && !denied" class="welcome">
-        <view class="hero"><image src="/static/assistant/mark-light.svg" /></view>
+        <view class="hero"
+          ><LedgerIcon class="page-icon" src="/static/assistant/mark-light.svg"
+        /></view>
         <text class="welcome-title">今天想记点什么？</text>
         <button
           v-for="prompt in ['本月收支', '本月餐饮支出']"
@@ -363,15 +369,19 @@ onUnload(hide);
           :disabled="busy"
           @click="send(prompt)"
         >
-          <image src="/static/assistant/search.svg" />{{ prompt }}<text class="arrow">›</text>
+          <LedgerIcon class="page-icon" src="/static/assistant/search.svg" />{{ prompt
+          }}<text class="arrow">›</text>
         </button>
         <button v-if="writable" :disabled="busy" @click="send('昨天买菜')">
-          <image src="/static/ledger/vant/EDIT_DARK.svg" />昨天买菜<text class="arrow">›</text>
+          <LedgerIcon class="page-icon" src="/static/ledger/vant/EDIT_DARK.svg" />昨天买菜<text
+            class="arrow"
+            >›</text
+          >
         </button>
       </view>
       <view v-for="m in turns" :key="m.sequence" :id="'msg-' + m.sequence" class="turn">
         <text class="mine">{{ m.question }}</text><view class="response"
-          ><image src="/static/assistant/mark.svg" /><view class="answer"
+          ><LedgerIcon class="page-icon" src="/static/assistant/mark.svg" /><view class="answer"
             ><text>{{ m.answer.text }}</text>
             <template v-if="m.answer.statement && m.answer.scope"
               ><text class="caption"
@@ -467,7 +477,7 @@ onUnload(hide);
         @recover="recover"
       />
       <button v-else-if="uncertain" :disabled="busy" @click="recover">核对草稿状态</button>
-    </scroll-view>
+    </ChatScroll>
     <text v-if="error" class="error" role="alert">{{ error }}</text>
     <view v-if="!result && !denied" class="composer"
       ><text class="caption">自由提问会将问题和必要的查询条件发送给 DeepSeek。</text>
@@ -482,7 +492,7 @@ onUnload(hide);
           :disabled="busy || !input.trim()"
           @click="send(input)"
         >
-          <image src="/static/assistant/send.svg" /></button></view
+          <LedgerIcon class="page-icon" src="/static/assistant/send.svg" /></button></view
     ></view>
     <view v-if="showHistory" class="history-overlay" @click.self="showHistory = false">
       <view class="history-sheet" role="dialog" aria-modal="true" aria-label="历史对话">
@@ -490,7 +500,7 @@ onUnload(hide);
           ><text>历史对话</text
           ><button aria-label="关闭历史对话" @click="showHistory = false">×</button></view
         >
-        <scroll-view scroll-y class="history-list"
+        <ChatScroll class="history-list"
           ><text v-if="!history.length">暂无历史对话</text>
           <button
             v-for="c in history"
@@ -502,7 +512,7 @@ onUnload(hide);
             {{ c.title }}
           </button>
           <button v-if="moreHistory" :disabled="busy" @click="histories(true)">更多历史</button>
-        </scroll-view>
+        </ChatScroll>
       </view>
     </view>
     <LedgerTransactionDetailSheet
@@ -519,6 +529,10 @@ onUnload(hide);
 
 <style scoped>
 .chat {
+  --green: #176a57;
+  --muted: #536660;
+  --line: #e4eae5;
+  --ink: #182623;
   height: 100vh;
   height: 100dvh;
   display: flex;
@@ -582,8 +596,8 @@ button::after {
   width: 40px;
   height: 42px;
 }
-.bar image,
-.welcome button image {
+.bar .page-icon,
+.welcome button .page-icon {
   width: 20px;
   height: 20px;
 }
@@ -600,7 +614,7 @@ button::after {
   border-radius: 19px;
   background: #205d49;
 }
-.hero image {
+.hero .page-icon {
   width: 30px;
   height: 30px;
 }
@@ -634,7 +648,7 @@ button::after {
   align-items: flex-start;
   margin-top: 16px;
 }
-.response image {
+.response .page-icon {
   flex: none;
   width: 18px;
   height: 18px;
@@ -696,7 +710,7 @@ button::after {
   display: grid;
   place-items: center;
 }
-.composer button image {
+.composer button .page-icon {
   width: 18px;
   height: 18px;
   padding: 7px;

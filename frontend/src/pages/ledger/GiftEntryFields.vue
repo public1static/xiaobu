@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LedgerPicker from '../../components/LedgerPicker.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import {
   dailyGiftBook,
@@ -24,7 +25,7 @@ const emit = defineEmits<{
 
 const books = ref<GiftBook[]>([]);
 const contacts = ref<GiftContact[] | null>(null);
-const chooser = ref(false);
+
 const focused = ref(false);
 const error = ref('');
 const query = computed(() => String(props.detail.personName ?? ''));
@@ -43,6 +44,24 @@ const title = computed(() => {
     String(props.detail.bookName ?? '活动礼单')
   );
 });
+// 常用事由与原型一致，自定义文字仍写入当前流水。
+const reasons = [
+  '婚礼',
+  '生日',
+  '满月',
+  '乔迁',
+  '升学',
+  '节日',
+  '探望',
+  '订婚',
+  '百日',
+  '周岁',
+  '寿宴',
+  '开业',
+  '毕业',
+  '慰问',
+  '丧事',
+];
 const personLabel = computed(() => (props.direction === 'EXPENSE' ? '随礼对象' : '送礼人'));
 
 function change(values: TransactionExtensionDetail) {
@@ -65,7 +84,6 @@ async function load() {
 }
 
 function selectBook(book: GiftBook) {
-  chooser.value = false;
   if ((book.daily ? null : book.id) === (props.detail.bookId ?? null)) return;
   change({
     bookId: book.daily ? null : book.id,
@@ -143,15 +161,19 @@ onMounted(load);
     <view v-if="quick" class="gift-field"
       ><text>所属礼单</text><text>{{ title }}</text></view
     >
-    <button v-else class="gift-field gift-choice" :disabled="disabled" @click="chooser = !chooser">
-      <text>所属礼单</text><text>{{ title }}</text
-      ><text aria-hidden="true">›</text>
-    </button>
-    <view v-if="chooser" class="gift-options">
-      <button v-for="book in eligible" :key="book.id" class="gift-option" @click="selectBook(book)">
-        {{ book.name }}
-      </button>
-    </view>
+    <LedgerPicker
+      v-else
+      label="选择所属礼单"
+      :range="eligible"
+      range-key="name"
+      :value="eligible.findIndex((b) => b.id === (detail.bookId || dailyGiftBook(direction).id))"
+      :disabled="disabled"
+      @change="selectBook(eligible[Number($event.detail.value)])"
+      ><view class="gift-field gift-choice"
+        ><text>所属礼单</text><text>{{ title }}</text
+        ><text>›</text></view
+      ></LedgerPicker
+    >
     <view class="gift-field">
       <text>{{ personLabel }}<text v-if="quick" class="gift-required">*</text></text>
       <input
@@ -198,11 +220,24 @@ onMounted(load);
       <input
         :value="String(detail.reason ?? '')"
         aria-label="事由"
+        placeholder="选择或填写事由"
         :maxlength="60"
         :disabled="disabled"
         @input="change({ reason: $event.detail.value })"
       />
     </view>
+    <view class="reason-chips"
+      ><button
+        v-for="reason in reasons"
+        :key="reason"
+        :disabled="disabled"
+        :class="{ active: detail.reason === reason }"
+        :aria-pressed="detail.reason === reason"
+        @click="change({ reason: detail.reason === reason ? '' : reason })"
+      >
+        {{ reason }}
+      </button></view
+    >
     <view v-if="error" class="gift-options gift-required">
       <text>{{ error }}</text><button class="gift-option" @click="load">重试</button>
     </view>
@@ -256,5 +291,29 @@ onMounted(load);
 }
 .gift-required {
   color: #a23832;
+}
+.reason-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 13px 10px;
+}
+.reason-chips button {
+  margin: 0;
+  padding: 4px 10px;
+  min-height: 30px;
+  line-height: 20px;
+  font-size: 13px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: #f3f5f1;
+}
+.reason-chips button::after {
+  border: 0;
+}
+.reason-chips .active {
+  color: #176a57;
+  border-color: #176a57;
+  background: #e8f4eb;
 }
 </style>

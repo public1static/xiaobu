@@ -254,6 +254,10 @@ onMounted(refresh);
 }
 .category-sheet-grid {
   margin-inline: 14px;
+  overflow-y: auto;
+  flex-shrink: 1;
+  min-height: 88px;
+  overscroll-behavior: contain;
 }
 .category-toolbar {
   display: grid;
@@ -281,9 +285,14 @@ onMounted(refresh);
   border-bottom: 1px solid var(--line);
   font-size: 14px;
 }
+.category-add {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  gap: 10px;
+}
 .category-add input {
   flex: 1;
-  width: 0;
+  width: 100%;
   min-width: 0;
 }
 .category-hint {

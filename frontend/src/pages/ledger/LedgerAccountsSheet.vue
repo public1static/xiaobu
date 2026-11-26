@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LedgerPicker from '../../components/LedgerPicker.vue';
 import { computed, onMounted, ref } from 'vue';
 import {
   createLedgerAccount,
@@ -16,12 +17,18 @@ const props = defineProps<{
   allowCreate: boolean;
   allowTransfer: boolean;
   selectable: boolean;
+  selectedId?: string;
 }>();
 const emit = defineEmits<{
   (event: 'close'): void;
   (event: 'select', account: LedgerAccount | null): void;
 }>();
 const accounts = ref<LedgerAccount[]>([]);
+// 搜索仅筛选选择页，管理列表仍展示当前账本全部账户。
+const search = ref('');
+const visibleAccounts = computed(() =>
+  accounts.value.filter((a) => a.name.includes(search.value.trim())),
+);
 const transfers = ref<AccountTransfer[]>([]);
 const busy = ref(false);
 const loaded = ref(false);
@@ -171,7 +178,15 @@ onMounted(refresh);
       :aria-label="selectable ? '选择账户' : '账户'"
       aria-modal="true"
     >
-      <view class="sheet-head">
+      <view class="account-head">
+        <button
+          class="text-button"
+          :aria-label="mode === 'list' ? '关闭账户' : '返回账户列表'"
+          :disabled="busy"
+          @click="mode === 'list' ? emit('close') : returnToList()"
+        >
+          ‹
+        </button>
         <text>{{
           mode === 'account'
             ? '新增账户'
@@ -179,13 +194,29 @@ onMounted(refresh);
               ? '账户转账'
               : selectable
                 ? '选择账户'
-                : '账户'
+                : '账户管理'
         }}</text>
-        <button class="close" aria-label="关闭账户" :disabled="busy" @click="emit('close')">
-          ×
+        <button
+          v-if="mode === 'list' && allowCreate"
+          class="text-button"
+          aria-label="新增账户"
+          :disabled="busy || !loaded"
+          @click="
+            mode = 'account';
+            error = '';
+          "
+        >
+          新增
         </button>
       </view>
       <template v-if="mode === 'list'">
+        <input
+          v-if="selectable"
+          v-model="search"
+          class="account-search"
+          aria-label="搜索账户"
+          placeholder="搜索账户"
+        />
         <text v-if="!selectable" class="preview-label">账面余额按期初余额、收支和转账计算。</text>
         <text v-if="!loaded && busy" class="preview-label" role="status">正在加载账户</text>
         <text v-if="loaded && !accounts.length" class="preview-label">还没有账户</text>
@@ -195,17 +226,20 @@ onMounted(refresh);
           :disabled="busy"
           @click="emit('select', null)"
         >
-          不记账户
+          不记账户<text v-if="!selectedId" aria-label="已选">✓</text>
         </button>
         <button
-          v-for="account in selectable ? accounts : []"
+          v-for="account in selectable ? visibleAccounts : []"
           :key="account.id"
           class="text-button account-row"
           :disabled="busy"
           @click="emit('select', account)"
         >
           <text>{{ account.name }}</text>
-          <text>{{ formatBalance(account.balanceCents) }}</text>
+          <text
+            >{{ formatBalance(account.balanceCents)
+            }}<text v-if="selectedId === account.id" aria-label="已选"> ✓</text></text
+          >
         </button>
         <view v-if="!selectable" class="account-list">
           <view v-for="account in accounts" :key="account.id" class="account-row">
@@ -219,17 +253,6 @@ onMounted(refresh);
           </view>
         </view>
         <view v-if="loaded" class="account-actions">
-          <button
-            v-if="allowCreate"
-            class="primary secondary"
-            :disabled="busy"
-            @click="
-              mode = 'account';
-              error = '';
-            "
-          >
-            新增账户
-          </button>
           <button
             v-if="!selectable && allowTransfer && accounts.length >= 2"
             class="primary"
@@ -257,73 +280,85 @@ onMounted(refresh);
         </view>
       </template>
       <view v-else-if="mode === 'account'" class="account-form">
-        <text>账户名称</text>
-        <input v-model="name" :maxlength="32" placeholder="例如：现金" aria-label="账户名称" />
-        <text>期初余额 <text class="preview-label">选填</text></text>
-        <input
-          v-model="opening"
-          type="text"
-          :maxlength="12"
-          placeholder="0.00"
-          aria-label="期初余额"
-        />
+        <view class="meta"
+          ><view class="form-row"
+            ><text>账户名称<text class="star">*</text></text>
+            <input
+              v-model="name"
+              :maxlength="32"
+              placeholder="例如：现金"
+              aria-label="账户名称"
+            /> </view
+          ><view class="form-row"
+            ><text>期初余额</text>
+            <input
+              v-model="opening"
+              type="text"
+              :maxlength="12"
+              placeholder="0.00"
+              aria-label="期初余额" /></view
+        ></view>
         <text class="preview-label">填开始记账时的余额，欠款可填负数。</text>
         <button class="primary" :disabled="busy" @click="create">保存账户</button>
-        <button class="text-button" :disabled="busy" @click="returnToList">取消</button>
       </view>
-      <view v-else class="account-form">
-        <picker
-          :range="accounts"
-          range-key="name"
-          :value="accounts.findIndex(({ id }) => id === sourceId)"
-          :disabled="busy"
-          @change="selectSource"
-        >
-          <view class="account-row picker-row"
-            ><text>转出账户</text><text>{{ accountName(sourceId) }} ›</text></view
+      <view v-else class="account-form"
+        ><view class="meta">
+          <LedgerPicker
+            label="选择转出账户"
+            :range="accounts"
+            range-key="name"
+            :value="accounts.findIndex(({ id }) => id === sourceId)"
+            :disabled="busy"
+            @change="selectSource"
           >
-        </picker>
-        <picker
-          :range="targetAccounts"
-          range-key="name"
-          :value="
-            Math.max(
-              0,
-              targetAccounts.findIndex(({ id }) => id === targetId),
-            )
-          "
-          :disabled="busy"
-          @change="selectTarget"
-        >
-          <view class="account-row picker-row"
-            ><text>转入账户</text
-            ><text>{{ targetId ? accountName(targetId) : '请选择' }} ›</text></view
+            <view class="form-row"
+              ><text>转出账户<text class="star">*</text></text
+              ><text class="picker-value">{{ accountName(sourceId) }}</text></view
+            >
+          </LedgerPicker>
+          <LedgerPicker
+            label="选择转入账户"
+            :range="targetAccounts"
+            range-key="name"
+            :value="targetAccounts.findIndex(({ id }) => id === targetId)"
+            :disabled="busy"
+            @change="selectTarget"
           >
-        </picker>
-        <text>转账金额</text>
-        <input
-          v-model="amount"
-          type="digit"
-          :maxlength="11"
-          placeholder="0.00"
-          aria-label="转账金额"
-        />
-        <picker
-          mode="date"
-          :value="bookedOn"
-          start="1900-01-01"
-          end="9999-12-31"
-          :disabled="busy"
-          @change="selectDate"
-        >
-          <view class="account-row picker-row"
-            ><text>日期</text><text>{{ bookedOn }} ›</text></view
+            <view class="form-row"
+              ><text>转入账户<text class="star">*</text></text
+              ><text class="picker-value">{{
+                targetId ? accountName(targetId) : '请选择'
+              }}</text></view
+            >
+          </LedgerPicker>
+          <view class="form-row"
+            ><text>转账金额<text class="star">*</text></text>
+            <input
+              v-model="amount"
+              type="digit"
+              :maxlength="11"
+              placeholder="0.00"
+              aria-label="转账金额"
+          /></view>
+          <LedgerPicker
+            label="选择转账日期"
+            mode="date"
+            :value="bookedOn"
+            start="1900-01-01"
+            end="9999-12-31"
+            :disabled="busy"
+            @change="selectDate"
           >
-        </picker>
-        <input v-model="note" :maxlength="100" placeholder="备注（选填）" aria-label="转账备注" />
+            <view class="form-row"
+              ><text>日期<text class="star">*</text></text
+              ><text class="picker-value">{{ bookedOn }}</text></view
+            >
+          </LedgerPicker>
+          <view class="form-row"
+            ><text>备注</text><input v-model="note" :maxlength="100" aria-label="转账备注" /></view
+        ></view>
         <text class="preview-label">只调整两个账户的余额，不计入收支。</text>
         <button class="primary" :disabled="busy" @click="transfer">保存转账</button>
-        <button class="text-button" :disabled="busy" @click="returnToList">取消</button>
       </view>
       <text v-if="error" class="error" role="alert">{{ error }}</text>
       <button
@@ -344,8 +379,29 @@ onMounted(refresh);
   z-index: 4;
 }
 .accounts-sheet {
-  max-height: min(86vh, 700px);
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  padding-top: calc(8px + env(safe-area-inset-top));
   overflow-y: auto;
+}
+.account-head {
+  display: grid;
+  grid-template-columns: 54px 1fr 54px;
+  align-items: center;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 700;
+}
+.account-head button:first-child {
+  font-size: 24px;
+}
+.account-search {
+  padding: 8px 13px;
+  background: #edf1ec;
+  border-radius: 11px;
+  font-size: 14px;
 }
 .account-list,
 .account-history,
@@ -400,11 +456,5 @@ onMounted(refresh);
 }
 .transfer-row {
   border-bottom: 1px solid var(--line);
-}
-.account-form input {
-  min-height: 43px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding-inline: 10px;
 }
 </style>

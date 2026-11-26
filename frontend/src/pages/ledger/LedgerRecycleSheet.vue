@@ -61,22 +61,23 @@ onMounted(refresh);
       </view>
       <text v-if="loading" class="preview-label" role="status">正在加载</text>
       <text v-else-if="!items.length && !error" class="preview-label">最近没有删除的流水</text>
-      <view v-for="entry in items" :key="entry.transaction.id" class="meta-row recycle-row">
-        <view class="recycle-label">
-          <text
-            >{{
-              categoryNames?.[entry.transaction.categoryCode] ||
-              categoryLabel(entry.transaction.categoryCode, entry.transaction.direction)
-            }}
-            · ¥{{ formatCents(entry.transaction.amountCents) }}</text
-          >
-          <text class="preview-label">{{
-            entry.transaction.note || entry.transaction.bookedOn
-          }}</text>
-        </view>
-        <button class="text-button" :disabled="busy" @click="restore(entry)">恢复</button>
-      </view>
-      <text v-if="error" class="error" role="alert">{{ error }}</text>
+      <view v-if="items.length" class="meta"
+        ><view v-for="entry in items" :key="entry.transaction.id" class="meta-row recycle-row">
+          <view class="recycle-label">
+            <text
+              >{{
+                categoryNames?.[entry.transaction.categoryCode] ||
+                categoryLabel(entry.transaction.categoryCode, entry.transaction.direction)
+              }}
+              · ¥{{ formatCents(entry.transaction.amountCents) }}</text
+            >
+            <text class="preview-label">{{
+              entry.transaction.note || entry.transaction.bookedOn
+            }}</text>
+          </view>
+          <button class="text-button" :disabled="busy" @click="restore(entry)">恢复</button>
+        </view> </view
+      ><text v-if="error" class="error" role="alert">{{ error }}</text>
     </view>
   </view>
 </template>
@@ -84,7 +85,7 @@ onMounted(refresh);
 <style scoped src="./ledger.css"></style>
 <style scoped>
 .recycle-row {
-  padding-inline: 3px;
+  padding-inline: 13px;
 }
 .recycle-label {
   display: grid;

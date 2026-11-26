@@ -47,8 +47,8 @@
   border-radius: 50%;
   background: #fbfcfa;
 }
-.recycle-button image,
-.search-toolbar image {
+.recycle-button .page-icon,
+.search-toolbar .page-icon {
   width: 19px;
   height: 19px;
 }
@@ -296,11 +296,11 @@
   line-height: 16px;
   color: #63756a;
 }
-.ledger-bottom-nav image {
+.ledger-bottom-nav .page-icon {
   width: 21px;
   height: 21px;
 }
-.ledger-bottom-nav button:nth-child(2) image {
+.ledger-bottom-nav button:nth-child(2) .page-icon {
   width: 28px;
   height: 28px;
 }
@@ -335,7 +335,7 @@
   opacity: 0.55;
   background: var(--green);
 }
-.floating-entry image {
+.floating-entry .page-icon {
   width: 22px;
   height: 22px;
 }
@@ -348,7 +348,7 @@
   background: var(--green);
   color: #fff;
   border: 0;
-  border-radius: 28px;
+  border-radius: 12px;
   font-size: 16px;
   font-weight: 700;
 }
@@ -370,7 +370,7 @@
   max-width: 560px;
   width: 100%;
   max-height: 90vh;
-  max-height: 90dvh;
+  max-height: calc(100dvh - max(24px, env(safe-area-inset-top)));
   overflow-y: auto;
   overscroll-behavior: contain;
   box-sizing: border-box;
@@ -392,10 +392,10 @@
   padding: 0;
   display: grid;
   place-items: center;
-  background: #fff;
   color: #405851;
-  border: 1px solid var(--line);
-  border-radius: 50%;
+  border: 0;
+  border-radius: 12px;
+  background: #e8ede8;
   font-size: 23px;
   line-height: 1;
 }
@@ -416,7 +416,7 @@
   gap: 8px;
 }
 .quick-entry-actions button {
-  border-radius: 22px;
+  border-radius: 12px;
 }
 .quick-entry-actions .secondary {
   background: #fff;
@@ -505,7 +505,7 @@
   flex: 1;
   height: 54px;
   min-width: 0;
-  font-size: 35px;
+  font-size: clamp(2.1rem, 9vw, 2.8rem);
   font-weight: 600;
   letter-spacing: -1.4px;
 }
@@ -570,7 +570,7 @@
   color: var(--muted);
 }
 .entry-chevron {
-  font-size: 22px;
+  font-size: 16px;
   line-height: 1;
 }
 .entry-amount-placeholder {
@@ -606,7 +606,7 @@ button::after {
   }
 }
 
-.row-icon image {
+.row-icon .page-icon {
   width: 19px;
   height: 19px;
   justify-self: center;
@@ -679,7 +679,7 @@ button::after {
 .account-field {
   justify-content: end;
   min-height: 35px;
-  max-width: 70%;
+  max-width: 100%;
   text-align: right;
 }
 
@@ -754,4 +754,109 @@ button::after {
 .statement-more {
   width: 100%;
   margin-top: 8px;
+}
+
+.sheet > * {
+  flex-shrink: 0;
+}
+.record-actions {
+  display: flex;
+  gap: 10px;
+}
+.record-actions > button {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  box-sizing: border-box;
+  padding: 6px 13px;
+  background: white;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 14px;
+  text-align: left;
+}
+.form-row input {
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  font-size: 14px;
+}
+.star {
+  margin-left: 3px;
+}
+.picker-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+.picker-value::after {
+  content: '›';
+  color: var(--muted);
+  font-size: 16px;
+}
+.clear-field {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.clear-field > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.clear-control {
+  flex: none;
+  margin: 0;
+  padding: 0 6px;
+  min-height: 32px;
+  line-height: 32px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 16px;
+}
+
+.hub-page {
+  padding: calc(16px + env(safe-area-inset-top)) 16px 80px;
+  display: grid;
+  gap: 14px;
+}
+.hub-title {
+  font-size: 22px;
+  font-weight: 750;
+}
+.hub-link {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 28px 1fr 16px;
+  gap: 12px;
+  width: 100%;
+  background: white;
+  padding: 14px;
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink);
+  text-align: left;
+  line-height: 1.45;
+  border-radius: 0;
+}
+.hub-link + .hub-link {
+  border-top: 1px solid var(--line);
+}
+.hub-link .page-icon {
+  width: 24px;
+  height: 24px;
+}
+.hub-link view {
+  display: grid;
+  gap: 3px;
+}
+.hub-link > text:last-child {
+  color: var(--muted);
 }

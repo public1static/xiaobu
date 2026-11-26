@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LedgerIcon from '../../components/LedgerIcon.vue';
 import { getCurrentInstance, onBeforeUnmount, onMounted, ref } from 'vue';
 
 type Choice = readonly [code: string, name: string];
@@ -210,7 +211,7 @@ function icon(code: string) {
         @click="select($event, code)"
         :tabindex="disabled ? -1 : 0"
       >
-        <image :src="icon(code)" aria-hidden="true" />
+        <LedgerIcon class="page-icon" :src="icon(code)" />
         <text class="category-name" :class="{ long: name.length >= 4 }">{{ name }}</text>
       </button>
     </view>
@@ -256,7 +257,7 @@ function icon(code: string) {
   outline: 2px solid #176a57;
   outline-offset: -2px;
 }
-.category-option image {
+.category-option .page-icon {
   width: 18px;
   height: 18px;
   pointer-events: none;

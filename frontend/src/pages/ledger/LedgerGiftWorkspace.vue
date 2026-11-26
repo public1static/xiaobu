@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LedgerPicker from '../../components/LedgerPicker.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   createGiftBook,
@@ -251,7 +252,7 @@ onBeforeUnmount(() => {
           ‹
         </button>
         <button v-else class="text-button" aria-label="关闭礼金往来" @click="emit('close')">
-          ×
+          ‹
         </button>
         <text>{{
           creating ? '新建礼单' : currentBook?.name || currentContact?.name || '礼金往来'
@@ -328,13 +329,23 @@ onBeforeUnmount(() => {
           </view>
           <view class="workspace-field"
             ><text>默认日期</text>
-            <picker
-              mode="date"
-              :value="defaultDate || tailToday"
-              @change="defaultDate = $event.detail.value"
+            <view class="clear-field"
+              ><LedgerPicker
+                label="选择默认日期"
+                mode="date"
+                :value="defaultDate || tailToday"
+                @change="defaultDate = $event.detail.value"
+              >
+                <text>{{ defaultDate || '选择日期' }} ›</text> </LedgerPicker
+              ><button
+                v-if="defaultDate"
+                aria-label="清除默认日期"
+                class="clear-control"
+                @click="defaultDate = ''"
+              >
+                ⊗
+              </button></view
             >
-              <text>{{ defaultDate || '选择日期' }} ›</text>
-            </picker>
           </view>
           <view class="workspace-field"
             ><text>默认事由</text>
@@ -387,14 +398,14 @@ onBeforeUnmount(() => {
       <template v-else>
         <view v-if="currentBook" class="workspace-book-subtitle">
           <text>{{ bookLabel(currentBook) }}</text>
-          <button
+          <LedgerPicker
             v-if="writable && !currentBook.daily"
-            class="text-button"
+            label="礼单更多操作"
+            :range="[currentBook.archived ? '重新开放' : '归档礼单']"
             :disabled="busy"
-            @click="toggleArchive"
+            @change="toggleArchive"
+            ><text class="workspace-more">更多 ›</text></LedgerPicker
           >
-            {{ currentBook.archived ? '重新开放' : '归档礼单' }}
-          </button>
         </view>
         <text v-if="currentContact?.distinction" class="workspace-caption">{{
           currentContact.distinction
@@ -457,6 +468,7 @@ onBeforeUnmount(() => {
   z-index: 2;
 }
 .gift-workspace {
+  padding-top: calc(8px + env(safe-area-inset-top));
   height: 100vh;
   height: 100dvh;
   max-height: 100dvh;
@@ -479,10 +491,20 @@ onBeforeUnmount(() => {
 .workspace-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  border-bottom: 1px solid #e4eae5;
+  gap: 4px;
+  padding: 4px;
+  background: #e8ede8;
+  border-radius: 13px;
+}
+.workspace-tabs button {
+  min-height: 37px;
+  border-radius: 10px;
+  color: var(--muted);
 }
 .workspace-tabs .current {
-  border-bottom: 2px solid #176a57;
+  background: #fff;
+  color: #176a57;
+  box-shadow: 0 1px 4px #39473716;
   font-weight: 700;
 }
 .workspace-row {
@@ -540,13 +562,22 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: #536660;
 }
+.workspace-book-subtitle > :last-child {
+  width: auto;
+}
+.workspace-more {
+  display: block;
+  min-height: 44px;
+  line-height: 44px;
+  color: #176a57;
+}
 .workspace-totals {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  background: #eaf4ee;
-  border-radius: 14px;
-  padding: 12px 13px;
-  color: #176a57;
+  background: #124334;
+  border-radius: 16px;
+  padding: 19px 17px;
+  color: white;
 }
 .workspace-totals view {
   display: grid;

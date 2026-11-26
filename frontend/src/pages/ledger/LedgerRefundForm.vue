@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LedgerPicker from '../../components/LedgerPicker.vue';
 import { ref } from 'vue';
 import type { LedgerAccount } from '../../api/ledger-accounts';
 import { recordLedgerRefund, type LedgerTransactionDetail } from '../../api/ledger-transactions';
@@ -69,8 +70,8 @@ async function save() {
       ><text>可退金额</text><text>¥{{ formatCents(remainingCents) }}</text></view
     >
     <view class="meta">
-      <view class="meta-row">
-        <label for="refund-amount">退款金额</label>
+      <view class="form-row">
+        <label for="refund-amount">退款金额<text class="star">*</text></label>
         <view class="refund-input">
           <text>¥</text>
           <input
@@ -82,19 +83,20 @@ async function save() {
           />
         </view>
       </view>
-      <view class="meta-row">
-        <text>到账日期</text>
-        <picker
+      <view class="form-row">
+        <text>到账日期<text class="star">*</text></text>
+        <LedgerPicker
+          label="选择到账日期"
           mode="date"
           :value="receivedOn"
           :start="detail.transaction.bookedOn"
           :end="refundToday()"
           @change="onDateChange"
         >
-          <text>{{ receivedOn }} ›</text>
-        </picker>
+          <text class="picker-value">{{ receivedOn }}</text>
+        </LedgerPicker>
       </view>
-      <view class="meta-row">
+      <view class="form-row">
         <text>到账账户</text>
         <button
           class="text-button account-field"
@@ -102,13 +104,14 @@ async function save() {
           :disabled="saving"
           @click="selectingAccount = true"
         >
-          {{ selectedAccount?.name || '未选择' }} ›
+          <text class="picker-value">{{ selectedAccount?.name || '选择账户' }}</text>
         </button>
       </view>
     </view>
     <LedgerAccountsSheet
       v-if="selectingAccount"
       :ledger-id="ledgerId"
+      :selected-id="selectedAccount?.id"
       :allow-create="false"
       selectable
       @close="selectingAccount = false"
@@ -149,8 +152,16 @@ async function save() {
   font-weight: 400;
 }
 .refund-input input {
-  width: 100px;
-  text-align: right;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.account-field {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left;
 }
 .refund-actions {
   display: grid;
