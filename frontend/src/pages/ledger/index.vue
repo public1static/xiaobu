@@ -906,15 +906,18 @@ const entryDateLabel = computed(() => {
 <template>
   <view class="shell">
     <view class="head">
-      <view class="eyebrow"><text class="brand-dot" /> 我的账本</view>
-      <view class="head-line">
-        <text class="brand">小簿</text>
-        <view v-if="session" class="session-tools">
-          <text>{{ session.displayName }}</text>
-          <button v-if="!readOnly" class="text-button" @click="recycleOpen = true">最近删除</button>
-          <button class="text-button" :disabled="sessionBusy" @click="signOut">退出</button>
-        </view>
-      </view>
+      <button v-if="session" class="book-entry" aria-label="切换账本" @click="openLedgerPicker">
+        <text class="brand-dot" />{{ ledgerLabel }}<text aria-hidden="true">⌄</text>
+      </button>
+      <text v-else class="brand">小簿</text>
+      <button
+        v-if="session && !readOnly"
+        class="recycle-button"
+        aria-label="最近删除"
+        @click="recycleOpen = true"
+      >
+        <image src="/static/assistant/history.svg" />
+      </button>
     </view>
 
     <view class="main">
@@ -991,18 +994,8 @@ const entryDateLabel = computed(() => {
             >
           </view>
         </view>
-        <view class="section-title">
-          <text>流水</text>
-          <view class="ledger-actions">
-            <button class="text-button" @click="openLedgerPicker">{{ ledgerLabel }} · 切换</button>
-            <button class="text-button" @click="accountView = 'manage'">账户</button>
-            <template v-if="!sharedLedger">
-              <button class="text-button" @click="memberSheetOpen = true">成员</button>
-              <button class="text-button" @click="generateInviteLink">邀请只读成员</button>
-            </template>
-          </view>
-        </view>
         <view class="search-toolbar">
+          <image aria-hidden="true" src="/static/assistant/search.svg" />
           <input
             v-model="searchText"
             :maxlength="80"
@@ -1069,8 +1062,8 @@ const entryDateLabel = computed(() => {
               >
                 {{ row.direction === 'INCOME' || row.originalTransactionId ? '+' : '−' }}¥{{
                   formatCents(row.amountCents)
-                }}
-              </text>
+                }} </text
+              ><text class="row-chevron" aria-hidden="true">›</text>
             </view>
           </view>
         </view>
@@ -1089,9 +1082,15 @@ const entryDateLabel = computed(() => {
       v-if="session && !incomingToken && !giftWorkspaceOpen && !ledgerHubOpen"
       class="ledger-bottom-nav"
     >
-      <button class="text-button is-current" aria-current="page">流水</button>
-      <button class="text-button" @click="openAssistant">小簿</button>
-      <button class="text-button" @click="ledgerHubOpen = true">账本</button>
+      <button class="text-button is-current" aria-current="page">
+        <image aria-hidden="true" src="/static/assistant/orders.svg" /><text>流水</text>
+      </button>
+      <button class="text-button" @click="openAssistant">
+        <image aria-hidden="true" src="/static/assistant/mark.svg" /><text>小簿</text>
+      </button>
+      <button class="text-button" @click="ledgerHubOpen = true">
+        <image aria-hidden="true" src="/static/assistant/book.svg" /><text>账本</text>
+      </button>
     </view>
     <view v-if="ledgerHubOpen && ledgerId" class="overlay">
       <view class="sheet login-sheet" role="dialog" aria-label="账本管理" aria-modal="true">
@@ -1146,6 +1145,36 @@ const entryDateLabel = computed(() => {
         >
           {{ joined.inviterName }}的账本 · {{ joined.role === 'CAN_RECORD' ? '可记账' : '只读' }}
         </button>
+        <view v-if="!sharedLedger" class="book-menu">
+          <button
+            @click="
+              ledgerPickerOpen = false;
+              memberSheetOpen = true;
+            "
+          >
+            成员
+          </button>
+          <button
+            @click="
+              ledgerPickerOpen = false;
+              generateInviteLink();
+            "
+          >
+            邀请只读成员
+          </button>
+        </view>
+        <view v-if="session" class="book-menu">
+          <text>{{ session.displayName }}</text>
+          <button
+            :disabled="sessionBusy"
+            @click="
+              ledgerPickerOpen = false;
+              signOut();
+            "
+          >
+            退出登录
+          </button>
+        </view>
         <text v-if="inviteError" class="error" role="alert">{{ inviteError }}</text>
       </view>
     </view>

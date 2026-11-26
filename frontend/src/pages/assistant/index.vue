@@ -312,29 +312,19 @@ onUnload(hide);
 
 <template>
   <view class="chat">
-    <view class="bar"
-      ><button @click="back">‹ 返回</button
-      ><view class="heading"
+    <view class="bar">
+      <button aria-label="返回" @click="back"><image src="/static/assistant/back.svg" /></button>
+      <view class="heading"
         >小簿<text>{{ name }}</text></view
       >
-      <button :disabled="busy || denied" @click="histories()">历史</button
-      ><button :disabled="busy || denied" @click="fresh">新建</button></view
-    >
-    <scroll-view v-if="showHistory" class="thread" scroll-y>
-      <button @click="showHistory = false">返回对话</button
-      ><text v-if="!history.length">暂无历史对话</text>
-      <button
-        v-for="c in history"
-        :key="c.id"
-        class="row"
-        :disabled="busy"
-        @click="run((t) => loadChat(c, t))"
-      >
-        {{ c.title }}
+      <button aria-label="历史对话" :disabled="busy || denied" @click="histories()">
+        <image src="/static/assistant/history.svg" />
       </button>
-      <button v-if="moreHistory" :disabled="busy" @click="histories(true)">更多历史</button>
-    </scroll-view>
-    <scroll-view v-else-if="result" class="thread" scroll-y>
+      <button aria-label="新对话" :disabled="busy || denied" @click="fresh">
+        <image src="/static/assistant/new.svg" />
+      </button>
+    </view>
+    <scroll-view v-if="result" class="thread" scroll-y>
       <button @click="result = null">‹ 返回回答</button>
       <view class="card"
         >当前匹配 {{ result.totalCount }} 笔 · 净支出 ¥{{ formatCents(result.expenseCents) }}</view
@@ -364,94 +354,103 @@ onUnload(hide);
     </scroll-view>
     <scroll-view v-else class="thread" scroll-y :scroll-into-view="anchor">
       <button v-if="older" :disabled="busy" @click="previousTurns">更早的消息</button>
-      <view v-if="!turns.length && !denied" class="welcome"
-        ><text>今天想记点什么？</text>
-        <button :disabled="busy" @click="send('本月收支')">本月收支 ›</button
-        ><button :disabled="busy" @click="send('本月餐饮支出')">本月餐饮支出 ›</button
-        ><button v-if="writable" :disabled="busy" @click="send('昨天买菜')">
-          昨天买菜 ›
-        </button></view
-      >
+      <view v-if="!turns.length && !denied" class="welcome">
+        <view class="hero"><image src="/static/assistant/mark-light.svg" /></view>
+        <text class="welcome-title">今天想记点什么？</text>
+        <button
+          v-for="prompt in ['本月收支', '本月餐饮支出']"
+          :key="prompt"
+          :disabled="busy"
+          @click="send(prompt)"
+        >
+          <image src="/static/assistant/search.svg" />{{ prompt }}<text class="arrow">›</text>
+        </button>
+        <button v-if="writable" :disabled="busy" @click="send('昨天买菜')">
+          <image src="/static/ledger/vant/EDIT_DARK.svg" />昨天买菜<text class="arrow">›</text>
+        </button>
+      </view>
       <view v-for="m in turns" :key="m.sequence" :id="'msg-' + m.sequence" class="turn">
-        <text class="mine">{{ m.question }}</text><view class="card"
-          ><text>{{ m.answer.text }}</text>
-          <template v-if="m.answer.statement && m.answer.scope"
-            ><text class="caption"
-              >{{ m.answer.scope.plan.from }} 至 {{ m.answer.scope.plan.through }} ·
-              {{
-                [
-                  m.answer.scope.plan.category,
-                  m.answer.scope.plan.account,
-                  m.answer.scope.plan.recordedByMe ? '我登记的' : '',
-                  m.answer.scope.plan.direction === 'INCOME'
-                    ? '收入'
-                    : m.answer.scope.plan.direction === 'EXPENSE'
-                      ? '支出'
-                      : '',
-                  m.answer.scope.plan.keyword,
-                ]
-                  .filter(Boolean)
-                  .join(' · ') || '全部收支'
-              }}</text
-            >
-            <text
-              >收入 ¥{{ formatCents(m.answer.statement.incomeCents) }} · 净支出 ¥{{
-                formatCents(m.answer.statement.expenseCents)
-              }}</text
-            >
-            <text>结余 ¥{{ formatCents(m.answer.statement.balanceCents) }}</text>
-            <text
-              class="caption"
-              v-for="(entry, index) in m.answer.statement.entries.slice(0, 2)"
-              :key="entry.id"
-            >
-              第 {{ index + 1 }} 笔 · {{ entry.bookedOn }} ·
-              {{
-                entry.originalTransactionId
-                  ? '退款'
-                  : entry.direction === 'INCOME'
-                    ? '收入'
-                    : '支出'
-              }}
-              ¥{{ formatCents(entry.amountCents) }}
-            </text>
-            <button :disabled="busy" @click="entries(m.sequence)">
-              查看 {{ m.answer.statement.totalCount }} 笔来源 ›
-            </button>
+        <text class="mine">{{ m.question }}</text><view class="response"
+          ><image src="/static/assistant/mark.svg" /><view class="answer"
+            ><text>{{ m.answer.text }}</text>
+            <template v-if="m.answer.statement && m.answer.scope"
+              ><text class="caption"
+                >{{ m.answer.scope.plan.from }} 至 {{ m.answer.scope.plan.through }} ·
+                {{
+                  [
+                    m.answer.scope.plan.category,
+                    m.answer.scope.plan.account,
+                    m.answer.scope.plan.recordedByMe ? '我登记的' : '',
+                    m.answer.scope.plan.direction === 'INCOME'
+                      ? '收入'
+                      : m.answer.scope.plan.direction === 'EXPENSE'
+                        ? '支出'
+                        : '',
+                    m.answer.scope.plan.keyword,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || '全部收支'
+                }}</text
+              >
+              <text
+                >收入 ¥{{ formatCents(m.answer.statement.incomeCents) }} · 净支出 ¥{{
+                  formatCents(m.answer.statement.expenseCents)
+                }}</text
+              >
+              <text>结余 ¥{{ formatCents(m.answer.statement.balanceCents) }}</text>
+              <text
+                class="caption"
+                v-for="(entry, index) in m.answer.statement.entries.slice(0, 2)"
+                :key="entry.id"
+              >
+                第 {{ index + 1 }} 笔 · {{ entry.bookedOn }} ·
+                {{
+                  entry.originalTransactionId
+                    ? '退款'
+                    : entry.direction === 'INCOME'
+                      ? '收入'
+                      : '支出'
+                }}
+                ¥{{ formatCents(entry.amountCents) }}
+              </text>
+              <button :disabled="busy" @click="entries(m.sequence)">
+                查看 {{ m.answer.statement.totalCount }} 笔来源 ›
+              </button>
+              <button
+                :disabled="busy"
+                @click="
+                  reference = m.sequence;
+                  send('那上个月呢');
+                "
+              >
+                那上个月呢
+              </button>
+              <button
+                v-if="m.answer.statement.entries.length > 1"
+                :disabled="busy"
+                @click="
+                  reference = m.sequence;
+                  send('看第二笔');
+                "
+              >
+                看第二笔
+              </button>
+            </template>
             <button
+              v-for="choice in m.answer.choices"
+              :key="choice.label"
               :disabled="busy"
               @click="
                 reference = m.sequence;
-                send('那上个月呢');
+                send(choice.label);
               "
             >
-              那上个月呢
+              {{ choice.label }}
             </button>
-            <button
-              v-if="m.answer.statement.entries.length > 1"
-              :disabled="busy"
-              @click="
-                reference = m.sequence;
-                send('看第二笔');
-              "
-            >
-              看第二笔
-            </button>
-          </template>
-          <button
-            v-for="choice in m.answer.choices"
-            :key="choice.label"
-            :disabled="busy"
-            @click="
-              reference = m.sequence;
-              send(choice.label);
-            "
-          >
-            {{ choice.label }}
-          </button>
-          <button v-if="m.answer.sourceId" @click="source = m.answer.sourceId">
-            打开流水详情 ›
-          </button></view
+            <button v-if="m.answer.sourceId" @click="source = m.answer.sourceId">
+              打开流水详情 ›
+            </button></view
+          ></view
         ></view
       >
       <ExpenseDraftCard
@@ -470,7 +469,7 @@ onUnload(hide);
       <button v-else-if="uncertain" :disabled="busy" @click="recover">核对草稿状态</button>
     </scroll-view>
     <text v-if="error" class="error" role="alert">{{ error }}</text>
-    <view v-if="!showHistory && !result && !denied" class="composer"
+    <view v-if="!result && !denied" class="composer"
       ><text class="caption">自由提问会将问题和必要的查询条件发送给 DeepSeek。</text>
       <view
         ><input
@@ -478,12 +477,34 @@ onUnload(hide);
           maxlength="500"
           placeholder="问问这个账本"
           :disabled="busy"
-          @confirm="send(input)"
-        /><button :disabled="busy || !input.trim()" @click="send(input)">
-          {{ busy ? '查询中…' : '发送' }}
-        </button></view
-      ></view
-    >
+          @confirm="send(input)" /><button
+          :aria-label="busy ? '查询中' : '发送'"
+          :disabled="busy || !input.trim()"
+          @click="send(input)"
+        >
+          <image src="/static/assistant/send.svg" /></button></view
+    ></view>
+    <view v-if="showHistory" class="history-overlay" @click.self="showHistory = false">
+      <view class="history-sheet" role="dialog" aria-modal="true" aria-label="历史对话">
+        <view class="history-head"
+          ><text>历史对话</text
+          ><button aria-label="关闭历史对话" @click="showHistory = false">×</button></view
+        >
+        <scroll-view scroll-y class="history-list"
+          ><text v-if="!history.length">暂无历史对话</text>
+          <button
+            v-for="c in history"
+            :key="c.id"
+            class="row"
+            :disabled="busy"
+            @click="run((t) => loadChat(c, t))"
+          >
+            {{ c.title }}
+          </button>
+          <button v-if="moreHistory" :disabled="busy" @click="histories(true)">更多历史</button>
+        </scroll-view>
+      </view>
+    </view>
     <LedgerTransactionDetailSheet
       v-if="source"
       :key="source"
@@ -502,7 +523,9 @@ onUnload(hide);
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #f5f6f1;
+  max-width: 560px;
+  margin: auto;
+  background: #fafbf8;
   color: #233b32;
   font-family: inherit;
 }
@@ -515,11 +538,12 @@ onUnload(hide);
 .bar,
 .composer {
   background: #fff;
-  padding: 12px 16px;
+  padding: 8px 12px;
 }
 .bar {
   border-bottom: 1px solid #dde5dc;
-  padding-top: max(12px, env(safe-area-inset-top));
+  padding-top: calc(8px + env(safe-area-inset-top));
+  gap: 4px;
 }
 .heading {
   flex: 1;
@@ -548,31 +572,90 @@ button {
 button::after {
   border: 0;
 }
-.welcome,
 .turn,
 .row {
   margin: 18px 16px;
 }
-.welcome text {
-  font-size: 22px;
-  font-weight: 650;
+.bar button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 42px;
+}
+.bar image,
+.welcome button image {
+  width: 20px;
+  height: 20px;
+}
+.welcome {
+  max-width: 340px;
+  margin: calc(18px + clamp(32px, 11vh, 96px)) auto 24px;
+  padding: 0 16px;
+}
+.hero {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 19px;
+  background: #205d49;
+}
+.hero image {
+  width: 30px;
+  height: 30px;
+}
+.welcome-title {
+  display: block;
+  font-size: 25px;
+  font-weight: 700;
+  margin: 16px 0 24px;
 }
 .welcome button,
 .row {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   text-align: left;
-  background: #fff;
+  background: white;
+  border: 1px solid #dce6df;
   border-radius: 12px;
-  margin-top: 10px;
-  padding: 12px;
+  margin-top: 8px;
+  padding: 13px 14px;
+  color: inherit;
+  font-size: 15px;
+}
+.arrow {
+  margin-left: auto;
+  color: #63756a;
+}
+.response {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 16px;
+}
+.response image {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+}
+.answer {
+  min-width: 0;
+  flex: 1;
+  line-height: 1.6;
+  font-size: 15px;
 }
 .mine {
   display: block;
   margin-left: auto;
   width: fit-content;
-  background: #dbece0;
+  max-width: 88%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  background: #deeee3;
   padding: 10px 14px;
-  border-radius: 15px;
+  border-radius: 16px 16px 4px 16px;
   white-space: pre-wrap;
 }
 .card {
@@ -581,25 +664,81 @@ button::after {
   background: #fff;
   border-radius: 14px;
 }
+.answer text,
 .card text {
   white-space: pre-wrap;
   display: block;
   margin-bottom: 6px;
 }
 .composer {
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  background: transparent;
+  padding: 0 14px max(12px, env(safe-area-inset-bottom));
+}
+.composer .caption {
+  margin: 4px 2px;
+}
+.composer > view {
+  background: white;
+  height: 50px;
+  box-sizing: border-box;
+  padding: 2px 2px 2px 14px;
+  border: 1px solid #d6e0d9;
+  border-radius: 17px;
 }
 .composer input {
   flex: 1;
   min-width: 0;
-  background: #f4f6f3;
-  padding: 10px;
-  border-radius: 12px;
 }
 .composer button {
-  background: #27543e;
-  color: white;
-  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.composer button image {
+  width: 18px;
+  height: 18px;
+  padding: 7px;
+  background: #176a57;
+  border-radius: 11px;
+}
+.composer button[disabled] {
+  opacity: 0.4;
+  background: transparent;
+}
+.history-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.history-sheet {
+  background: white;
+  border-radius: 16px 16px 0 0;
+  width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
+  padding: 18px 18px max(18px, env(safe-area-inset-bottom));
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 18px;
+  font-weight: 700;
+}
+.history-head button {
+  font-size: 22px;
+}
+.history-list {
+  max-height: 60vh;
+}
+.history-list .row {
+  margin: 6px 0;
 }
 .error {
   color: #993b33;
