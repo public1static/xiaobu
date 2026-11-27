@@ -1,11 +1,14 @@
 package com.xiaobu.ledger.infrastructure;
 
+import com.xiaobu.ledger.application.FixedBillCandidatePageResult;
 import com.xiaobu.ledger.application.FixedBillPageResult;
 import com.xiaobu.ledger.application.FixedBillPeriodResult;
 import com.xiaobu.ledger.application.FixedBillRepository;
 import com.xiaobu.ledger.domain.FixedBill;
 import com.xiaobu.ledger.domain.FixedBillPayment;
+import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
@@ -39,6 +42,35 @@ class FixedBillPersistenceAdapter implements FixedBillRepository {
     return payments
         .findByBillIdAndPeriod(billId, month.atDay(1))
         .map(FixedBillPaymentEntity::toDomain);
+  }
+
+  @Override
+  public boolean hasPaymentForTransaction(String transactionId) {
+    return payments.existsByTransactionId(transactionId);
+  }
+
+  @Override
+  public FixedBillCandidatePageResult listCandidates(
+      FixedBill bill,
+      YearMonth month,
+      LocalDate today,
+      String keyword,
+      Long amountCents,
+      List<String> categoryCodes,
+      int page) {
+    var rows =
+        bills.listCandidates(
+            bill.ledgerId(),
+            today,
+            keyword,
+            amountCents,
+            categoryCodes,
+            month.atDay(1),
+            month.atEndOfMonth(),
+            bill.categoryCode(),
+            PageRequest.of(page, PAGE_SIZE));
+    return new FixedBillCandidatePageResult(
+        rows.getContent(), rows.getTotalElements(), page, PAGE_SIZE);
   }
 
   @Override

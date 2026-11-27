@@ -3,10 +3,12 @@ package com.xiaobu.ledger.interfaces;
 import com.aegisid.foundation.web.api.ApiResponse;
 import com.xiaobu.identity.interfaces.LedgerSessionContext;
 import com.xiaobu.ledger.application.FixedBillApplicationService;
+import com.xiaobu.ledger.application.ListFixedBillCandidatesQuery;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import java.time.YearMonth;
 import org.springframework.context.annotation.Profile;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -65,5 +67,35 @@ class FixedBillController {
     return ApiResponse.success(
         mapper.toResponse(
             bills.payFixedBill(mapper.toCommand(ledgerId, actor.actorId(), billId, month, body))));
+  }
+
+  @GetMapping("/{billId}/periods/{month}/payment-candidates")
+  public ApiResponse<FixedBillCandidatePageResponse> listFixedBillCandidates(
+      @PathVariable String ledgerId,
+      @PathVariable String billId,
+      @PathVariable @DateTimeFormat(pattern = "uuuu-MM") YearMonth month,
+      @RequestParam(defaultValue = "") @Size(max = 100) String keyword,
+      @RequestParam(defaultValue = "0") @Min(0) @Max(1_000_000) int page,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            bills.listFixedBillCandidates(
+                new ListFixedBillCandidatesQuery(
+                    ledgerId, actor.actorId(), billId, month, keyword, page))));
+  }
+
+  @PostMapping("/{billId}/periods/{month}/payment-link")
+  public ApiResponse<FixedBillPeriodResponse> linkFixedBillPayment(
+      @PathVariable String ledgerId,
+      @PathVariable String billId,
+      @PathVariable @DateTimeFormat(pattern = "uuuu-MM") YearMonth month,
+      @Valid @RequestBody LinkFixedBillPaymentRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            bills.linkFixedBillPayment(
+                mapper.toCommand(ledgerId, actor.actorId(), billId, month, body))));
   }
 }

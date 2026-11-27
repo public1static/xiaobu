@@ -55,3 +55,49 @@ export function payFixedBill(
     payment,
   );
 }
+
+export interface FixedBillCandidate {
+  id: string;
+  version: number;
+  bookedOn: string;
+  amountCents: number;
+  note: string;
+  categoryCode: string;
+  accountName?: string | null;
+}
+
+interface FixedBillCandidatePage {
+  entries: FixedBillCandidate[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+const periodPath = (ledgerId: string, billId: string, month: string) =>
+  path(ledgerId) + '/' + encodeURIComponent(billId) + '/periods/' + month;
+
+export function listFixedBillCandidates(
+  ledgerId: string,
+  billId: string,
+  month: string,
+  keyword: string,
+  page: number,
+) {
+  return request<FixedBillCandidatePage>(
+    periodPath(ledgerId, billId, month) + '/payment-candidates',
+    'GET',
+    { keyword, page },
+  );
+}
+
+export function linkFixedBillPayment(
+  ledgerId: string,
+  billId: string,
+  month: string,
+  candidate: FixedBillCandidate,
+) {
+  return request<FixedBillPeriod>(periodPath(ledgerId, billId, month) + '/payment-link', 'POST', {
+    transactionId: candidate.id,
+    version: candidate.version,
+  });
+}
