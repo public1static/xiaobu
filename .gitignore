@@ -1,6 +1,7 @@
 # Local system and IDE files
 .DS_Store
 .idea/
+/.openidea/
 *.iml
 *.log
 
