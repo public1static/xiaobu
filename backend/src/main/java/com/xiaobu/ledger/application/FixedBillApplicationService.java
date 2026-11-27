@@ -6,7 +6,6 @@ import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.FixedBill;
-import com.xiaobu.ledger.domain.FixedBillPayment;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -24,9 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Profile("local-expense | wechat-preview")
 public class FixedBillApplicationService {
   private static final IdPrefix BILL_PREFIX = new IdPrefix("bill");
-  private static final IdPrefix PAYMENT_PREFIX = new IdPrefix("bpmt");
   private static final ZoneId LEDGER_ZONE = ZoneId.of("Asia/Shanghai");
   private final FixedBillRepository bills;
+  private final FixedBillPaymentLifecycle paymentLifecycle;
   private final PersonalLedgerApplicationService ledgers;
   private final LedgerAccountApplicationService accounts;
   private final LedgerCategoryApplicationService categories;
@@ -37,6 +36,7 @@ public class FixedBillApplicationService {
 
   FixedBillApplicationService(
       FixedBillRepository bills,
+      FixedBillPaymentLifecycle paymentLifecycle,
       PersonalLedgerApplicationService ledgers,
       LedgerAccountApplicationService accounts,
       LedgerCategoryApplicationService categories,
@@ -45,6 +45,7 @@ public class FixedBillApplicationService {
       EntityIdGenerator ids,
       TransactionExtensionRegistry extensions) {
     this.bills = bills;
+    this.paymentLifecycle = paymentLifecycle;
     this.ledgers = ledgers;
     this.accounts = accounts;
     this.categories = categories;
@@ -189,14 +190,8 @@ public class FixedBillApplicationService {
       long amountCents,
       String actorId) {
     var payment =
-        new FixedBillPayment(
-            ids.next(PAYMENT_PREFIX),
-            bill.id(),
-            month.atDay(1),
-            transactionId,
-            paidOn,
-            amountCents);
-    bills.addPayment(payment, actorId);
+        paymentLifecycle.recordPayment(
+            bill.id(), month, transactionId, paidOn, amountCents, actorId);
     return FixedBillPeriodResult.from(bill, month, payment);
   }
 

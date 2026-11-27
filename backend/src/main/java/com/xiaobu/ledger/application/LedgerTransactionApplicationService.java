@@ -35,6 +35,7 @@ public class LedgerTransactionApplicationService {
   private final LedgerAccountApplicationService accounts;
   private final LedgerCategoryApplicationService categories;
   private final TransactionExtensionRegistry extensions;
+  private final FixedBillPaymentLifecycle fixedBillPayments;
 
   public LedgerTransactionApplicationService(
       LedgerTransactionRepository repository,
@@ -44,7 +45,8 @@ public class LedgerTransactionApplicationService {
       PersonalLedgerApplicationService ledgers,
       LedgerAccountApplicationService accounts,
       LedgerCategoryApplicationService categories,
-      TransactionExtensionRegistry extensions) {
+      TransactionExtensionRegistry extensions,
+      FixedBillPaymentLifecycle fixedBillPayments) {
     this.repository = repository;
     this.statements = statements;
     this.refunds = refunds;
@@ -53,6 +55,7 @@ public class LedgerTransactionApplicationService {
     this.accounts = accounts;
     this.categories = categories;
     this.extensions = extensions;
+    this.fixedBillPayments = fixedBillPayments;
   }
 
   @Transactional
@@ -215,14 +218,22 @@ public class LedgerTransactionApplicationService {
 
   private void changeLedgerTransactionDeletion(
       ChangeLedgerTransactionStateCommand command, boolean deleted) {
-    requireEditable(
-        command.ledgerId(),
-        command.actorId(),
-        command.transactionId(),
-        command.expectedVersion(),
-        !deleted);
+    var entry =
+        requireEditable(
+            command.ledgerId(),
+            command.actorId(),
+            command.transactionId(),
+            command.expectedVersion(),
+            !deleted);
     repository.changeDeletion(
         command.ledgerId(), command.transactionId(), command.actorId(), deleted);
+    if (entry.details().direction() != TransactionDirection.EXPENSE) return;
+    // Same ledger lock/transaction: the source state and bill status cannot diverge.
+    if (deleted) {
+      fixedBillPayments.suspendForDeletedSource(command.ledgerId(), entry.id(), command.actorId());
+    } else {
+      fixedBillPayments.reconcileRestoredSource(command.ledgerId(), entry.id(), command.actorId());
+    }
   }
 
   private LedgerTransaction requireEditable(

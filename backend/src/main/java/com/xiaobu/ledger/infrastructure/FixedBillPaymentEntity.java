@@ -43,6 +43,9 @@ public class FixedBillPaymentEntity extends AuditableEntity implements Persistab
   @Column(nullable = false)
   private boolean deleted;
 
+  @Column(name = "awaiting_source_restore", nullable = false)
+  private boolean awaitingSourceRestore;
+
   @Transient private boolean newEntity = true;
 
   protected FixedBillPaymentEntity() {}
@@ -64,6 +67,16 @@ public class FixedBillPaymentEntity extends AuditableEntity implements Persistab
 
   void markUnlinked(String actorId) {
     deleted = true;
+    updatedBy = actorId;
+  }
+
+  void suspendForSourceRestore(String actorId) {
+    markUnlinked(actorId);
+    awaitingSourceRestore = true;
+  }
+
+  void finishSourceRestore(String actorId) {
+    awaitingSourceRestore = false;
     updatedBy = actorId;
   }
 

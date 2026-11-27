@@ -17,6 +17,15 @@ public interface FixedBillRepository {
   Optional<FixedBillPaymentReferenceResult> findPaymentReference(
       String ledgerId, String transactionId);
 
+  Optional<FixedBillPayment> findActivePaymentForTransaction(String ledgerId, String transactionId);
+
+  Optional<FixedBillPayment> findSuspendedPaymentForTransaction(
+      String ledgerId, String transactionId);
+
+  void suspendPayment(String paymentId, String actorId);
+
+  void finishSourceRestore(String paymentId, String actorId);
+
   void unlinkPayment(String paymentId, String actorId);
 
   boolean hasPaymentForTransaction(String transactionId);

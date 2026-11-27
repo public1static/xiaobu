@@ -351,4 +351,88 @@ class FixedBillPersistenceMySqlTest {
         jdbc.queryForObject(
             "select count(*) from ledger_transactions where ledger_id = ?", Integer.class, ledger));
   }
+
+  @Test
+  void deletingPaymentSourceReopensPeriodAndRestoringNeverDisplacesReplacement() {
+    String actor = "bill-" + UUID.randomUUID();
+    String ledger = "book_" + UUID.randomUUID();
+    jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", ledger, actor);
+    var month = YearMonth.of(2025, 2);
+    var date = month.atDay(20);
+    var bill =
+        bills.createFixedBill(
+            new CreateFixedBillCommand(
+                ledger, actor, "家庭宽带", month.atEndOfMonth(), 9900, "DAILY", null));
+    var original =
+        transactions.recordLedgerTransaction(
+            new RecordLedgerTransactionCommand(
+                ledger, actor, TransactionDirection.EXPENSE, 9700, date, "DAILY", "原付款", null));
+    bills.linkFixedBillPayment(
+        new LinkFixedBillPaymentCommand(ledger, actor, bill.billId(), month, original.id(), 0));
+    var reference = bills.findFixedBillPaymentReference(ledger, actor, original.id()).orElseThrow();
+
+    transactions.deleteLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledger, actor, original.id(), 0));
+    assertEquals(1, bills.listFixedBillPeriods(ledger, actor, month, false, 0).totalCount());
+    assertEquals(0, bills.listFixedBillPeriods(ledger, actor, month, true, 0).totalCount());
+    assertEquals(
+        0,
+        bills
+            .listFixedBillCandidates(
+                new ListFixedBillCandidatesQuery(ledger, actor, bill.billId(), month, "", 0))
+            .totalCount());
+
+    transactions.restoreLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledger, actor, original.id(), 1));
+    assertEquals(1, bills.listFixedBillPeriods(ledger, actor, month, true, 0).totalCount());
+    var restored = bills.findFixedBillPaymentReference(ledger, actor, original.id()).orElseThrow();
+    assertNotEquals(reference.paymentId(), restored.paymentId());
+    assertThrows(
+        FoundationException.class,
+        () ->
+            bills.unlinkFixedBillPayment(
+                new UnlinkFixedBillPaymentCommand(
+                    ledger, actor, original.id(), reference.paymentId())));
+
+    transactions.deleteLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledger, actor, original.id(), 2));
+    var replacement =
+        bills.payFixedBill(
+            new PayFixedBillCommand(ledger, actor, bill.billId(), month, date, 9800, null));
+    assertNotEquals(original.id(), replacement.transactionId());
+    transactions.restoreLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledger, actor, original.id(), 3));
+    assertEquals(
+        replacement,
+        bills.listFixedBillPeriods(ledger, actor, month, true, 0).entries().getFirst());
+    assertEquals(true, bills.findFixedBillPaymentReference(ledger, actor, original.id()).isEmpty());
+    assertEquals(
+        9700,
+        transactions
+            .getLedgerTransaction(ledger, actor, original.id())
+            .transaction()
+            .amountCents());
+
+    // Clearing a former relation ends the restore attempt. A later delete/restore must not revive
+    // it.
+    var replacementReference =
+        bills
+            .findFixedBillPaymentReference(ledger, actor, replacement.transactionId())
+            .orElseThrow();
+    bills.unlinkFixedBillPayment(
+        new UnlinkFixedBillPaymentCommand(
+            ledger, actor, replacement.transactionId(), replacementReference.paymentId()));
+    transactions.deleteLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledger, actor, original.id(), 4));
+    transactions.restoreLedgerTransaction(
+        new ChangeLedgerTransactionStateCommand(ledger, actor, original.id(), 5));
+    assertEquals(1, bills.listFixedBillPeriods(ledger, actor, month, false, 0).totalCount());
+    assertEquals(
+        0,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM fixed_bill_payments WHERE bill_id = ? AND awaiting_source_restore"
+                + " = 1",
+            Integer.class,
+            bill.billId()));
+  }
 }
