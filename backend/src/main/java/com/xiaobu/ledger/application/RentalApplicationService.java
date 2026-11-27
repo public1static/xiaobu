@@ -67,8 +67,11 @@ public class RentalApplicationService {
     if (rentals.existsOtherHomeWithName(home.ledgerId(), home.id(), home.name())) {
       throw new FoundationException(new ErrorCode("XIAOBU_RENTAL_HOME_DUPLICATE"), "已有同名房屋");
     }
-    if (command.homeId() == null) rentals.addHome(home, command.actorId());
-    else rentals.updateHome(home, command.actorId());
+    if (command.homeId() == null) {
+      rentals.addHome(home, command.actorId());
+    } else {
+      rentals.updateHome(home, command.actorId());
+    }
     return RentalHomeResult.from(home, rentals.countHomeContracts(home.ledgerId(), home.id()));
   }
 
@@ -76,7 +79,9 @@ public class RentalApplicationService {
   public RentalPageResult<RentalContractResult> listRentalContracts(
       String ledgerId, String actorId, String homeId, int page) {
     ledgers.requireReadAccess(ledgerId, actorId);
-    if (homeId != null) requireHome(ledgerId, homeId);
+    if (homeId != null) {
+      requireHome(ledgerId, homeId);
+    }
     return rentals.listContracts(ledgerId, homeId, page);
   }
 
@@ -251,7 +256,9 @@ public class RentalApplicationService {
             .findContract(command.ledgerId(), command.contractId())
             .orElseThrow(() -> planConflict("找不到该合同"));
     if (existing.billId() != null) {
-      if (!existing.billId().equals(command.billId())) throw planConflict("该合同已设置房租账单");
+      if (!existing.billId().equals(command.billId())) {
+        throw planConflict("该合同已设置房租账单");
+      }
       return rentals.findContractDetails(existing.ledgerId(), existing.id()).orElseThrow();
     }
     var contract = existing.withBill(command.billId());
@@ -271,9 +278,13 @@ public class RentalApplicationService {
                     && LedgerCategoryDefaults.HOUSING.name().equals(row.categoryCode())
                     && row.cycleMonths() == contract.cycle().months())
             .orElseThrow(() -> planConflict("请选择同周期且仍在使用的住房账单"));
-    if (rentals.hasContractForBill(bill.id())) throw planConflict("该账单已关联其它合同");
+    if (rentals.hasContractForBill(bill.id())) {
+      throw planConflict("该账单已关联其它合同");
+    }
     var firstDueOn = bill.firstDueOnOrAfter(contract.startsOn());
-    if (firstDueOn.isAfter(contract.endsOn())) throw planConflict("账单与租期没有重叠");
+    if (firstDueOn.isAfter(contract.endsOn())) {
+      throw planConflict("账单与租期没有重叠");
+    }
     categories.requireActiveCategory(
         contract.ledgerId(), TransactionDirection.EXPENSE, bill.categoryCode());
     var adopted =

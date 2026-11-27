@@ -30,8 +30,9 @@ public class LedgerManualReminderApplicationService {
       String ledgerId, String actorId, String reminderId, Long revision) {
     ledgers.requireReadAccess(ledgerId, actorId);
     var current = findOwnedReminder(ledgerId, actorId, reminderId);
-    if (revision == null || revision == current.revision())
+    if (revision == null || revision == current.revision()) {
       return new LedgerManualReminderResult(current, false);
+    }
     var occurrence =
         reminders.findCompletedOccurrence(reminderId, revision).orElseThrow(this::notFound);
     return new LedgerManualReminderResult(occurrence, canUndo(current, revision));
@@ -58,11 +59,13 @@ public class LedgerManualReminderApplicationService {
             command.time(),
             command.leadDays(),
             command.frequency());
-    if (command.reminderId() == null)
+    if (command.reminderId() == null) {
       return reminders.createReminder(command.ledgerId(), command.actorId(), replacement);
+    }
     var current = findOwnedReminder(command.ledgerId(), command.actorId(), command.reminderId());
-    if (command.revision() == null || command.revision() != current.revision() || !current.open())
+    if (command.revision() == null || command.revision() != current.revision() || !current.open()) {
       throw changed();
+    }
     return reminders.updateReminder(
         command.ledgerId(), command.actorId(), current.revise(replacement));
   }
@@ -73,11 +76,15 @@ public class LedgerManualReminderApplicationService {
     ledgers.requireWriteAccess(ledgerId, actorId);
     var current = findOwnedReminder(ledgerId, actorId, reminderId);
     if (completed) {
-      if (!current.open() || current.revision() != revision) throw changed();
+      if (!current.open() || current.revision() != revision) {
+        throw changed();
+      }
       reminders.recordCompletedOccurrence(current, actorId);
       return reminders.updateReminder(ledgerId, actorId, current.advance());
     }
-    if (!canUndo(current, revision)) throw changed();
+    if (!canUndo(current, revision)) {
+      throw changed();
+    }
     var occurrence =
         reminders.findCompletedOccurrence(reminderId, revision).orElseThrow(this::changed);
     reminders.revertCompletedOccurrence(reminderId, revision, actorId);
@@ -91,7 +98,9 @@ public class LedgerManualReminderApplicationService {
     var current = findOwnedReminder(ledgerId, actorId, reminderId);
     if (!current.open()
         || current.revision() != revision
-        || current.frequency() == ManualReminderFrequency.ONCE) throw changed();
+        || current.frequency() == ManualReminderFrequency.ONCE) {
+      throw changed();
+    }
     return reminders.updateReminder(ledgerId, actorId, current.stop());
   }
 

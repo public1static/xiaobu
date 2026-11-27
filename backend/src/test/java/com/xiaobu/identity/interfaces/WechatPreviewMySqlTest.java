@@ -142,7 +142,8 @@ class WechatPreviewMySqlTest {
     String drafts = "/ledgers/" + book + "/assistant/conversations/" + chat + "/drafts";
     String fields =
         """
-        {"question":"昨天买菜","revision":2,"fields":{"bookedOn":"2026-10-30","categoryCode":"GROCERIES","amountCents":null}}
+        {"question":"昨天买菜","revision":2,
+         "fields":{"bookedOn":"2026-10-30","categoryCode":"GROCERIES","amountCents":null}}
         """;
     assertEquals(403, send("PUT", drafts, fields, writer).statusCode());
     assertEquals(204, send("PUT", role, "{\"role\":\"CAN_RECORD\"}", owner).statusCode());
@@ -229,7 +230,9 @@ class WechatPreviewMySqlTest {
     }
     String gift =
         """
-        {"direction":"INCOME","amountCents":7500,"bookedOn":"2026-10-06","categoryCode":"GIFT_RECEIVED","note":"礼金夹具","extensions":[{"type":"GIFT","operation":"UPSERT","detail":{"personName":"小陈","reason":"婚礼"}}]}
+        {"direction":"INCOME","amountCents":7500,"bookedOn":"2026-10-06",
+         "categoryCode":"GIFT_RECEIVED","note":"礼金夹具",
+         "extensions":[{"type":"GIFT","operation":"UPSERT","detail":{"personName":"小陈","reason":"婚礼"}}]}
         """;
     var saved = send("POST", root + "/transactions", gift, owner);
     assertEquals(200, saved.statusCode(), saved.body());
@@ -283,8 +286,9 @@ class WechatPreviewMySqlTest {
     }
     var recent = data(send("GET", messages, null, reader));
     assertEquals(20, recent.size());
-    for (int index = 0; index < 20; index++)
+    for (int index = 0; index < 20; index++) {
       assertEquals(index + 3, recent.get(index).get("sequence").asInt());
+    }
     var older = data(send("GET", messages + "?before=3", null, reader));
     assertEquals(2, older.size());
     assertEquals(1, older.get(0).get("sequence").asInt());
@@ -348,8 +352,12 @@ class WechatPreviewMySqlTest {
   private HttpResponse<String> send(String method, String path, String body, String token)
       throws Exception {
     var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1" + path));
-    if (token != null) request.header("Authorization", "Bearer " + token);
-    if (body != null) request.header("Content-Type", "application/json");
+    if (token != null) {
+      request.header("Authorization", "Bearer " + token);
+    }
+    if (body != null) {
+      request.header("Content-Type", "application/json");
+    }
     request.method(
         method,
         body == null

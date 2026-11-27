@@ -7,8 +7,8 @@ import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.RentalDeposit;
 import com.xiaobu.ledger.domain.RentalDepositTimeline;
+import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.context.annotation.Profile;
@@ -18,8 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Profile("local-expense | wechat-preview")
 public class RentalDepositApplicationService {
-  private static final ZoneId LEDGER_ZONE = ZoneId.of("Asia/Shanghai");
   private static final IdPrefix DEPOSIT_PREFIX = new IdPrefix("deposit");
+  // 按账本业务时区确定当前日期。
+  private final Clock clock;
   private final PersonalLedgerApplicationService ledgers;
   private final LedgerAccountApplicationService accounts;
   private final RentalRepository rentals;
@@ -31,7 +32,9 @@ public class RentalDepositApplicationService {
       LedgerAccountApplicationService accounts,
       RentalRepository rentals,
       RentalDepositRepository deposits,
-      EntityIdGenerator ids) {
+      EntityIdGenerator ids,
+      Clock clock) {
+    this.clock = clock;
     this.ledgers = ledgers;
     this.accounts = accounts;
     this.rentals = rentals;
@@ -120,7 +123,7 @@ public class RentalDepositApplicationService {
   }
 
   private void requireValidTimeline(RentalDeposit deposit, String excludedId) {
-    if (deposit.bookedOn().isAfter(LocalDate.now(LEDGER_ZONE))) {
+    if (deposit.bookedOn().isAfter(LocalDate.now(clock))) {
       throw new FoundationException(new ErrorCode("XIAOBU_RENTAL_DEPOSIT_DATE"), "押金日期不能晚于今天");
     }
     var days = deposits.summarizeDailyChanges(deposit.ledgerId(), deposit.contractId(), excludedId);

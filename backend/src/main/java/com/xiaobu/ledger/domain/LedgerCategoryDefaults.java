@@ -47,7 +47,9 @@ public enum LedgerCategoryDefaults {
   }
 
   public static boolean matchesDefault(String code, TransactionDirection direction) {
-    if (code == null) return false;
+    if (code == null) {
+      return false;
+    }
     try {
       return valueOf(code).direction == direction;
     } catch (IllegalArgumentException ex) {

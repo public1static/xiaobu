@@ -41,13 +41,19 @@ public class LedgerContactApplicationService {
   public GiftContactResult resolveRentalContact(
       String ledgerId, String actorId, String contactId, String name, String distinction) {
     ledgers.requireWriteAccess(ledgerId, actorId);
-    if (contactId != null) return GiftContactResult.from(requireContact(ledgerId, contactId));
+    if (contactId != null) {
+      return GiftContactResult.from(requireContact(ledgerId, contactId));
+    }
     name = clean(name, true);
     distinction = clean(distinction, false);
     var matches = contacts.findContactsByName(ledgerId, name);
     if (distinction.isEmpty()) {
-      if (matches.size() > 1) throw contactConflict("有多位同名联系人，请重新选择");
-      if (matches.size() == 1) return GiftContactResult.from(matches.getFirst());
+      if (matches.size() > 1) {
+        throw contactConflict("有多位同名联系人，请重新选择");
+      }
+      if (matches.size() == 1) {
+        return GiftContactResult.from(matches.getFirst());
+      }
     }
     rejectDuplicateDistinction(matches, distinction);
     return GiftContactResult.from(addContact(ledgerId, actorId, name, distinction, false));
@@ -56,7 +62,9 @@ public class LedgerContactApplicationService {
   // Called within the gift transaction. Promotion rolls back if the gift itself fails.
   GiftContact selectGiftContact(String ledgerId, String actorId, String contactId) {
     var contact = requireContact(ledgerId, contactId);
-    if (!contact.giftMember()) contacts.markGiftMember(ledgerId, contact.id(), actorId);
+    if (!contact.giftMember()) {
+      contacts.markGiftMember(ledgerId, contact.id(), actorId);
+    }
     return contact;
   }
 

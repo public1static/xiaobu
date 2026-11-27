@@ -15,6 +15,8 @@ import com.xiaobu.ledger.application.RentalContractResult;
 import com.xiaobu.ledger.application.RentalExpiryReminderApplicationService;
 import com.xiaobu.ledger.application.SaveRentalHomeCommand;
 import com.xiaobu.ledger.domain.RentalPaymentCycle;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.UUID;
@@ -24,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.convention.TestBean;
 
 @EnabledIfEnvironmentVariable(
     named = "XIAOBU_DEV_DB_URL",
@@ -33,6 +36,14 @@ import org.springframework.test.context.ActiveProfiles;
     webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("local-expense")
 class RentalExpiryReminderPersistenceMySqlTest {
+  // 将提醒日固定在上海时区的月初零点。
+  @TestBean private Clock ledgerClock;
+
+  // 同一时刻的 UTC 日期仍在上个月，用于验证业务日边界。
+  static Clock ledgerClock() {
+    return Clock.fixed(Instant.parse("2026-03-31T16:00:00Z"), ZoneId.of("Asia/Shanghai"));
+  }
+
   @Autowired private JdbcTemplate jdbc;
   @Autowired private RentalExpiryReminderApplicationService reminders;
   @Autowired private RentalApplicationService rentals;
@@ -41,7 +52,7 @@ class RentalExpiryReminderPersistenceMySqlTest {
   void prioritizesDueItemsAndBindsCompletionToTheActualExpiryDate() {
     var f = fixture();
     var other = fixture();
-    var today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+    var today = LocalDate.now(ledgerClock);
     var planned = create(f, "短提前", today.plusDays(8), 7);
     var due = create(f, "提醒日边界", today.plusDays(15), 15);
     var disabled = create(f, "关闭提前", today, 0);
@@ -111,7 +122,7 @@ class RentalExpiryReminderPersistenceMySqlTest {
   @Test
   void paginatesPlannedAndPendingTogetherWithoutChangingTheBellCount() {
     var f = fixture();
-    var today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+    var today = LocalDate.now(ledgerClock);
     for (int i = 0; i < 21; i++) {
       create(f, "合同 " + i, today.plusDays(i), 7);
     }

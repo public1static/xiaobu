@@ -92,7 +92,9 @@ public class LedgerAccountApplicationService {
   }
 
   String findAccountName(String ledgerId, String accountId) {
-    if (accountId == null) return null;
+    if (accountId == null) {
+      return null;
+    }
     return accounts.findByLedgerAndId(ledgerId, accountId).map(LedgerAccount::name).orElse(null);
   }
 
@@ -146,7 +148,8 @@ public class LedgerAccountApplicationService {
 
   // 将账户编号限定在当前账本内。
   private void requireExistingAccount(String ledgerId, String accountId) {
-    if (!accounts.existsByLedgerAndId(ledgerId, accountId))
+    if (!accounts.existsByLedgerAndId(ledgerId, accountId)) {
       throw new FoundationException(ACCOUNT_UNAVAILABLE, "账户不存在");
+    }
   }
 }

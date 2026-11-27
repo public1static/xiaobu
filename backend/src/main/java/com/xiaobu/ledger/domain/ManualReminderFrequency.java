@@ -22,8 +22,12 @@ public enum ManualReminderFrequency {
   }
 
   LocalDate nextDueOn(LocalDate anchor, LocalDate dueOn) {
-    if (this == ONCE) return dueOn;
-    if (days > 0) return dueOn.plusDays(days);
+    if (this == ONCE) {
+      return dueOn;
+    }
+    if (days > 0) {
+      return dueOn.plusDays(days);
+    }
     var nextMonth = YearMonth.from(dueOn).plusMonths(months);
     return nextMonth.atDay(Math.min(anchor.getDayOfMonth(), nextMonth.lengthOfMonth()));
   }

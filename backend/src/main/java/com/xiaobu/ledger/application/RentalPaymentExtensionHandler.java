@@ -7,9 +7,9 @@ import com.xiaobu.ledger.domain.FixedBill;
 import com.xiaobu.ledger.domain.FixedBillPayment;
 import com.xiaobu.ledger.domain.LedgerCategoryDefaults;
 import com.xiaobu.ledger.domain.TransactionDirection;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.context.annotation.Profile;
@@ -18,12 +18,15 @@ import org.springframework.stereotype.Component;
 @Component
 @Profile("local-expense | wechat-preview")
 class RentalPaymentExtensionHandler implements TransactionExtensionHandler<RentalPaymentDraft> {
-  private static final ZoneId LEDGER_ZONE = ZoneId.of("Asia/Shanghai");
   private static final String TYPE = "RENTAL_PAYMENT";
+  // 按账本业务时区确定当前日期。
+  private final Clock clock;
   private final FixedBillRepository bills;
   private final FixedBillPaymentLifecycle lifecycle;
 
-  RentalPaymentExtensionHandler(FixedBillRepository bills, FixedBillPaymentLifecycle lifecycle) {
+  RentalPaymentExtensionHandler(
+      FixedBillRepository bills, FixedBillPaymentLifecycle lifecycle, Clock clock) {
+    this.clock = clock;
     this.bills = bills;
     this.lifecycle = lifecycle;
   }
@@ -49,14 +52,17 @@ class RentalPaymentExtensionHandler implements TransactionExtensionHandler<Renta
 
   @Override
   public Optional<RentalPaymentDetail> read(TransactionExtensionContext context) {
-    if (capability(context.direction(), context.categoryCode()).isEmpty()) return Optional.empty();
+    if (capability(context.direction(), context.categoryCode()).isEmpty()) {
+      return Optional.empty();
+    }
     return readRentalPayment(context);
   }
 
   @Override
   public Optional<RentalPaymentDetail> readForMutation(TransactionExtensionContext context) {
-    if (!LedgerCategoryDefaults.HOUSING.name().equals(context.originalCategoryCode()))
+    if (!LedgerCategoryDefaults.HOUSING.name().equals(context.originalCategoryCode())) {
       return Optional.empty();
+    }
     return readRentalPayment(context);
   }
 
@@ -97,7 +103,9 @@ class RentalPaymentExtensionHandler implements TransactionExtensionHandler<Renta
     if (bills.findPayment(bill.id(), draft.month()).isPresent()) {
       throw conflict("该房租账期已付，请重新选择");
     }
-    if (current != null) bills.unlinkPayment(current.id(), context.actorId());
+    if (current != null) {
+      bills.unlinkPayment(current.id(), context.actorId());
+    }
     lifecycle.recordPayment(
         bill.id(),
         draft.month(),
@@ -136,8 +144,8 @@ class RentalPaymentExtensionHandler implements TransactionExtensionHandler<Renta
     }
   }
 
-  private static void requireValidDate(TransactionExtensionContext context) {
-    if (context.bookedOn().isAfter(LocalDate.now(LEDGER_ZONE))) {
+  private void requireValidDate(TransactionExtensionContext context) {
+    if (context.bookedOn().isAfter(LocalDate.now(clock))) {
       throw new FoundationException(new ErrorCode("XIAOBU_RENTAL_PAYMENT_DATE"), "付款日期不能晚于今天");
     }
   }

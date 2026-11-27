@@ -36,8 +36,9 @@ class GiftDirectoryPersistenceAdapter implements GiftDirectoryRepository {
   @Override
   public void saveReasons(String ledgerId, List<String> names) {
     reasons.clearDirectory(ledgerId);
-    for (int i = 0; i < names.size(); i++)
+    for (int i = 0; i < names.size(); i++) {
       reasons.save(new GiftReasonEntity(ledgerId, names.get(i), i));
+    }
   }
 
   @Override

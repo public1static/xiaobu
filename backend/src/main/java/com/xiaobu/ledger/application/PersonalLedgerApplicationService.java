@@ -66,7 +66,9 @@ public class PersonalLedgerApplicationService {
 
   public void requireWriteAccess(String ledgerId, String actorId) {
     lockLedger(ledgerId);
-    if (ledgers.existsByIdAndOwnerId(ledgerId, actorId)) return;
+    if (ledgers.existsByIdAndOwnerId(ledgerId, actorId)) {
+      return;
+    }
     var member =
         memberships
             .findByLedgerAndMember(ledgerId, actorId)

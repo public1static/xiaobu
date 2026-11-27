@@ -447,7 +447,9 @@ class FixedBillPersistenceMySqlTest {
     var today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
     // Choose a definitely non-leap upcoming year so February is always a short month.
     int year = today.getYear() + 1;
-    if (java.time.Year.isLeap(year)) year++;
+    if (java.time.Year.isLeap(year)) {
+      year++;
+    }
     var jan = YearMonth.of(year, 1);
     var feb = jan.plusMonths(1);
     var mar = jan.plusMonths(2);

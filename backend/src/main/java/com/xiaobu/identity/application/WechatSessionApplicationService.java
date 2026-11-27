@@ -69,7 +69,9 @@ public class WechatSessionApplicationService {
   }
 
   private static Optional<String> bearerToken(String authorization) {
-    if (authorization == null || !authorization.startsWith("Bearer ")) return Optional.empty();
+    if (authorization == null || !authorization.startsWith("Bearer ")) {
+      return Optional.empty();
+    }
     String token = authorization.substring(7);
     return TOKEN_FORMAT.matcher(token).matches() ? Optional.of(token) : Optional.empty();
   }

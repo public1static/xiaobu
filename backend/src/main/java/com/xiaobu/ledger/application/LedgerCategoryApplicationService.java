@@ -148,7 +148,9 @@ public class LedgerCategoryApplicationService {
     var rows = new HashMap<String, LedgerCategory>();
     categories.findByLedger(ledgerId).forEach(row -> rows.put(row.code(), row));
     for (var row : LedgerCategoryDefaults.forLedger(ledgerId)) {
-      if (rows.containsKey(row.code())) continue;
+      if (rows.containsKey(row.code())) {
+        continue;
+      }
       String name = row.name();
       for (int suffix = 1; nameTaken(rows, row.direction(), name); suffix++) {
         name = row.name() + (suffix == 1 ? "（系统）" : "（系统" + suffix + "）");

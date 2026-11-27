@@ -75,7 +75,9 @@ class LedgerAccountPersistenceAdapter implements LedgerAccountRepository {
   // 账本写锁由调用方持有，重名检查与修改处于同一事务。
   public void update(LedgerAccount account) {
     var entity = accounts.findByLedgerIdAndId(account.ledgerId(), account.id()).orElseThrow();
-    if (!account.name().equals(entity.getName())) requireUniqueName(account);
+    if (!account.name().equals(entity.getName())) {
+      requireUniqueName(account);
+    }
     entity.revise(account);
   }
 
@@ -84,12 +86,13 @@ class LedgerAccountPersistenceAdapter implements LedgerAccountRepository {
     String key = normalizedName(account.name());
     if (accounts.findByLedgerIdOrderByNameAscIdAsc(account.ledgerId()).stream()
         .anyMatch(other ->
-            !other.getId().equals(account.id()) && normalizedName(other.getName()).equals(key)))
+            !other.getId().equals(account.id()) && normalizedName(other.getName()).equals(key))) {
       throw new FoundationException(
           new ErrorCode("XIAOBU_ACCOUNT_NAME_CONFLICT"),
           ErrorCategory.CONFLICT,
           "当前账本已有同名账户",
           Map.of());
+    }
   }
 
   // 对账户名称应用 Unicode 兼容性规范化。

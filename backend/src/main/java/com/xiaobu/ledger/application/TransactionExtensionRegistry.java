@@ -72,7 +72,9 @@ public class TransactionExtensionRegistry {
     var pending = new LinkedHashMap<String, TransactionExtensionChange>();
     for (var change : changes) {
       var handler = requireHandler(change.type());
-      if (pending.putIfAbsent(change.type(), change) != null) throw invalid("不能重复提交同一业务扩展");
+      if (pending.putIfAbsent(change.type(), change) != null) {
+        throw invalid("不能重复提交同一业务扩展");
+      }
       if (change.operation() == TransactionExtensionChange.Operation.UPSERT) {
         if (!allowed.containsKey(change.type())
             || !handler.draftType().isInstance(change.detail())) {
@@ -88,7 +90,9 @@ public class TransactionExtensionRegistry {
         throw invalid("无可移除的业务扩展或操作无效");
       }
     }
-    if (!allowed.keySet().containsAll(existing)) throw invalid("更换分类前请确认如何处理现有业务明细");
+    if (!allowed.keySet().containsAll(existing)) {
+      throw invalid("更换分类前请确认如何处理现有业务明细");
+    }
     if (allowed.values().stream()
         .anyMatch(item -> item.required() && !existing.contains(item.type()))) {
       throw invalid("请补充当前分类需要的业务明细");
@@ -98,15 +102,19 @@ public class TransactionExtensionRegistry {
         .forEach(result -> requireHandler(result.type()).retain(context, result.detail()));
     pending.forEach((type, change) -> {
       var handler = requireHandler(type);
-      if (change.operation() == TransactionExtensionChange.Operation.UPSERT)
+      if (change.operation() == TransactionExtensionChange.Operation.UPSERT) {
         handler.write(context, change.detail());
-      else handler.remove(context);
+      } else {
+        handler.remove(context);
+      }
     });
   }
 
   private TransactionExtensionHandler<?> requireHandler(String type) {
     var handler = type == null ? null : byType.get(type);
-    if (handler == null) throw invalid("不支持这项业务扩展");
+    if (handler == null) {
+      throw invalid("不支持这项业务扩展");
+    }
     return handler;
   }
 

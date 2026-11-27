@@ -45,8 +45,9 @@ class LedgerTodoQueryPersistenceAdapter implements LedgerTodoQueryRepository {
     long total = counts.total();
     long pending = completed ? countPendingLedgerTodos(query) : counts.pending();
     int offset = page * PAGE_SIZE;
-    if (offset >= total)
+    if (offset >= total) {
       return new LedgerTodoPageResult(List.of(), total, pending, page, PAGE_SIZE, query.today());
+    }
 
     String order =
         completed

@@ -56,7 +56,9 @@ public class LedgerMonthlyBudgetController {
   private YearMonth parseMonth(String input) {
     try {
       var month = YearMonth.parse(input);
-      if (month.getYear() >= 1900 && month.getYear() <= 9999) return month;
+      if (month.getYear() >= 1900 && month.getYear() <= 9999) {
+        return month;
+      }
     } catch (DateTimeParseException ignored) {
       // 同样按无效月份处理。
     }

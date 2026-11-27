@@ -75,7 +75,9 @@ public record RentalContract(
     var label = homeName + " · 房租";
     if (label.length() > 40) {
       int end = 35;
-      if (Character.isHighSurrogate(homeName.charAt(end - 1))) end--;
+      if (Character.isHighSurrogate(homeName.charAt(end - 1))) {
+        end--;
+      }
       label = homeName.substring(0, end) + " · 房租";
     }
     return new FixedBill(

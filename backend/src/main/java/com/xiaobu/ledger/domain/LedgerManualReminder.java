@@ -62,9 +62,10 @@ public record LedgerManualReminder(
 
   public LedgerManualReminder advance() {
     var next = frequency.nextDueOn(anchorOn, dueOn);
-    if (frequency == ManualReminderFrequency.ONCE || next.getYear() > 2100)
+    if (frequency == ManualReminderFrequency.ONCE || next.getYear() > 2100) {
       return new LedgerManualReminder(
           id, title, dueOn, remindAt, true, frequency, anchorOn, revision + 1, false);
+    }
     return new LedgerManualReminder(
         id,
         title,

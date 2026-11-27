@@ -73,10 +73,12 @@ public class LedgerAccountTransferApplicationService {
             command.bookedOn(),
             command.note(),
             previous.createdBy());
-    if (!previous.sourceAccountId().equals(updated.sourceAccountId()))
+    if (!previous.sourceAccountId().equals(updated.sourceAccountId())) {
       accounts.requireAccountInLedger(command.ledgerId(), updated.sourceAccountId());
-    if (!previous.targetAccountId().equals(updated.targetAccountId()))
+    }
+    if (!previous.targetAccountId().equals(updated.targetAccountId())) {
       accounts.requireAccountInLedger(command.ledgerId(), updated.targetAccountId());
+    }
     transfers.update(updated);
   }
 
@@ -95,7 +97,9 @@ public class LedgerAccountTransferApplicationService {
             .findByLedgerAndId(ledgerId, id)
             .orElseThrow(
                 () -> new FoundationException(new ErrorCode("XIAOBU_TRANSFER_MISSING"), "转账记录不存在"));
-    if (!actorId.equals(previous.createdBy())) ledgers.requireOwnership(ledgerId, actorId);
+    if (!actorId.equals(previous.createdBy())) {
+      ledgers.requireOwnership(ledgerId, actorId);
+    }
     return previous;
   }
 }
