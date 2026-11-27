@@ -1,8 +1,11 @@
 package com.xiaobu.ledger.application;
 
+import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.LedgerManualReminder;
+import com.xiaobu.ledger.domain.ManualReminderFrequency;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -23,10 +26,15 @@ public class LedgerManualReminderApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public LedgerManualReminder getLedgerManualReminder(
-      String ledgerId, String actorId, String reminderId) {
+  public LedgerManualReminderResult getLedgerManualReminder(
+      String ledgerId, String actorId, String reminderId, Long revision) {
     ledgers.requireReadAccess(ledgerId, actorId);
-    return findOwnedReminder(ledgerId, actorId, reminderId);
+    var current = findOwnedReminder(ledgerId, actorId, reminderId);
+    if (revision == null || revision == current.revision())
+      return new LedgerManualReminderResult(current, false);
+    var occurrence =
+        reminders.findCompletedOccurrence(reminderId, revision).orElseThrow(this::notFound);
+    return new LedgerManualReminderResult(occurrence, canUndo(current, revision));
   }
 
   @Transactional
@@ -42,35 +50,66 @@ public class LedgerManualReminderApplicationService {
         || !LEAD_DAYS.contains(command.leadDays())) {
       throw new FoundationException(new ErrorCode("XIAOBU_INVALID_REMINDER"), "请检查提醒内容、日期和时间");
     }
-    var reminder =
+    var replacement =
         LedgerManualReminder.schedule(
-            command.reminderId(), title, command.dueOn(), command.time(), command.leadDays());
-    if (command.reminderId() == null) {
-      return reminders.createReminder(command.ledgerId(), command.actorId(), reminder);
-    }
-    if (findOwnedReminder(command.ledgerId(), command.actorId(), command.reminderId())
-        .completed()) {
-      throw new FoundationException(new ErrorCode("XIAOBU_REMINDER_COMPLETED"), "请先撤销办结，再编辑提醒");
-    }
-    return reminders.updateReminder(command.ledgerId(), command.actorId(), reminder);
+            command.reminderId(),
+            title,
+            command.dueOn(),
+            command.time(),
+            command.leadDays(),
+            command.frequency());
+    if (command.reminderId() == null)
+      return reminders.createReminder(command.ledgerId(), command.actorId(), replacement);
+    var current = findOwnedReminder(command.ledgerId(), command.actorId(), command.reminderId());
+    if (command.revision() == null || command.revision() != current.revision() || !current.open())
+      throw changed();
+    return reminders.updateReminder(
+        command.ledgerId(), command.actorId(), current.revise(replacement));
   }
 
   @Transactional
   public LedgerManualReminder setLedgerManualReminderCompletion(
-      String ledgerId, String actorId, String reminderId, boolean completed) {
+      String ledgerId, String actorId, String reminderId, long revision, boolean completed) {
     ledgers.requireWriteAccess(ledgerId, actorId);
     var current = findOwnedReminder(ledgerId, actorId, reminderId);
-    if (current.completed() == completed) return current;
-    var next =
-        new LedgerManualReminder(
-            current.id(), current.title(), current.dueOn(), current.remindAt(), completed);
-    return reminders.updateReminder(ledgerId, actorId, next);
+    if (completed) {
+      if (!current.open() || current.revision() != revision) throw changed();
+      reminders.recordCompletedOccurrence(current, actorId);
+      return reminders.updateReminder(ledgerId, actorId, current.advance());
+    }
+    if (!canUndo(current, revision)) throw changed();
+    var occurrence =
+        reminders.findCompletedOccurrence(reminderId, revision).orElseThrow(this::changed);
+    reminders.revertCompletedOccurrence(reminderId, revision, actorId);
+    return reminders.updateReminder(ledgerId, actorId, current.resumeOccurrence(occurrence));
+  }
+
+  @Transactional
+  public LedgerManualReminder stopLedgerManualReminder(
+      String ledgerId, String actorId, String reminderId, long revision) {
+    ledgers.requireWriteAccess(ledgerId, actorId);
+    var current = findOwnedReminder(ledgerId, actorId, reminderId);
+    if (!current.open()
+        || current.revision() != revision
+        || current.frequency() == ManualReminderFrequency.ONCE) throw changed();
+    return reminders.updateReminder(ledgerId, actorId, current.stop());
+  }
+
+  private boolean canUndo(LedgerManualReminder current, long revision) {
+    return !current.stopped() && current.revision() - 1 == revision;
   }
 
   private LedgerManualReminder findOwnedReminder(String ledgerId, String actorId, String id) {
-    return reminders
-        .findOwnedReminder(ledgerId, actorId, id)
-        .orElseThrow(
-            () -> new FoundationException(new ErrorCode("XIAOBU_REMINDER_NOT_FOUND"), "找不到这条提醒"));
+    return reminders.findOwnedReminder(ledgerId, actorId, id).orElseThrow(this::notFound);
+  }
+
+  private FoundationException notFound() {
+    return new FoundationException(
+        new ErrorCode("XIAOBU_REMINDER_NOT_FOUND"), ErrorCategory.NOT_FOUND, "找不到这条提醒", Map.of());
+  }
+
+  private FoundationException changed() {
+    return new FoundationException(
+        new ErrorCode("XIAOBU_REMINDER_CHANGED"), ErrorCategory.CONFLICT, "提醒已更新，请刷新后再试", Map.of());
   }
 }

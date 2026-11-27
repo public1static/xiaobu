@@ -12,4 +12,10 @@ public interface LedgerManualReminderRepository {
 
   LedgerManualReminder updateReminder(
       String ledgerId, String actorId, LedgerManualReminder reminder);
+
+  Optional<LedgerManualReminder> findCompletedOccurrence(String reminderId, long revision);
+
+  void recordCompletedOccurrence(LedgerManualReminder reminder, String actorId);
+
+  void revertCompletedOccurrence(String reminderId, long revision, String actorId);
 }

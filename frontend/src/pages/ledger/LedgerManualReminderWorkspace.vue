@@ -4,12 +4,24 @@ import {
   getLedgerManualReminder,
   saveLedgerManualReminder,
   setLedgerManualReminderCompletion,
+  stopLedgerManualReminder,
   type LedgerManualReminder,
   type LedgerManualReminderInput,
 } from '../../api/ledger-manual-reminders';
+import { ApiRequestError } from '../../api/request';
+import {
+  manualReminderFrequencies,
+  previewManualReminderTimes,
+  type ManualReminderFrequency,
+} from './manual-reminder-schedule';
 import { ledgerToday } from './transaction';
 
-const props = defineProps<{ ledgerId: string; reminderId: string; writable: boolean }>();
+const props = defineProps<{
+  ledgerId: string;
+  reminderId: string;
+  revision?: number;
+  writable: boolean;
+}>();
 const emit = defineEmits<{ close: []; changed: [] }>();
 const topStyle: Record<string, string> = {};
 // #ifdef MP-WEIXIN
@@ -25,23 +37,43 @@ const draft = ref<LedgerManualReminderInput>({
   dueOn: ledgerToday(),
   time: '09:00',
   leadDays: 0,
+  frequency: 'ONCE',
 });
 const days = [0, 1, 3, 7];
-const leadOpen = ref(false);
+const pickerOpen = ref<'lead' | 'frequency' | null>(null);
 const options = ['当天', '提前 1 天', '提前 3 天', '提前 7 天'];
+const frequencies = Object.entries(manualReminderFrequencies) as [
+  ManualReminderFrequency,
+  string,
+][];
 const preview = computed(() => {
-  const date = new Date(draft.value.dueOn + 'T00:00:00Z');
-  date.setUTCDate(date.getUTCDate() - draft.value.leadDays);
-  return date.toISOString().slice(0, 10) + ' ' + draft.value.time;
+  const item = original.value;
+  const { dueOn, frequency, leadDays, time } = draft.value;
+  const anchor = item?.dueOn === dueOn && item.frequency === frequency ? item.anchorOn : dueOn;
+  const now = new Date(Date.now() + 8 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 16)
+    .replace('T', ' ');
+  return previewManualReminderTimes(dueOn, anchor, frequency, leadDays, time, now);
 });
+function isConflict(error: unknown) {
+  return error instanceof ApiRequestError && error.status === 409;
+}
 
 async function load() {
   busy.value = true;
   error.value = '';
   try {
-    original.value = await getLedgerManualReminder(props.ledgerId, props.reminderId);
-  } catch {
-    error.value = '无法加载提醒，请重试。';
+    original.value = await getLedgerManualReminder(
+      props.ledgerId,
+      props.reminderId,
+      props.revision,
+    );
+  } catch (cause) {
+    if (cause instanceof ApiRequestError && cause.status === 404) {
+      emit('changed');
+      error.value = '这期提醒已更新，请返回待办。';
+    } else error.value = '无法加载提醒，请重试。';
   } finally {
     busy.value = false;
   }
@@ -51,12 +83,14 @@ onMounted(() => {
 });
 function beginEdit() {
   const item = original.value;
-  if (!item || item.completed || !props.writable) return;
+  if (!item || item.completed || item.stopped || !props.writable) return;
   draft.value = {
     title: item.title,
     dueOn: item.dueOn,
     time: item.remindAt.slice(11, 16),
     leadDays: item.leadDays,
+    frequency: item.frequency,
+    revision: item.revision,
   };
   error.value = '';
   editing.value = true;
@@ -81,8 +115,11 @@ async function save() {
     await saveLedgerManualReminder(props.ledgerId, { ...draft.value, title }, props.reminderId);
     emit('changed');
     emit('close');
-  } catch {
-    error.value = '保存未确认，请返回待办核对。';
+  } catch (cause) {
+    error.value = isConflict(cause)
+      ? '这期提醒已更新，请返回待办。'
+      : '保存未确认，请返回待办核对。';
+    if (isConflict(cause)) emit('changed');
   } finally {
     busy.value = false;
   }
@@ -93,14 +130,44 @@ async function toggleCompletion() {
   busy.value = true;
   error.value = '';
   try {
-    await setLedgerManualReminderCompletion(props.ledgerId, item.id, !item.completed);
+    await setLedgerManualReminderCompletion(
+      props.ledgerId,
+      item.id,
+      item.revision,
+      !item.completed,
+    );
     emit('changed');
     emit('close');
-  } catch {
-    error.value = '未能更新办结状态，请重试。';
+  } catch (cause) {
+    error.value = isConflict(cause) ? '这期提醒已更新，请返回待办。' : '未能更新办结状态，请重试。';
+    if (isConflict(cause)) emit('changed');
   } finally {
     busy.value = false;
   }
+}
+function confirmStop() {
+  const item = original.value;
+  if (!item || !props.writable || busy.value) return;
+  uni.showModal({
+    title: '停止重复提醒？',
+    content: '本期及后续提醒将移出待办，已完成记录保留。',
+    confirmText: '停止重复',
+    success: async (result) => {
+      if (!result.confirm) return;
+      busy.value = true;
+      error.value = '';
+      try {
+        await stopLedgerManualReminder(props.ledgerId, item.id, item.revision);
+        emit('changed');
+        emit('close');
+      } catch (cause) {
+        error.value = isConflict(cause) ? '这期提醒已更新，请返回待办。' : '未能停止提醒，请重试。';
+        if (isConflict(cause)) emit('changed');
+      } finally {
+        busy.value = false;
+      }
+    },
+  });
 }
 </script>
 
@@ -109,7 +176,10 @@ async function toggleCompletion() {
     <view class="manual-head">
       <button class="manual-back" aria-label="返回待办" @click="back">‹</button>
       <text>{{ editing ? (reminderId ? '编辑提醒' : '新增提醒') : '提醒详情' }}</text>
-      <button v-if="!editing && original && !original.completed && writable" @click="beginEdit">
+      <button
+        v-if="!editing && original && !original.completed && !original.stopped && writable"
+        @click="beginEdit"
+      >
         编辑
       </button>
       <view v-else />
@@ -139,7 +209,7 @@ async function toggleCompletion() {
               ><text>事项日期</text><text>{{ draft.dueOn }} ›</text></view
             >
           </picker>
-          <button class="manual-field manual-picker" @click="leadOpen = true">
+          <button class="manual-field manual-picker" @click="pickerOpen = 'lead'">
             <text>提醒日</text><text>{{ options[days.indexOf(draft.leadDays)] }} ›</text>
           </button>
           <picker
@@ -152,9 +222,14 @@ async function toggleCompletion() {
               ><text>提醒时刻</text><text>{{ draft.time }} ›</text></view
             >
           </picker>
+          <button class="manual-field manual-picker" @click="pickerOpen = 'frequency'">
+            <text>重复</text><text>{{ manualReminderFrequencies[draft.frequency] }} ›</text>
+          </button>
         </view>
         <view class="manual-preview">
-          <text>本次提醒时间</text><text>{{ preview }}</text>
+          <text>{{ draft.frequency === 'ONCE' ? '本次提醒时间' : '接下来 3 次提醒时间' }}</text>
+          <text v-for="time in preview" :key="time">{{ time }}</text>
+          <text v-if="!preview.length">没有更多提醒时间</text>
           <text class="manual-hint">仅在小簿待办显示，不会发通知</text>
         </view>
         <text v-if="titleMissing" role="alert" class="manual-error">请输入提醒内容。</text>
@@ -163,7 +238,13 @@ async function toggleCompletion() {
       </template>
       <template v-else-if="original">
         <view class="manual-summary">
-          <text>{{ original.completed ? '已办结' : '单次 · 自建提醒' }}</text>
+          <text>{{
+            original.completed
+              ? '已办结'
+              : original.stopped
+                ? '已停止'
+                : manualReminderFrequencies[original.frequency] + ' · 自建提醒'
+          }}</text>
           <text class="manual-title">{{ original.title }}</text>
           <text>{{ original.dueOn }}</text>
         </view>
@@ -174,28 +255,66 @@ async function toggleCompletion() {
           >
         </view>
         <text v-if="error" role="alert" class="manual-error">{{ error }}</text>
-        <button v-if="writable" class="manual-primary" :disabled="busy" @click="toggleCompletion">
-          {{ original.completed ? '撤销办结' : '标记为已办' }}
-        </button>
+        <view
+          v-if="writable && !original.stopped && (!original.completed || original.canUndo)"
+          class="manual-actions"
+        >
+          <button
+            v-if="!original.completed && original.frequency !== 'ONCE'"
+            class="manual-secondary"
+            :disabled="busy"
+            @click="confirmStop"
+          >
+            停止重复
+          </button>
+          <button class="manual-primary" :disabled="busy" @click="toggleCompletion">
+            {{
+              original.completed
+                ? '撤销办结'
+                : original.frequency === 'ONCE'
+                  ? '标记为已办'
+                  : '标记本期已办'
+            }}
+          </button>
+        </view>
       </template>
       <button v-else-if="error" class="manual-retry" @click="load">{{ error }}</button>
       <text v-else class="manual-hint">加载中…</text>
     </view>
-    <view v-if="leadOpen" class="manual-picker-backdrop" @click.self="leadOpen = false">
-      <view class="manual-picker-sheet" role="dialog" aria-label="提醒日">
-        <text class="manual-picker-heading">提醒日</text>
-        <button
-          v-for="(label, index) in options"
-          :key="label"
-          :aria-pressed="draft.leadDays === days[index]"
-          @click="
-            draft.leadDays = days[index];
-            leadOpen = false;
-          "
-        >
-          {{ label }}
-        </button>
-        <button class="manual-picker-cancel" @click="leadOpen = false">取消</button>
+    <view v-if="pickerOpen" class="manual-picker-backdrop" @click.self="pickerOpen = null">
+      <view
+        class="manual-picker-sheet"
+        role="dialog"
+        :aria-label="pickerOpen === 'lead' ? '提醒日' : '重复'"
+      >
+        <text class="manual-picker-heading">{{ pickerOpen === 'lead' ? '提醒日' : '重复' }}</text>
+        <template v-if="pickerOpen === 'lead'">
+          <button
+            v-for="(label, index) in options"
+            :key="label"
+            :aria-pressed="draft.leadDays === days[index]"
+            @click="
+              draft.leadDays = days[index];
+              pickerOpen = null;
+            "
+          >
+            {{ label }}
+          </button>
+        </template>
+        <template v-else>
+          <button
+            v-for="[frequency, label] in frequencies"
+            :key="frequency"
+            :aria-pressed="draft.frequency === frequency"
+            @click="
+              draft.frequency = frequency;
+              pickerOpen = null;
+            "
+          >
+            {{ label }}
+          </button>
+        </template>
+        <button class="manual-picker-cancel" @click="pickerOpen = null">取消</button>
       </view>
     </view>
   </view>
@@ -266,7 +385,8 @@ async function toggleCompletion() {
   min-height: 46px;
   border-bottom: 1px solid #edf1ef;
 }
-.manual-card > :last-child .manual-field {
+.manual-card > :last-child .manual-field,
+.manual-card > button.manual-field:last-child {
   border-bottom: 0;
 }
 .manual-field input {
@@ -321,6 +441,22 @@ async function toggleCompletion() {
 .manual-workspace .manual-primary:disabled {
   opacity: 0.55;
 }
+.manual-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.manual-actions .manual-primary {
+  flex: 1;
+  margin: 0;
+}
+.manual-actions .manual-secondary {
+  flex: 1;
+  border-radius: 24px;
+  border: 1px solid #d6ddd9;
+  background: white;
+  color: #a53836;
+}
 .manual-workspace .manual-picker {
   justify-content: space-between;
   width: 100%;
@@ -339,6 +475,8 @@ async function toggleCompletion() {
   background: rgb(25 39 34 / 42%);
 }
 .manual-picker-sheet {
+  max-height: 80vh;
+  overflow-y: auto;
   width: min(100%, 540px);
   padding: 10px 0 env(safe-area-inset-bottom);
   border-radius: 16px 16px 0 0;

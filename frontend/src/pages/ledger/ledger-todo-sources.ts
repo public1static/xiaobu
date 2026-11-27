@@ -2,7 +2,7 @@ import { setLedgerManualReminderCompletion } from '../../api/ledger-manual-remin
 import type { LedgerTodo } from '../../api/ledger-todos';
 
 interface LedgerTodoTargetContext {
-  openManualReminder: (id: string) => void;
+  openManualReminder: (id: string, revision: number) => void;
   openContract: (contractId: string) => void;
   openFixedBill: (billId: string, month: string) => void;
 }
@@ -24,8 +24,8 @@ const sources = new Map<string, LedgerTodoSource>([
       action: '查看提醒',
       completedLabel: '自建提醒 · 已办结',
       complete: (ledgerId, item, done) =>
-        setLedgerManualReminderCompletion(ledgerId, item.sourceId, done),
-      open: (item, context) => context.openManualReminder(item.sourceId),
+        setLedgerManualReminderCompletion(ledgerId, item.sourceId, Number(item.occurrence), done),
+      open: (item, context) => context.openManualReminder(item.sourceId, Number(item.occurrence)),
     },
   ],
   [

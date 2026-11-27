@@ -6,6 +6,7 @@ import com.xiaobu.ledger.application.LedgerManualReminderApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,11 +32,13 @@ class LedgerManualReminderController {
 
   @GetMapping("/{reminderId}")
   public ApiResponse<LedgerManualReminderResponse> getLedgerManualReminder(
-      @PathVariable String ledgerId, @PathVariable String reminderId, HttpServletRequest request) {
+      @PathVariable String ledgerId,
+      @PathVariable String reminderId,
+      @RequestParam(required = false) @PositiveOrZero Long revision,
+      HttpServletRequest request) {
     var actor = LedgerSessionContext.require(request);
-    return ApiResponse.success(
-        mapper.toResponse(
-            reminders.getLedgerManualReminder(ledgerId, actor.actorId(), reminderId)));
+    var result = reminders.getLedgerManualReminder(ledgerId, actor.actorId(), reminderId, revision);
+    return ApiResponse.success(mapper.toResponse(result.reminder(), result.canUndo()));
   }
 
   @PostMapping
@@ -64,7 +68,22 @@ class LedgerManualReminderController {
     return ApiResponse.success(
         mapper.toResponse(
             reminders.setLedgerManualReminderCompletion(
-                ledgerId, actor.actorId(), reminderId, body.completed())));
+                ledgerId, actor.actorId(), reminderId, body.revision(), body.completed()),
+            false));
+  }
+
+  @PutMapping("/{reminderId}/stop")
+  public ApiResponse<LedgerManualReminderResponse> stopLedgerManualReminder(
+      @PathVariable String ledgerId,
+      @PathVariable String reminderId,
+      @Valid @RequestBody StopRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            reminders.stopLedgerManualReminder(
+                ledgerId, actor.actorId(), reminderId, body.revision()),
+            false));
   }
 
   private ApiResponse<LedgerManualReminderResponse> saveLedgerManualReminder(
@@ -76,8 +95,11 @@ class LedgerManualReminderController {
     return ApiResponse.success(
         mapper.toResponse(
             reminders.saveLedgerManualReminder(
-                mapper.toCommand(ledgerId, actor.actorId(), reminderId, body))));
+                mapper.toCommand(ledgerId, actor.actorId(), reminderId, body)),
+            false));
   }
 
-  record CompletionRequest(@NotNull Boolean completed) {}
+  record CompletionRequest(@NotNull @PositiveOrZero Long revision, @NotNull Boolean completed) {}
+
+  record StopRequest(@NotNull @PositiveOrZero Long revision) {}
 }
