@@ -11,6 +11,7 @@ import com.xiaobu.ledger.domain.RentalContract;
 import com.xiaobu.ledger.domain.RentalHome;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -132,6 +133,16 @@ public class RentalApplicationService {
     var bill = addRentBill(contract, home, command.firstDueOn(), command.actorId());
     rentals.linkBill(contract.ledgerId(), contract.id(), contract.billId(), command.actorId());
     return RentalContractResult.from(contract, home.name(), bill);
+  }
+
+  @Transactional(readOnly = true)
+  public FixedBillPageResult listPendingRentalPeriods(
+      String ledgerId, String actorId, YearMonth month, int page) {
+    ledgers.requireReadAccess(ledgerId, actorId);
+    if (month == null || month.getYear() < 1900 || month.getYear() > 2100) {
+      throw new FoundationException(new ErrorCode("XIAOBU_RENTAL_PERIOD_INVALID"), "请选择有效账期");
+    }
+    return bills.listPendingRentalPeriods(ledgerId, month, page);
   }
 
   @Transactional(readOnly = true)

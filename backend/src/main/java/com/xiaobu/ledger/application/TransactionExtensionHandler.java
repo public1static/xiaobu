@@ -23,8 +23,11 @@ public interface TransactionExtensionHandler<T extends TransactionExtensionData>
     return true;
   }
 
-  default void validateRetained(
-      TransactionExtensionContext context, TransactionExtensionData detail) {}
+  /**
+   * Retained business data may validate or reconcile the updated source without changing its
+   * identity.
+   */
+  default void retain(TransactionExtensionContext context, TransactionExtensionData detail) {}
 
   void upsert(TransactionExtensionContext context, T detail);
 

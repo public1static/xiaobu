@@ -9,6 +9,8 @@ import org.springframework.data.repository.Repository;
 interface FixedBillPaymentJpaRepository extends Repository<FixedBillPaymentEntity, String> {
   FixedBillPaymentEntity save(FixedBillPaymentEntity payment);
 
+  void flush();
+
   boolean existsByTransactionIdAndDeletedFalse(String transactionId);
 
   Optional<FixedBillPaymentEntity> findByBillIdAndPeriodAndDeletedFalse(

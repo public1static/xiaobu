@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.TransactionDirection;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -55,7 +56,14 @@ class TransactionExtensionRegistryTest {
 
   private static TransactionExtensionContext context(String code) {
     return new TransactionExtensionContext(
-        "ledger", "actor", "transaction", TransactionDirection.EXPENSE, code);
+        "ledger",
+        "actor",
+        "transaction",
+        TransactionDirection.EXPENSE,
+        code,
+        LocalDate.of(2025, 1, 1),
+        100,
+        code);
   }
 
   private static TransactionExtensionChange upsert(TestHandler handler, String value) {

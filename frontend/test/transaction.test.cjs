@@ -105,3 +105,14 @@ test('a short-month visible first period does not change the original due day', 
   assert.equal(clampLedgerDueOn('2024-02', 31), '2024-02-29');
   assert.equal(clampLedgerDueOn('2025-03', 31), '2025-03-31');
 });
+
+test('rental payment draft is optional and only sends the bill and period', async () => {
+  const { rentalPaymentExtensionEditor: editor } =
+    await import('../src/pages/ledger/rental-payment-extension.ts');
+  assert.equal(editor.validate({}), '');
+  assert.notEqual(editor.validate({ billId: 'bill_1' }), '');
+  assert.deepEqual(
+    editor.toWire({ billId: 'bill_1', month: '2025-02', billName: '房租', amountCents: 250000 }),
+    { billId: 'bill_1', month: '2025-02' },
+  );
+});

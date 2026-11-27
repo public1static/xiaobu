@@ -39,6 +39,8 @@ public interface FixedBillRepository {
 
   void unlinkPayment(String paymentId, String actorId);
 
+  void updatePayment(String paymentId, LocalDate paidOn, long amountCents, String actorId);
+
   boolean hasPaymentForTransaction(String transactionId);
 
   FixedBillCandidatePageResult listCandidates(
@@ -51,6 +53,8 @@ public interface FixedBillRepository {
       int page);
 
   void addPayment(FixedBillPayment payment, String actorId);
+
+  FixedBillPageResult listPendingRentalPeriods(String ledgerId, YearMonth month, int page);
 
   FixedBillPageResult listPeriods(
       String ledgerId, YearMonth month, boolean paid, int page, String billId);

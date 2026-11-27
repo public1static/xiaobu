@@ -21,6 +21,7 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
           on p.billId = b.id and p.period = :period and p.deleted = false
       where b.ledgerId = :ledgerId and b.deleted = false and b.firstDueOn <= :monthEnd
           and (:billId is null or b.id = :billId)
+          and (:rentalOnly = false or b.lastDueOn is not null)
           and (b.stopMonth is null or b.stopMonth > :period)
           and mod((year(:period) - year(b.firstDueOn)) * 12 + month(:period) - month(b.firstDueOn), b.cycleMonths) = 0
           and ((:billId is null and p.id is not null) or (
@@ -44,6 +45,7 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
       LocalDate period,
       LocalDate monthEnd,
       boolean paid,
+      boolean rentalOnly,
       Pageable pageable);
 
   String OPEN_PLANS =

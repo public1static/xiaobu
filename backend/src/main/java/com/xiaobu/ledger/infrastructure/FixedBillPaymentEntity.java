@@ -28,10 +28,10 @@ public class FixedBillPaymentEntity extends AuditableEntity implements Persistab
   @Column(name = "transaction_id", nullable = false, length = 48, updatable = false)
   private String transactionId;
 
-  @Column(name = "paid_on", nullable = false, updatable = false)
+  @Column(name = "paid_on", nullable = false)
   private LocalDate paidOn;
 
-  @Column(name = "amount_cents", nullable = false, updatable = false)
+  @Column(name = "amount_cents", nullable = false)
   private long amountCents;
 
   @Column(name = "created_by", nullable = false, length = 48, updatable = false)
@@ -63,6 +63,12 @@ public class FixedBillPaymentEntity extends AuditableEntity implements Persistab
 
   FixedBillPayment toDomain() {
     return new FixedBillPayment(id, billId, period, transactionId, paidOn, amountCents);
+  }
+
+  void updatePayment(LocalDate paidOn, long amountCents, String actorId) {
+    this.paidOn = paidOn;
+    this.amountCents = amountCents;
+    updatedBy = actorId;
   }
 
   void markUnlinked(String actorId) {

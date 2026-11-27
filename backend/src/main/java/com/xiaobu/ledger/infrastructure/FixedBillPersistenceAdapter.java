@@ -146,6 +146,16 @@ class FixedBillPersistenceAdapter implements FixedBillRepository {
   @Override
   public void unlinkPayment(String paymentId, String actorId) {
     payments.findByIdAndDeletedFalse(paymentId).orElseThrow().markUnlinked(actorId);
+    // Free the active transaction slot before inserting a replacement relationship.
+    payments.flush();
+  }
+
+  @Override
+  public void updatePayment(String paymentId, LocalDate paidOn, long amountCents, String actorId) {
+    payments
+        .findByIdAndDeletedFalse(paymentId)
+        .orElseThrow()
+        .updatePayment(paidOn, amountCents, actorId);
   }
 
   @Override
@@ -183,8 +193,18 @@ class FixedBillPersistenceAdapter implements FixedBillRepository {
   }
 
   @Override
+  public FixedBillPageResult listPendingRentalPeriods(String ledgerId, YearMonth month, int page) {
+    return listPeriods(ledgerId, month, false, page, null, true);
+  }
+
+  @Override
   public FixedBillPageResult listPeriods(
       String ledgerId, YearMonth month, boolean paid, int page, String billId) {
+    return listPeriods(ledgerId, month, paid, page, billId, false);
+  }
+
+  private FixedBillPageResult listPeriods(
+      String ledgerId, YearMonth month, boolean paid, int page, String billId, boolean rentalOnly) {
     var rows =
         bills.listPeriods(
             ledgerId,
@@ -192,6 +212,7 @@ class FixedBillPersistenceAdapter implements FixedBillRepository {
             month.atDay(1),
             month.atEndOfMonth(),
             paid,
+            rentalOnly,
             PageRequest.of(page, PAGE_SIZE));
     return new FixedBillPageResult(
         rows.map(

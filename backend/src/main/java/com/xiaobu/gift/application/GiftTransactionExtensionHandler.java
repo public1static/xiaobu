@@ -66,7 +66,7 @@ class GiftTransactionExtensionHandler implements TransactionExtensionHandler<Gif
   }
 
   @Override
-  public void validateRetained(TransactionExtensionContext context, TransactionExtensionData data) {
+  public void retain(TransactionExtensionContext context, TransactionExtensionData data) {
     if (!GiftBook.dailyFor(context.direction())
         .name()
         .equals(((GiftDetailResult) data).bookCode())) {

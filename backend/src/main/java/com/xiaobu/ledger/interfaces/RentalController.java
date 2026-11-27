@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.function.Function;
 import org.springframework.context.annotation.Profile;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -31,9 +32,13 @@ class RentalController {
   private final RentalApplicationService rentals;
   private final RentalWebMapper mapper;
 
-  RentalController(RentalApplicationService rentals, RentalWebMapper mapper) {
+  private final FixedBillWebMapper billMapper;
+
+  RentalController(
+      RentalApplicationService rentals, RentalWebMapper mapper, FixedBillWebMapper billMapper) {
     this.rentals = rentals;
     this.mapper = mapper;
+    this.billMapper = billMapper;
   }
 
   @GetMapping("/homes")
@@ -104,6 +109,18 @@ class RentalController {
         mapper.toResponse(
             rentals.generateRentalBill(
                 mapper.toCommand(ledgerId, actor.actorId(), contractId, body))));
+  }
+
+  @GetMapping("/payment-periods")
+  public ApiResponse<FixedBillPageResponse> listPendingRentalPeriods(
+      @PathVariable String ledgerId,
+      @RequestParam @DateTimeFormat(pattern = "uuuu-MM") YearMonth month,
+      @RequestParam(defaultValue = "0") @Min(0) @Max(1_000_000) int page,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        billMapper.toResponse(
+            rentals.listPendingRentalPeriods(ledgerId, actor.actorId(), month, page)));
   }
 
   @GetMapping("/bill-candidates")
