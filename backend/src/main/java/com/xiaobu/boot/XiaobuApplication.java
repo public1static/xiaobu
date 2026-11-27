@@ -3,6 +3,8 @@ package com.xiaobu.boot;
 import com.aegisid.foundation.data.id.EntityIdGenerator;
 import com.aegisid.foundation.data.id.UuidV7EntityIdGenerator;
 import com.aegisid.foundation.web.error.GlobalExceptionHandler;
+import java.time.Clock;
+import java.time.ZoneId;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -25,6 +27,12 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 })
 @Import(GlobalExceptionHandler.class)
 public class XiaobuApplication {
+
+  // 账本日期和账期统一按上海时区计算。
+  @Bean
+  Clock ledgerClock() {
+    return Clock.system(ZoneId.of("Asia/Shanghai"));
+  }
 
   @Bean
   EntityIdGenerator entityIdGenerator() {

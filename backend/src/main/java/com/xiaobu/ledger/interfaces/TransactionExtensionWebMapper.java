@@ -31,7 +31,9 @@ class TransactionExtensionWebMapper {
     var input = request.detail();
     TransactionExtensionData detail = null;
     if (input != null && !input.isNull()) {
-      if (!input.isObject()) throw invalidDetail();
+      if (!input.isObject()) {
+        throw invalidDetail();
+      }
       try {
         detail = json.treeToValue(input, expectedType);
       } catch (JacksonException failure) {

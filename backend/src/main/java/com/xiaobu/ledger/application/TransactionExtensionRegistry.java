@@ -72,7 +72,9 @@ public class TransactionExtensionRegistry {
     var pending = new LinkedHashMap<String, TransactionExtensionChange>();
     for (var change : changes) {
       var handler = requireHandler(change.type());
-      if (pending.putIfAbsent(change.type(), change) != null) throw invalid("不能重复提交同一业务扩展");
+      if (pending.putIfAbsent(change.type(), change) != null) {
+        throw invalid("不能重复提交同一业务扩展");
+      }
       if (change.operation() == TransactionExtensionChange.Operation.UPSERT) {
         if (!allowed.containsKey(change.type())
             || !handler.draftType().isInstance(change.detail())) {
@@ -98,9 +100,11 @@ public class TransactionExtensionRegistry {
         .forEach(result -> requireHandler(result.type()).retain(context, result.detail()));
     pending.forEach((type, change) -> {
       var handler = requireHandler(type);
-      if (change.operation() == TransactionExtensionChange.Operation.UPSERT)
+      if (change.operation() == TransactionExtensionChange.Operation.UPSERT) {
         handler.write(context, change.detail());
-      else handler.remove(context);
+      } else {
+        handler.remove(context);
+      }
     });
   }
 

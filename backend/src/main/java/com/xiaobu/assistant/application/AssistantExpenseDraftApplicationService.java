@@ -83,12 +83,15 @@ public class AssistantExpenseDraftApplicationService {
     var fields = validate(ledger, actor, values);
     Draft draft;
     if (id == null) {
-      if (version != null || drafts.pending(chat).isPresent()) throw changed();
+      if (version != null || drafts.pending(chat).isPresent()) {
+        throw changed();
+      }
       draft = drafts.create(chat, ids.next(new IdPrefix("draft")), fields);
     } else {
       var old = drafts.find(chat, id).orElseThrow(this::missing);
-      if (old.status() != Status.PENDING || version == null || old.version() != version)
+      if (old.status() != Status.PENDING || version == null || old.version() != version) {
         throw changed();
+      }
       draft = drafts.update(chat, id, fields);
     }
     String reply =
@@ -125,7 +128,9 @@ public class AssistantExpenseDraftApplicationService {
     String source = null;
     if (confirm) {
       var f = validate(ledger, actor, draft.fields());
-      if (f.amountCents() == null || f.categoryCode() == null) throw invalid("请补全金额和支出分类");
+      if (f.amountCents() == null || f.categoryCode() == null) {
+        throw invalid("请补全金额和支出分类");
+      }
       var row =
           transactions.recordLedgerTransaction(
               new RecordLedgerTransactionCommand(
@@ -146,10 +151,12 @@ public class AssistantExpenseDraftApplicationService {
 
   // 日常支出只开放已启用且不要求附加业务字段的分类。
   private Fields validate(String ledger, String actor, Fields f) {
-    if (f.bookedOn() == null || f.bookedOn().getYear() < 1900 || f.bookedOn().getYear() > 9999)
+    if (f.bookedOn() == null || f.bookedOn().getYear() < 1900 || f.bookedOn().getYear() > 9999) {
       throw invalid("请选择有效日期");
-    if (f.amountCents() != null && (f.amountCents() < 1 || f.amountCents() > 9999999999L))
+    }
+    if (f.amountCents() != null && (f.amountCents() < 1 || f.amountCents() > 9999999999L)) {
       throw invalid("金额应在 0.01 至 99,999,999.99 元之间");
+    }
     String note = f.note() == null ? "" : f.note().strip();
     if (note.length() > 100) throw invalid("备注最多 100 个字符");
     if (f.categoryCode() != null
@@ -158,8 +165,11 @@ public class AssistantExpenseDraftApplicationService {
                     c.active()
                         && c.direction() == TransactionDirection.EXPENSE
                         && c.code().equals(f.categoryCode()))
-            || !extensions.capabilities(TransactionDirection.EXPENSE, f.categoryCode()).isEmpty()))
+            || !extensions
+                .capabilities(TransactionDirection.EXPENSE, f.categoryCode())
+                .isEmpty())) {
       throw invalid("请选择启用的日常支出分类");
+    }
     accounts.requireAccountInLedger(ledger, f.accountId());
     return new Fields(f.bookedOn(), f.amountCents(), f.categoryCode(), f.accountId(), note);
   }
@@ -173,7 +183,9 @@ public class AssistantExpenseDraftApplicationService {
         c.revision(),
         UUID.randomUUID().toString(),
         question,
-        json.writeValueAsString(answer))) throw changed();
+        json.writeValueAsString(answer))) {
+      throw changed();
+    }
   }
 
   private AssistantConversationRepository.Conversation owned(

@@ -5,8 +5,8 @@ import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.RentalContract;
 import com.xiaobu.ledger.domain.RentalExpiryReminder;
+import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -15,12 +15,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Profile("local-expense | wechat-preview")
 public class RentalExpiryReminderApplicationService {
-  private static final ZoneId LEDGER_ZONE = ZoneId.of("Asia/Shanghai");
+  // 按账本业务时区确定当前日期。
+  private final Clock clock;
   private final PersonalLedgerApplicationService ledgers;
   private final RentalRepository rentals;
 
   RentalExpiryReminderApplicationService(
-      PersonalLedgerApplicationService ledgers, RentalRepository rentals) {
+      PersonalLedgerApplicationService ledgers, RentalRepository rentals, Clock clock) {
+    this.clock = clock;
     this.ledgers = ledgers;
     this.rentals = rentals;
   }
@@ -29,7 +31,7 @@ public class RentalExpiryReminderApplicationService {
   public RentalExpiryReminderPageResult listRentalExpiryReminders(
       String ledgerId, String actorId, boolean completed, int page) {
     ledgers.requireReadAccess(ledgerId, actorId);
-    var today = LocalDate.now(LEDGER_ZONE);
+    var today = LocalDate.now(clock);
     var rows = rentals.listExpiryReminders(ledgerId, today, completed, page);
     return new RentalExpiryReminderPageResult(
         rows.entries(),
@@ -43,7 +45,7 @@ public class RentalExpiryReminderApplicationService {
   @Transactional(readOnly = true)
   public long countRentalExpiryReminders(String ledgerId, String actorId) {
     ledgers.requireReadAccess(ledgerId, actorId);
-    return rentals.countPendingExpiryReminders(ledgerId, LocalDate.now(LEDGER_ZONE));
+    return rentals.countPendingExpiryReminders(ledgerId, LocalDate.now(clock));
   }
 
   @Transactional
@@ -69,10 +71,9 @@ public class RentalExpiryReminderApplicationService {
     }
     if (!contract.endsOn().equals(contract.handledEnd())) {
       if (!RentalExpiryReminder.isPending(
-          contract.endsOn(),
-          contract.remindDays(),
-          contract.handledEnd(),
-          LocalDate.now(LEDGER_ZONE))) throw conflict("还未进入合同提醒日期");
+          contract.endsOn(), contract.remindDays(), contract.handledEnd(), LocalDate.now(clock))) {
+        throw conflict("还未进入合同提醒日期");
+      }
       rentals.completeExpiryReminder(
           contract.ledgerId(), contract.id(), contract.endsOn(), command.actorId());
     }

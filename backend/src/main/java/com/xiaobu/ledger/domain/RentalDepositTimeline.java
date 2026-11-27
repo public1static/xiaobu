@@ -14,7 +14,9 @@ public final class RentalDepositTimeline {
     long held = 0;
     for (long change : timeline.values()) {
       held += change;
-      if (held < 0) return false;
+      if (held < 0) {
+        return false;
+      }
     }
     return true;
   }

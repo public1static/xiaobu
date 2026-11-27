@@ -118,16 +118,21 @@ public class AssistantAnalyticsApplicationService {
     if (a.metric() == null
         || a.operation() == null
         || !d.operations().contains(a.operation())
-        || !d.metrics().contains(a.metric())) return false;
+        || !d.metrics().contains(a.metric())) {
+      return false;
+    }
     boolean rank = a.operation().equals("rank"),
         list = a.operation().equals("list"),
         compare = a.operation().equals("compare");
-    if (rank ? (a.groupBy() == null || !d.groupBy().contains(a.groupBy())) : a.groupBy() != null)
+    if (rank ? (a.groupBy() == null || !d.groupBy().contains(a.groupBy())) : a.groupBy() != null) {
       return false;
+    }
     if (a.limit() != null && ((!rank && !list) || a.limit() < 1 || a.limit() > 50)) return false;
     if (compare
         ? (a.baselineFrom() == null || a.baselineThrough() == null)
-        : (a.baselineFrom() != null || a.baselineThrough() != null)) return false;
+        : (a.baselineFrom() != null || a.baselineThrough() != null)) {
+      return false;
+    }
     if (!d.dated() && (p.from() != null || p.through() != null || p.recordedByMe())) return false;
     boolean statement = "statement".equals(d.name());
     if (!statement && (p.category() != null || p.account() != null)) return false;
@@ -139,7 +144,9 @@ public class AssistantAnalyticsApplicationService {
                     !d.groupBy().contains(e.getKey())
                         || e.getValue() == null
                         || e.getValue().isBlank()
-                        || e.getValue().length() > 80))) return false;
+                        || e.getValue().length() > 80))) {
+      return false;
+    }
     return p.keyword() == null || p.keyword().length() <= 80;
   }
 
@@ -156,7 +163,9 @@ public class AssistantAnalyticsApplicationService {
         && (!ListLedgerTransactionsQuery.isValidDateRange(p.from(), p.through())
             || ("compare".equals(a.operation())
                 && !ListLedgerTransactionsQuery.isValidDateRange(
-                    a.baselineFrom(), a.baselineThrough())))) return Optional.empty();
+                    a.baselineFrom(), a.baselineThrough())))) {
+      return Optional.empty();
+    }
     return Optional.of(describe(ledger, actor, p, category, account, data));
   }
 
@@ -188,8 +197,9 @@ public class AssistantAnalyticsApplicationService {
       var snapshot = snapshot(data, ledger, actor, p);
       rows = snapshot.rows();
       if (snapshot.unknownCount() > 0) {
-        if (rows.isEmpty() || rows.getFirst().count() == 0)
+        if (rows.isEmpty() || rows.getFirst().count() == 0) {
           return title + "\n匹配的 " + snapshot.unknownCount() + " 个账户余额均待填。";
+        }
         title += "（仅统计已知金额，另有 " + snapshot.unknownCount() + " 个账户余额待填）";
       }
     }
@@ -214,10 +224,12 @@ public class AssistantAnalyticsApplicationService {
     if (rows.isEmpty() || rows.getFirst().count() == 0) return title + "\n没有匹配记录。";
     if ("total".equals(a.operation())) return title + "\n" + amount(rows.getFirst(), a.metric());
     Map<String, String> labels = new HashMap<>();
-    if (data == AssistantDataset.STATEMENT && "CATEGORY".equals(a.groupBy()))
+    if (data == AssistantDataset.STATEMENT && "CATEGORY".equals(a.groupBy())) {
       categories.listLedgerCategories(ledger, actor).forEach(c -> labels.put(c.code(), c.name()));
-    if (data == AssistantDataset.STATEMENT && "ACCOUNT".equals(a.groupBy()))
+    }
+    if (data == AssistantDataset.STATEMENT && "ACCOUNT".equals(a.groupBy())) {
       accounts.listLedgerAccounts(ledger, actor).forEach(c -> labels.put(c.id(), c.name()));
+    }
     var lines = new ArrayList<String>();
     lines.add(title + "（最多 " + (a.limit() == null ? 10 : a.limit()) + " 项）");
     for (var row : rows) {
@@ -275,8 +287,9 @@ public class AssistantAnalyticsApplicationService {
     BigDecimal sum = BigDecimal.ZERO;
     long unknownCount = 0;
     for (var item : items(data, ledger, actor)) {
-      if (a.filters() != null && !item.fields().entrySet().containsAll(a.filters().entrySet()))
+      if (a.filters() != null && !item.fields().entrySet().containsAll(a.filters().entrySet())) {
         continue;
+      }
       var label =
           String.join(
               " · ",
@@ -284,7 +297,9 @@ public class AssistantAnalyticsApplicationService {
                   .map(item.fields()::get)
                   .filter(s -> !s.isEmpty())
                   .toList());
-      if (p.keyword() != null && !label.contains(p.keyword())) continue;
+      if (p.keyword() != null && !label.contains(p.keyword())) {
+        continue;
+      }
       // 待填余额仍计入账户数，只对已知金额求和或排行。
       if (data == AssistantDataset.ACCOUNTS
           && !"entryCount".equals(a.metric())
@@ -295,12 +310,15 @@ public class AssistantAnalyticsApplicationService {
       var value = BigDecimal.valueOf(item.amounts().getOrDefault(a.metric(), 1L));
       count++;
       sum = sum.add(value);
-      if ("list".equals(a.operation())) rows.add(new Value(label, value, 1));
-      else if ("rank".equals(a.operation()))
+      if ("list".equals(a.operation())) {
+        rows.add(new Value(label, value, 1));
+      } else if ("rank".equals(a.operation())) {
         grouped.merge(item.fields().get(a.groupBy()), value, BigDecimal::add);
+      }
     }
-    if ("total".equals(a.operation()))
+    if ("total".equals(a.operation())) {
       return new Snapshot(List.of(new Value("", sum, count)), unknownCount);
+    }
     if ("rank".equals(a.operation())) {
       grouped.forEach((k, v) -> rows.add(new Value(k, v, 1)));
       rows.sort(Comparator.comparing(Value::value).reversed().thenComparing(Value::label));

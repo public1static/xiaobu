@@ -21,6 +21,8 @@ import org.springframework.ai.deepseek.DeepSeekChatModel;
 import org.springframework.ai.deepseek.DeepSeekChatOptions;
 import org.springframework.ai.deepseek.api.DeepSeekApi;
 import org.springframework.ai.deepseek.api.ResponseFormat;
+import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.retry.TransientAiException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -29,6 +31,8 @@ import org.springframework.core.retry.RetryTemplate;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 @Component
@@ -98,17 +102,24 @@ class DeepSeekIntentParser implements AssistantIntentParser {
       LocalDate today,
       List<AssistantDataset.Definition> catalog) {
     if (model == null) throw unavailable("尚未配置文字模型，可以使用页面上的快捷问法");
+    var input = json.writeValueAsString(new Input(today, previous, question, catalog));
+    String output;
     try {
-      var input = json.writeValueAsString(new Input(today, previous, question, catalog));
-      var output =
-          model
-              .call(new Prompt(List.of(new SystemMessage(instruction), new UserMessage(input))))
-              .getResult()
-              .getOutput()
-              .getText();
-      var node = json.readTree(output);
-      if (!node.isObject() || node.size() != 1 || !node.has("plan"))
+      var response =
+          model.call(new Prompt(List.of(new SystemMessage(instruction), new UserMessage(input))));
+      var result = response.getResult();
+      if (result == null || result.getOutput() == null || result.getOutput().getText() == null) {
         throw unavailable("模型返回的查询协议无效");
+      }
+      output = result.getOutput().getText();
+    } catch (TransientAiException | NonTransientAiException | RestClientException ex) {
+      throw unavailable("暂时无法解析问题，请稍后重试");
+    }
+    try {
+      var node = json.readTree(output);
+      if (node == null || !node.isObject() || node.size() != 1 || !node.has("plan")) {
+        throw unavailable("模型返回的查询协议无效");
+      }
       var fields = node.get("plan");
       if (fields.isNull()) return null;
       var allowed =
@@ -127,31 +138,47 @@ class DeepSeekIntentParser implements AssistantIntentParser {
                     "baselineFrom",
                     "baselineThrough",
                     "filters")
-                .equals(Set.copyOf(a.propertyNames()))) return null;
-        for (var k : List.of("dataset", "operation", "metric"))
-          if (!a.get(k).isString()) return null;
-        for (var k : List.of("groupBy", "baselineFrom", "baselineThrough"))
-          if (!a.get(k).isNull() && !a.get(k).isString()) return null;
-        if (!a.get("limit").isNull() && !a.get("limit").isIntegralNumber()) return null;
+                .equals(Set.copyOf(a.propertyNames()))) {
+          return null;
+        }
+        for (var k : List.of("dataset", "operation", "metric")) {
+          if (!a.get(k).isString()) {
+            return null;
+          }
+        }
+        for (var k : List.of("groupBy", "baselineFrom", "baselineThrough")) {
+          if (!a.get(k).isNull() && !a.get(k).isString()) {
+            return null;
+          }
+        }
+        if (!a.get("limit").isNull() && !a.get("limit").isIntegralNumber()) {
+          return null;
+        }
         var filters = a.get("filters");
         if (!filters.isObject()
-            || filters.propertyNames().stream().anyMatch(k -> !filters.get(k).isString()))
+            || filters.propertyNames().stream().anyMatch(k -> !filters.get(k).isString())) {
           return null;
+        }
       }
       if (!fields.isObject()
           || !Set.copyOf(fields.propertyNames()).equals(allowed)
-          || !fields.get("recordedByMe").isBoolean()) return null;
+          || !fields.get("recordedByMe").isBoolean()) {
+        return null;
+      }
       for (var name : List.of("category", "account", "direction", "keyword")) {
         var field = fields.get(name);
-        if (!field.isNull() && (!field.isString() || field.asString().isBlank())) return null;
-      }
-      for (var k : List.of("from", "through"))
-        if (!fields.get(k).isString() && !(fields.has("analysis") && fields.get(k).isNull()))
+        if (!field.isNull() && (!field.isString() || field.asString().isBlank())) {
           return null;
-      var plan = json.treeToValue(fields, AssistantQueryPlan.class);
-      return plan;
-    } catch (RuntimeException ex) {
-      throw unavailable("暂时无法解析问题，请稍后重试");
+        }
+      }
+      for (var k : List.of("from", "through")) {
+        if (!fields.get(k).isString() && !(fields.has("analysis") && fields.get(k).isNull())) {
+          return null;
+        }
+      }
+      return json.treeToValue(fields, AssistantQueryPlan.class);
+    } catch (JacksonException ex) {
+      throw unavailable("模型返回的查询协议无效");
     }
   }
 

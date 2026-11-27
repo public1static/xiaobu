@@ -283,8 +283,9 @@ class WechatPreviewMySqlTest {
     }
     var recent = data(send("GET", messages, null, reader));
     assertEquals(20, recent.size());
-    for (int index = 0; index < 20; index++)
+    for (int index = 0; index < 20; index++) {
       assertEquals(index + 3, recent.get(index).get("sequence").asInt());
+    }
     var older = data(send("GET", messages + "?before=3", null, reader));
     assertEquals(2, older.size());
     assertEquals(1, older.get(0).get("sequence").asInt());

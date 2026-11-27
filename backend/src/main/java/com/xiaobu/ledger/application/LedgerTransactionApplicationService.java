@@ -9,8 +9,8 @@ import com.xiaobu.ledger.domain.LedgerRefund;
 import com.xiaobu.ledger.domain.LedgerTransaction;
 import com.xiaobu.ledger.domain.LedgerTransactionDetails;
 import com.xiaobu.ledger.domain.TransactionDirection;
+import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -25,8 +25,9 @@ public class LedgerTransactionApplicationService {
   private static final IdPrefix TRANSACTION_PREFIX = new IdPrefix("txn");
 
   private static final IdPrefix REFUND_PREFIX = new IdPrefix("rfnd");
-  private static final ZoneId LEDGER_ZONE = ZoneId.of("Asia/Shanghai");
 
+  // 按账本业务时区确定当前日期。
+  private final Clock clock;
   private final LedgerTransactionRepository repository;
   private final LedgerStatementQueryRepository statements;
   private final LedgerRefundRepository refunds;
@@ -46,7 +47,9 @@ public class LedgerTransactionApplicationService {
       LedgerAccountApplicationService accounts,
       LedgerCategoryApplicationService categories,
       TransactionExtensionRegistry extensions,
-      FixedBillPaymentLifecycle fixedBillPayments) {
+      FixedBillPaymentLifecycle fixedBillPayments,
+      Clock clock) {
+    this.clock = clock;
     this.repository = repository;
     this.statements = statements;
     this.refunds = refunds;
@@ -182,8 +185,9 @@ public class LedgerTransactionApplicationService {
           "这笔支出已有退款，不能改为收入、缩减至已退款金额以下，或把付款日期改到退款之后",
           Map.of());
     }
-    if (!Objects.equals(command.accountId(), original.details().accountId()))
+    if (!Objects.equals(command.accountId(), original.details().accountId())) {
       accounts.requireAccountInLedger(command.ledgerId(), command.accountId());
+    }
     var details =
         new LedgerTransactionDetails(
             command.direction(),
@@ -317,7 +321,7 @@ public class LedgerTransactionApplicationService {
       throw invalidRefund("退款金额必须大于 0 且不能超过剩余可退金额");
     }
     if (command.receivedOn().isBefore(original.details().bookedOn())
-        || command.receivedOn().isAfter(LocalDate.now(LEDGER_ZONE))) {
+        || command.receivedOn().isAfter(LocalDate.now(clock))) {
       throw invalidRefund("退款到账日期须在原付款日期至今天之间");
     }
     accounts.requireAccountInLedger(command.ledgerId(), command.accountId());

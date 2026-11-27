@@ -46,8 +46,12 @@ public class LedgerContactApplicationService {
     distinction = clean(distinction, false);
     var matches = contacts.findContactsByName(ledgerId, name);
     if (distinction.isEmpty()) {
-      if (matches.size() > 1) throw contactConflict("有多位同名联系人，请重新选择");
-      if (matches.size() == 1) return GiftContactResult.from(matches.getFirst());
+      if (matches.size() > 1) {
+        throw contactConflict("有多位同名联系人，请重新选择");
+      }
+      if (matches.size() == 1) {
+        return GiftContactResult.from(matches.getFirst());
+      }
     }
     rejectDuplicateDistinction(matches, distinction);
     return GiftContactResult.from(addContact(ledgerId, actorId, name, distinction, false));

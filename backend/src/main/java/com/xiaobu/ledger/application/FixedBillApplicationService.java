@@ -8,9 +8,9 @@ import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.FixedBill;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -23,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Profile("local-expense | wechat-preview")
 public class FixedBillApplicationService {
   private static final IdPrefix BILL_PREFIX = new IdPrefix("bill");
-  private static final ZoneId LEDGER_ZONE = ZoneId.of("Asia/Shanghai");
+  // 按账本业务时区确定当前日期。
+  private final Clock clock;
   private final FixedBillRepository bills;
   private final FixedBillPaymentLifecycle paymentLifecycle;
   private final PersonalLedgerApplicationService ledgers;
@@ -43,7 +44,9 @@ public class FixedBillApplicationService {
       LedgerTransactionApplicationService transactions,
       LedgerTransactionRepository transactionRepository,
       EntityIdGenerator ids,
-      TransactionExtensionRegistry extensions) {
+      TransactionExtensionRegistry extensions,
+      Clock clock) {
+    this.clock = clock;
     this.bills = bills;
     this.paymentLifecycle = paymentLifecycle;
     this.ledgers = ledgers;
@@ -75,7 +78,7 @@ public class FixedBillApplicationService {
   @Transactional(readOnly = true)
   public FixedBillPlanPageResult listFixedBillPlans(String ledgerId, String actorId, int page) {
     ledgers.requireReadAccess(ledgerId, actorId);
-    return bills.listPlans(ledgerId, YearMonth.now(LEDGER_ZONE), page);
+    return bills.listPlans(ledgerId, YearMonth.now(clock), page);
   }
 
   @Transactional
@@ -118,7 +121,7 @@ public class FixedBillApplicationService {
 
   private LocalDate earliestPlanChange(FixedBill bill) {
     return bill.earliestRevision(
-        YearMonth.now(LEDGER_ZONE), bills.findLatestProtectedMonth(bill.id()).orElse(null));
+        YearMonth.now(clock), bills.findLatestProtectedMonth(bill.id()).orElse(null));
   }
 
   private void requirePlanCatalog(String ledgerId, String categoryCode, String accountId) {
@@ -161,9 +164,10 @@ public class FixedBillApplicationService {
     ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
     var bill = requireBillPeriod(command.ledgerId(), command.billId(), command.month());
     var existing = bills.findPayment(bill.id(), command.month());
-    if (existing.isPresent())
+    if (existing.isPresent()) {
       return FixedBillPeriodResult.from(bill, command.month(), existing.get());
-    if (command.paidOn().isAfter(LocalDate.now(LEDGER_ZONE))) throw invalid("付款日期不能晚于今天");
+    }
+    if (command.paidOn().isAfter(LocalDate.now(clock))) throw invalid("付款日期不能晚于今天");
     var transaction =
         transactions.recordLedgerTransaction(
             new RecordLedgerTransactionCommand(
@@ -184,6 +188,7 @@ public class FixedBillApplicationService {
         command.actorId());
   }
 
+  // 按账期、关键词和支出日期筛选可关联的流水。
   @Transactional(readOnly = true)
   public FixedBillCandidatePageResult listFixedBillCandidates(ListFixedBillCandidatesQuery query) {
     ledgers.requireReadAccess(query.ledgerId(), query.actorId());
@@ -199,31 +204,35 @@ public class FixedBillApplicationService {
     return bills.listCandidates(
         bill,
         query.month(),
-        LocalDate.now(LEDGER_ZONE),
+        LocalDate.now(clock),
         term,
         toSearchCents(term),
         matchingCategories.isEmpty() ? List.of("") : matchingCategories,
         query.page());
   }
 
+  // 关联所选支出；重复关联同一笔流水时返回已有付款。
   @Transactional
   public FixedBillPeriodResult linkFixedBillPayment(LinkFixedBillPaymentCommand command) {
     ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
     var bill = requireBillPeriod(command.ledgerId(), command.billId(), command.month());
     var existing = bills.findPayment(bill.id(), command.month());
     if (existing.isPresent()) {
-      if (existing.get().transactionId().equals(command.transactionId()))
+      if (existing.get().transactionId().equals(command.transactionId())) {
         return FixedBillPeriodResult.from(bill, command.month(), existing.get());
+      }
       throw conflict("本期账单已付");
     }
     var transaction =
         transactionRepository
             .findActiveByLedgerAndId(bill.ledgerId(), command.transactionId())
             .filter(item -> item.details().direction() == TransactionDirection.EXPENSE)
-            .filter(item -> !item.details().bookedOn().isAfter(LocalDate.now(LEDGER_ZONE)))
+            .filter(item -> !item.details().bookedOn().isAfter(LocalDate.now(clock)))
             .orElseThrow(() -> conflict("该支出已不可关联"));
     if (transaction.version() != command.version()
-        || bills.hasPaymentForTransaction(transaction.id())) throw conflict("该支出已变更或被其它账期关联，请重新选择");
+        || bills.hasPaymentForTransaction(transaction.id())) {
+      throw conflict("该支出已变更或被其它账期关联，请重新选择");
+    }
     return recordPayment(
         bill,
         command.month(),

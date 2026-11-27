@@ -58,11 +58,14 @@ public class GiftDirectoryApplicationService {
     var current = currentReasons(command.ledgerId());
     var names = command.names().stream().map(n -> validateText(n, true)).toList();
     if (names.stream().map(n -> n.toLowerCase(java.util.Locale.ROOT)).distinct().count()
-        != names.size()) throw invalid("已有同名事由");
+        != names.size()) {
+      throw invalid("已有同名事由");
+    }
     if (names.equals(current)) return current;
     if (!current.equals(command.previous())) throw conflict("事由目录已更新，请重新选择");
-    if (!names.containsAll(current) || names.size() > current.size() + 1)
+    if (!names.containsAll(current) || names.size() > current.size() + 1) {
       throw invalid("请逐项新增或调整已有事由顺序");
+    }
     directory.saveReasons(command.ledgerId(), names);
     return names;
   }
@@ -157,8 +160,11 @@ public class GiftDirectoryApplicationService {
     long expense = 0;
     for (var total : totals) {
       count += total.entryCount();
-      if (total.direction() == TransactionDirection.INCOME) income = total.amountCents();
-      else expense = total.amountCents();
+      if (total.direction() == TransactionDirection.INCOME) {
+        income = total.amountCents();
+      } else {
+        expense = total.amountCents();
+      }
     }
     var items =
         (long) query.page() * query.pageSize() < count

@@ -144,12 +144,13 @@ class AssistantAnalyticsPersistenceAdapter implements AssistantAnalyticsReposito
     params.put("account", accountId);
     params.put("unassigned", false);
     String where = src.from();
-    if (a.filters() != null)
+    if (a.filters() != null) {
       for (var entry : a.filters().entrySet()) {
         String param = "f" + params.size();
         where += " and " + src.dimensions().get(entry.getKey()) + "=:" + param;
         params.put(param, entry.getValue());
       }
+    }
     boolean rank = "rank".equals(a.operation()), list = "list".equals(a.operation());
     String measure = "entryCount".equals(a.metric()) ? "1" : src.amounts().get(a.metric());
     String label = rank ? src.dimensions().get(a.groupBy()) : "''";

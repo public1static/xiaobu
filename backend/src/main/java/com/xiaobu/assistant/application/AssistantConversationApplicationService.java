@@ -13,8 +13,8 @@ import com.xiaobu.ledger.application.LedgerTransactionApplicationService;
 import com.xiaobu.ledger.application.ListLedgerTransactionsQuery;
 import com.xiaobu.ledger.application.PersonalLedgerApplicationService;
 import com.xiaobu.ledger.domain.TransactionDirection;
+import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -24,6 +24,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 @Profile("local-expense | wechat-preview")
 public class AssistantConversationApplicationService {
+  // 按账本业务时区确定当前日期。
+  private final Clock clock;
   private final PersonalLedgerApplicationService ledgers;
   private final LedgerTransactionApplicationService transactions;
   private final LedgerCategoryApplicationService categories;
@@ -44,7 +46,9 @@ public class AssistantConversationApplicationService {
       AssistantAnalyticsApplicationService analytics,
       AssistantIntentParser parser,
       EntityIdGenerator ids,
-      JsonMapper json) {
+      JsonMapper json,
+      Clock clock) {
+    this.clock = clock;
     this.ledgers = ledgers;
     this.transactions = transactions;
     this.categories = categories;
@@ -91,7 +95,9 @@ public class AssistantConversationApplicationService {
     var conversation = requireConversation(ledger, actor, id);
     var previousRequest = conversations.findRequest(id, clientId);
     if (previousRequest.isPresent()) {
-      if (!previousRequest.get().question().equals(question)) throw changed();
+      if (!previousRequest.get().question().equals(question)) {
+        throw changed();
+      }
       return message(previousRequest.get());
     }
     if (conversation.revision() != revision) throw changed();
@@ -99,8 +105,9 @@ public class AssistantConversationApplicationService {
     Answer prior = anchor == 0 ? null : answer(id, anchor);
     Answer result = resolve(ledger, actor, question, prior);
     requireConversation(ledger, actor, id);
-    if (!conversations.append(id, revision, clientId, question, json.writeValueAsString(result)))
+    if (!conversations.append(id, revision, clientId, question, json.writeValueAsString(result))) {
       throw changed();
+    }
     return new Message(revision + 1, question, result);
   }
 
@@ -115,16 +122,19 @@ public class AssistantConversationApplicationService {
 
   // 先解析用户引用的卡片和候选项，再按需要调用模型。
   private Answer resolve(String ledger, String actor, String text, Answer prior) {
-    var today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+    var today = LocalDate.now(clock);
     Scope previous = prior == null ? null : prior.scope();
     if (prior != null && prior.choices() != null) {
       for (var choice : prior.choices()) {
-        if (choice.label().equals(text)) return executePlan(ledger, actor, choice.plan(), previous);
+        if (choice.label().equals(text)) {
+          return executePlan(ledger, actor, choice.plan(), previous);
+        }
       }
     }
     if (text.equals("看第二笔") || text.equals("第二笔呢")) {
-      if (prior == null || prior.statement() == null || prior.statement().entries().size() < 2)
+      if (prior == null || prior.statement() == null || prior.statement().entries().size() < 2) {
         return new Answer("所选回答中没有第二笔流水。", previous, null, null);
+      }
       var row = prior.statement().entries().get(1);
       String source = row.originalTransactionId() == null ? row.id() : row.originalTransactionId();
       transactions.getLedgerTransaction(ledger, actor, source);
@@ -192,7 +202,9 @@ public class AssistantConversationApplicationService {
                 .toList();
         return new Answer("请选择分类的收支方向。", previous, null, null, choices);
       }
-      if (matches.isEmpty()) return new Answer("账本中没有匹配的分类，请核对名称后重试。", previous, null, null);
+      if (matches.isEmpty()) {
+        return new Answer("账本中没有匹配的分类，请核对名称后重试。", previous, null, null);
+      }
       category = matches.getFirst().code();
     }
     String account = null;

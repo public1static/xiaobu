@@ -68,7 +68,9 @@ public class RentalApplicationService {
       throw new FoundationException(new ErrorCode("XIAOBU_RENTAL_HOME_DUPLICATE"), "已有同名房屋");
     }
     if (command.homeId() == null) rentals.addHome(home, command.actorId());
-    else rentals.updateHome(home, command.actorId());
+    else {
+      rentals.updateHome(home, command.actorId());
+    }
     return RentalHomeResult.from(home, rentals.countHomeContracts(home.ledgerId(), home.id()));
   }
 
@@ -251,7 +253,9 @@ public class RentalApplicationService {
             .findContract(command.ledgerId(), command.contractId())
             .orElseThrow(() -> planConflict("找不到该合同"));
     if (existing.billId() != null) {
-      if (!existing.billId().equals(command.billId())) throw planConflict("该合同已设置房租账单");
+      if (!existing.billId().equals(command.billId())) {
+        throw planConflict("该合同已设置房租账单");
+      }
       return rentals.findContractDetails(existing.ledgerId(), existing.id()).orElseThrow();
     }
     var contract = existing.withBill(command.billId());

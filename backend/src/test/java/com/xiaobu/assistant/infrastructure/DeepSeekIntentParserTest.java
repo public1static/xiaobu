@@ -2,10 +2,13 @@ package com.xiaobu.assistant.infrastructure;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.aegisid.foundation.shared.error.FoundationException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +43,8 @@ class DeepSeekIntentParserTest {
             plan,
             plan.replace("\"keyword\":null", "\"keyword\":null,\"unknownFilter\":1"),
             analysis,
-            analysis.replace("\"limit\":3", "\"limit\":3.5"))) {
+            analysis.replace("\"limit\":3", "\"limit\":3.5"),
+            "{}")) {
       var reply =
           Map.of(
               "id",
@@ -65,6 +69,9 @@ class DeepSeekIntentParserTest {
           .andExpect(header("Authorization", "Bearer fixture"))
           .andRespond(withSuccess(json.writeValueAsString(reply), MediaType.APPLICATION_JSON));
     }
+    server
+        .expect(requestTo("https://api.deepseek.com/chat/completions"))
+        .andRespond(withServerError());
     var result = parser.parse("本月吃饭花多少", null, today);
     assertEquals("餐饮", result.category());
     assertEquals(today, result.through());
@@ -73,6 +80,10 @@ class DeepSeekIntentParserTest {
     assertEquals("accounts", ranked.analysis().dataset());
     assertEquals(3, ranked.analysis().limit());
     assertNull(parser.parse("不合法的个数", ranked, today));
+    var failure = assertThrows(FoundationException.class, () -> parser.parse("协议校验", null, today));
+    assertEquals("模型返回的查询协议无效", failure.getMessage());
+    var outage = assertThrows(FoundationException.class, () -> parser.parse("服务故障", null, today));
+    assertEquals("暂时无法解析问题，请稍后重试", outage.getMessage());
     server.verify();
   }
 }

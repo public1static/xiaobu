@@ -73,10 +73,12 @@ public class LedgerAccountTransferApplicationService {
             command.bookedOn(),
             command.note(),
             previous.createdBy());
-    if (!previous.sourceAccountId().equals(updated.sourceAccountId()))
+    if (!previous.sourceAccountId().equals(updated.sourceAccountId())) {
       accounts.requireAccountInLedger(command.ledgerId(), updated.sourceAccountId());
-    if (!previous.targetAccountId().equals(updated.targetAccountId()))
+    }
+    if (!previous.targetAccountId().equals(updated.targetAccountId())) {
       accounts.requireAccountInLedger(command.ledgerId(), updated.targetAccountId());
+    }
     transfers.update(updated);
   }
 

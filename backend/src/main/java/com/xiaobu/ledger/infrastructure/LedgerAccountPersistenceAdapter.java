@@ -84,12 +84,13 @@ class LedgerAccountPersistenceAdapter implements LedgerAccountRepository {
     String key = normalizedName(account.name());
     if (accounts.findByLedgerIdOrderByNameAscIdAsc(account.ledgerId()).stream()
         .anyMatch(other ->
-            !other.getId().equals(account.id()) && normalizedName(other.getName()).equals(key)))
+            !other.getId().equals(account.id()) && normalizedName(other.getName()).equals(key))) {
       throw new FoundationException(
           new ErrorCode("XIAOBU_ACCOUNT_NAME_CONFLICT"),
           ErrorCategory.CONFLICT,
           "当前账本已有同名账户",
           Map.of());
+    }
   }
 
   // 对账户名称应用 Unicode 兼容性规范化。
