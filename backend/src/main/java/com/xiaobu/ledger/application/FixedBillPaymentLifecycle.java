@@ -2,9 +2,13 @@ package com.xiaobu.ledger.application;
 
 import com.aegisid.foundation.data.id.EntityIdGenerator;
 import com.aegisid.foundation.data.id.IdPrefix;
+import com.aegisid.foundation.shared.error.ErrorCategory;
+import com.aegisid.foundation.shared.error.ErrorCode;
+import com.aegisid.foundation.shared.error.FoundationException;
 import com.xiaobu.ledger.domain.FixedBillPayment;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /** Changes a payment relationship inside the authorized, locked ledger transaction. */
@@ -31,6 +35,16 @@ class FixedBillPaymentLifecycle {
             ids.next(PAYMENT_PREFIX), billId, month.atDay(1), transactionId, paidOn, amountCents);
     bills.addPayment(payment, actorId);
     return payment;
+  }
+
+  void requireUnlinkedBeforeDirectionChange(String transactionId) {
+    if (bills.hasPaymentForTransaction(transactionId)) {
+      throw new FoundationException(
+          new ErrorCode("XIAOBU_FIXED_BILL_PAYMENT_DIRECTION"),
+          ErrorCategory.CONFLICT,
+          "请先解除固定账单关联，再将该支出改为收入",
+          Map.of());
+    }
   }
 
   void suspendForDeletedSource(String ledgerId, String transactionId, String actorId) {

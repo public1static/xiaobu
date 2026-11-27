@@ -81,14 +81,8 @@ public class FixedBillApplicationService {
   @Transactional
   public FixedBillPeriodResult reviseFixedBillPlan(ReviseFixedBillPlanCommand command) {
     ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
-    var previous =
-        bills
-            .findBill(command.ledgerId(), command.billId())
-            .filter(bill -> bill.stopMonth() == null)
-            .orElseThrow(() -> conflict("计划已变更，请重新打开"));
-    var earliest =
-        previous.earliestRevision(
-            YearMonth.now(LEDGER_ZONE), bills.findLatestProtectedMonth(previous.id()).orElse(null));
+    var previous = requireOpenPlan(command.ledgerId(), command.billId());
+    var earliest = earliestPlanChange(previous);
     requirePlanCatalog(command.ledgerId(), command.categoryCode(), command.accountId());
     var replacement =
         new FixedBill(
@@ -104,6 +98,27 @@ public class FixedBillApplicationService {
     bills.closePlan(previous.ledgerId(), previous.id(), effective.atDay(1), command.actorId());
     bills.addBill(replacement, command.actorId());
     return FixedBillPeriodResult.from(replacement, effective, null);
+  }
+
+  @Transactional
+  public void stopFixedBillPlan(StopFixedBillPlanCommand command) {
+    ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
+    var bill = requireOpenPlan(command.ledgerId(), command.billId());
+    var stopOn = earliestPlanChange(bill);
+    if (!stopOn.equals(command.expectedStopOn())) throw conflict("停止日期已变更，请重新打开账单计划");
+    bills.closePlan(bill.ledgerId(), bill.id(), YearMonth.from(stopOn).atDay(1), command.actorId());
+  }
+
+  private FixedBill requireOpenPlan(String ledgerId, String billId) {
+    return bills
+        .findBill(ledgerId, billId)
+        .filter(bill -> bill.stopMonth() == null)
+        .orElseThrow(() -> conflict("计划已变更，请重新打开"));
+  }
+
+  private LocalDate earliestPlanChange(FixedBill bill) {
+    return bill.earliestRevision(
+        YearMonth.now(LEDGER_ZONE), bills.findLatestProtectedMonth(bill.id()).orElse(null));
   }
 
   private void requirePlanCatalog(String ledgerId, String categoryCode, String accountId) {

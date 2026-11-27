@@ -84,6 +84,17 @@ class FixedBillController {
             bills.reviseFixedBillPlan(mapper.toCommand(ledgerId, actor.actorId(), billId, body))));
   }
 
+  @PutMapping("/plans/{billId}/stop")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void stopFixedBillPlan(
+      @PathVariable String ledgerId,
+      @PathVariable String billId,
+      @Valid @RequestBody StopFixedBillPlanRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    bills.stopFixedBillPlan(mapper.toCommand(ledgerId, actor.actorId(), billId, body));
+  }
+
   @PostMapping("/{billId}/periods/{month}/payment")
   public ApiResponse<FixedBillPeriodResponse> payFixedBill(
       @PathVariable String ledgerId,
