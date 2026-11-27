@@ -3,9 +3,13 @@ import { computed, ref, watch } from 'vue';
 import {
   createFixedBill,
   listFixedBillPeriods,
+  listFixedBillPlans,
   payFixedBill,
+  reviseFixedBillPlan,
   type FixedBillPeriod,
+  type FixedBillPlan,
 } from '../../api/fixed-bills';
+import { ApiRequestError } from '../../api/request';
 import { listLedgerAccounts, type LedgerAccount } from '../../api/ledger-accounts';
 import { listLedgerCategories, type LedgerCategory } from '../../api/ledger-categories';
 import LedgerPicker from '../../components/LedgerPicker.vue';
@@ -33,8 +37,16 @@ workspaceStyle.paddingTop = uni.getMenuButtonBoundingClientRect().bottom + 'px';
 // #endif
 const month = ref(today.slice(0, 7));
 const paid = ref(false);
-const view = ref<'list' | 'create' | 'period' | 'link'>('list');
+const view = ref<'list' | 'create' | 'period' | 'link' | 'plans' | 'edit'>('list');
 const selected = ref<FixedBillPeriod>();
+const plans = ref<FixedBillPlan[]>([]);
+const plansTotal = ref(0);
+const plansPage = ref(0);
+const plansLoading = ref(false);
+const plansError = ref('');
+const selectedPlan = ref<FixedBillPlan>();
+const planForm = computed(() => view.value === 'create' || view.value === 'edit');
+let planLoadNumber = 0;
 const rows = ref<FixedBillPeriod[]>([]);
 const page = ref(0);
 const total = ref(0);
@@ -150,6 +162,54 @@ watch(
 
 void loadCatalog();
 
+async function loadPlans(pageIndex = 0) {
+  const sequence = ++planLoadNumber;
+  plansLoading.value = true;
+  plansError.value = '';
+  if (!pageIndex) {
+    plans.value = [];
+    plansTotal.value = 0;
+    plansPage.value = 0;
+  }
+  try {
+    const result = await listFixedBillPlans(props.ledgerId, pageIndex);
+    if (sequence !== planLoadNumber) return;
+    if (
+      pageIndex &&
+      (result.totalCount !== plansTotal.value ||
+        result.entries.some((item) => plans.value.some((plan) => plan.billId === item.billId)))
+    ) {
+      await loadPlans();
+      return;
+    }
+    plans.value = pageIndex ? [...plans.value, ...result.entries] : result.entries;
+    plansTotal.value = result.totalCount;
+    plansPage.value = result.page;
+  } catch {
+    if (sequence === planLoadNumber) plansError.value = '账单计划加载失败，请重试。';
+  } finally {
+    if (sequence === planLoadNumber) plansLoading.value = false;
+  }
+}
+
+if (props.writable) void loadPlans();
+
+function openPlans() {
+  view.value = 'plans';
+  void loadPlans();
+}
+
+function editPlan(plan: FixedBillPlan) {
+  selectedPlan.value = plan;
+  name.value = plan.name;
+  amount.value = formatCents(plan.amountCents);
+  date.value = plan.earliestFirstDueOn;
+  categoryCode.value = plan.categoryCode;
+  accountId.value = plan.accountId ?? null;
+  error.value = '';
+  view.value = 'edit';
+}
+
 function shiftMonth(direction: -1 | 1) {
   const next = shiftLedgerMonth(month.value, direction);
   if (next >= FIRST_LEDGER_MONTH && next <= '2100-12') month.value = next;
@@ -176,7 +236,8 @@ function openPeriod(row: FixedBillPeriod) {
 
 function back() {
   if (saving.value || linking.value) return;
-  if (view.value === 'link') view.value = 'period';
+  if (view.value === 'edit') openPlans();
+  else if (view.value === 'link') view.value = 'period';
   else if (view.value === 'list') emit('close');
   else {
     error.value = '';
@@ -192,21 +253,31 @@ async function save() {
     error.value = '请输入大于零的金额，最多两位小数。';
     return;
   }
-  if (view.value === 'create' && (!name.value.trim() || !categoryCode.value)) {
+  if (
+    planForm.value &&
+    (!name.value.trim() || !categoryOptions.value.some(([code]) => code === categoryCode.value))
+  ) {
     error.value = '请填写账单名称并选择支出分类。';
     return;
   }
   saving.value = true;
   error.value = '';
   try {
-    if (view.value === 'create') {
-      await createFixedBill(props.ledgerId, {
+    if (planForm.value) {
+      const form = {
         name: name.value.trim(),
         firstDueOn: date.value,
         amountCents,
         categoryCode: categoryCode.value,
         accountId: accountId.value,
-      });
+      };
+      if (view.value === 'edit' && selectedPlan.value) {
+        await reviseFixedBillPlan(props.ledgerId, selectedPlan.value.billId, form);
+        uni.showToast({ title: '后续账期已更新', icon: 'none' });
+      } else {
+        await createFixedBill(props.ledgerId, form);
+      }
+      void loadPlans();
       view.value = 'list';
       const nextMonth = date.value.slice(0, 7);
       if (nextMonth === month.value && !paid.value) await load();
@@ -222,11 +293,13 @@ async function save() {
       });
       emit('saved');
     }
-  } catch {
+  } catch (failure) {
     error.value =
-      view.value === 'create'
-        ? '账单未确认保存，请返回列表核对。'
-        : '付款未确认，请返回列表核对后再试。';
+      view.value === 'edit' && failure instanceof ApiRequestError && failure.status === 409
+        ? '计划或预付账期已变更，请返回账单计划重新打开。'
+        : planForm.value
+          ? '账单未确认保存，请返回列表核对。'
+          : '付款未确认，请返回列表核对后再试。';
   } finally {
     saving.value = false;
   }
@@ -244,7 +317,11 @@ async function save() {
             ? '本期账单'
             : view === 'link'
               ? '关联已有流水'
-              : '固定账单'
+              : view === 'plans'
+                ? '账单计划'
+                : view === 'edit'
+                  ? '修改后续账期'
+                  : '固定账单'
       }}</text>
       <button
         v-if="view === 'list' && writable"
@@ -256,6 +333,13 @@ async function save() {
       <view v-else class="bill-header-space" />
     </view>
     <view v-if="view === 'list'" class="bill-content">
+      <button
+        v-if="writable && (plansTotal || plansError)"
+        class="bill-row bill-manage"
+        @click="openPlans"
+      >
+        <text>管理账单计划</text><text>›</text>
+      </button>
       <view class="bill-month">
         <button aria-label="上个月" @click="shiftMonth(-1)">‹</button>
         <text>{{ month.replace('-', ' 年 ') }} 月</text>
@@ -291,6 +375,32 @@ async function save() {
         加载更多
       </button>
     </view>
+    <view v-else-if="view === 'plans'" class="bill-content">
+      <view v-if="plans.length" class="bill-list">
+        <button v-for="plan in plans" :key="plan.billId" class="bill-row" @click="editPlan(plan)">
+          <view
+            ><text>{{ plan.name }}</text
+            ><text class="bill-caption">每月</text></view
+          ><text>›</text>
+        </button>
+      </view>
+      <text v-if="plansLoading" class="bill-empty">加载中…</text>
+      <button
+        v-else-if="plansError"
+        class="bill-retry"
+        @click="loadPlans(plans.length ? plansPage + 1 : 0)"
+      >
+        {{ plansError }}
+      </button>
+      <text v-else-if="!plans.length" class="bill-empty">暂无账单计划</text>
+      <button
+        v-else-if="plans.length < plansTotal"
+        class="bill-retry"
+        @click="loadPlans(plansPage + 1)"
+      >
+        加载更多
+      </button>
+    </view>
     <view v-else class="bill-content">
       <view v-if="(view === 'period' || view === 'link') && selected" class="bill-summary">
         <text>{{ month }} · 每月</text><text>{{ selected.name }}</text>
@@ -317,26 +427,27 @@ async function save() {
         </button>
       </view>
       <view v-else-if="writable" class="bill-form">
-        <view v-if="view === 'create'" class="bill-field"
+        <view v-if="planForm" class="bill-field"
           ><text>账单名称 *</text
           ><input v-model="name" aria-label="账单名称" maxlength="40" placeholder="如：宽带费"
         /></view>
-        <view v-if="view === 'create'" class="bill-field"><text>周期</text><text>每月</text></view>
-        <view v-if="view === 'create'" class="bill-field">
-          <text>首次到期日 *</text>
+        <view v-if="planForm" class="bill-field"><text>周期</text><text>每月</text></view>
+        <view v-if="planForm" class="bill-field">
+          <text>{{ view === 'edit' ? '调整后首期 *' : '首次到期日 *' }}</text>
           <LedgerPicker
             mode="date"
-            label="首次到期日"
+            :label="view === 'edit' ? '调整后首期' : '首次到期日'"
+            :start="view === 'edit' ? selectedPlan?.earliestFirstDueOn : undefined"
             :value="date"
             @change="date = $event.detail.value"
             ><text class="bill-picker-value">{{ date }} ›</text></LedgerPicker
           >
         </view>
         <view class="bill-field">
-          <text>{{ view === 'create' ? '约定金额 *' : '实际金额 *' }}</text>
+          <text>{{ planForm ? '约定金额 *' : '实际金额 *' }}</text>
           <input
             v-model="amount"
-            :aria-label="view === 'create' ? '约定金额' : '实际金额'"
+            :aria-label="planForm ? '约定金额' : '实际金额'"
             type="digit"
             maxlength="11"
             placeholder="0.00"
@@ -353,7 +464,7 @@ async function save() {
             ><text class="bill-picker-value">{{ date }} ›</text></LedgerPicker
           >
         </view>
-        <view v-if="view === 'create'" class="bill-categories">
+        <view v-if="planForm" class="bill-categories">
           <text>支出分类 *</text>
           <LedgerCategoryGrid
             :items="categoryOptions"
@@ -362,7 +473,7 @@ async function save() {
           />
         </view>
         <view class="bill-field">
-          <text>{{ view === 'create' ? '常用账户' : '付款账户' }}</text>
+          <text>{{ planForm ? '常用账户' : '付款账户' }}</text>
           <LedgerPicker
             label="选择账户"
             :value="accountIndex"
@@ -383,12 +494,12 @@ async function save() {
         账户和分类加载失败，重试
       </button>
       <button
-        v-if="writable && (view === 'create' || (view === 'period' && !selected?.transactionId))"
+        v-if="writable && (planForm || (view === 'period' && !selected?.transactionId))"
         class="bill-submit"
         :disabled="saving || catalogError || catalogLoading"
         @click="save"
       >
-        {{ saving ? '正在保存…' : view === 'create' ? '保存' : '记为已付' }}
+        {{ saving ? '正在保存…' : planForm ? '保存' : '记为已付' }}
       </button>
       <button
         v-if="view === 'period' && writable && selected && !selected.transactionId"
@@ -463,6 +574,10 @@ async function save() {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+.bill-manage {
+  margin: 10px 0 14px;
+  border-radius: 14px;
 }
 .bill-month {
   margin: 10px 0 16px;

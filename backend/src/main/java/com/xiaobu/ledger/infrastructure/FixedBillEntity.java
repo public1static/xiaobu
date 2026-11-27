@@ -46,6 +46,9 @@ public class FixedBillEntity extends AuditableEntity implements Persistable<Stri
   @Column(name = "updated_by", nullable = false, length = 48)
   private String updatedBy;
 
+  @Column(name = "stop_month")
+  private LocalDate stopMonth;
+
   @Transient private boolean newEntity = true;
 
   protected FixedBillEntity() {}
@@ -58,12 +61,19 @@ public class FixedBillEntity extends AuditableEntity implements Persistable<Stri
     amountCents = row.amountCents();
     categoryCode = row.categoryCode();
     accountId = row.accountId();
+    stopMonth = row.stopMonth();
     createdBy = actorId;
     updatedBy = actorId;
   }
 
   FixedBill toDomain() {
-    return new FixedBill(id, ledgerId, name, firstDueOn, amountCents, categoryCode, accountId);
+    return new FixedBill(
+        id, ledgerId, name, firstDueOn, amountCents, categoryCode, accountId, stopMonth);
+  }
+
+  void closePlan(LocalDate stopMonth, String actorId) {
+    this.stopMonth = stopMonth;
+    updatedBy = actorId;
   }
 
   @Override

@@ -12,6 +12,12 @@ public interface FixedBillRepository {
 
   Optional<FixedBill> findBill(String ledgerId, String billId);
 
+  void closePlan(String ledgerId, String billId, LocalDate stopMonth, String actorId);
+
+  Optional<LocalDate> findLatestProtectedMonth(String billId);
+
+  FixedBillPlanPageResult listPlans(String ledgerId, YearMonth currentMonth, int page);
+
   Optional<FixedBillPayment> findPayment(String billId, YearMonth month);
 
   Optional<FixedBillPaymentReferenceResult> findPaymentReference(

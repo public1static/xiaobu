@@ -6,8 +6,11 @@ import com.xiaobu.ledger.application.FixedBillCandidateResult;
 import com.xiaobu.ledger.application.FixedBillPageResult;
 import com.xiaobu.ledger.application.FixedBillPaymentReferenceResult;
 import com.xiaobu.ledger.application.FixedBillPeriodResult;
+import com.xiaobu.ledger.application.FixedBillPlanPageResult;
+import com.xiaobu.ledger.application.FixedBillPlanResult;
 import com.xiaobu.ledger.application.LinkFixedBillPaymentCommand;
 import com.xiaobu.ledger.application.PayFixedBillCommand;
+import com.xiaobu.ledger.application.ReviseFixedBillPlanCommand;
 import java.time.YearMonth;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -34,6 +37,13 @@ interface FixedBillWebMapper {
   FixedBillCandidatePageResponse toResponse(FixedBillCandidatePageResult result);
 
   FixedBillPaymentReferenceResponse toResponse(FixedBillPaymentReferenceResult result);
+
+  ReviseFixedBillPlanCommand toCommand(
+      String ledgerId, String actorId, String billId, ReviseFixedBillPlanRequest body);
+
+  FixedBillPlanResponse toResponse(FixedBillPlanResult result);
+
+  FixedBillPlanPageResponse toResponse(FixedBillPlanPageResult result);
 
   FixedBillPeriodResponse toResponse(FixedBillPeriodResult result);
 

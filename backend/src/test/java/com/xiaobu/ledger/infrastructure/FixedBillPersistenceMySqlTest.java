@@ -17,10 +17,12 @@ import com.xiaobu.ledger.application.LinkFixedBillPaymentCommand;
 import com.xiaobu.ledger.application.ListFixedBillCandidatesQuery;
 import com.xiaobu.ledger.application.PayFixedBillCommand;
 import com.xiaobu.ledger.application.RecordLedgerTransactionCommand;
+import com.xiaobu.ledger.application.ReviseFixedBillPlanCommand;
 import com.xiaobu.ledger.application.UnlinkFixedBillPaymentCommand;
 import com.xiaobu.ledger.domain.TransactionDirection;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
@@ -434,5 +436,103 @@ class FixedBillPersistenceMySqlTest {
                 + " = 1",
             Integer.class,
             bill.billId()));
+  }
+
+  @Test
+  void planRevisionKeepsShortMonthAndPrepaidPeriodAndStartsOnlyAtChosenBoundary() {
+    String actor = "bill-" + UUID.randomUUID();
+    String ledger = "book_" + UUID.randomUUID();
+    jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", ledger, actor);
+    var today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+    // Choose a definitely non-leap upcoming year so February is always a short month.
+    int year = today.getYear() + 1;
+    if (java.time.Year.isLeap(year)) year++;
+    var jan = YearMonth.of(year, 1);
+    var feb = jan.plusMonths(1);
+    var mar = jan.plusMonths(2);
+    var apr = jan.plusMonths(3);
+    var old =
+        bills.createFixedBill(
+            new CreateFixedBillCommand(
+                ledger, actor, "宽带原方案", jan.atEndOfMonth(), 9900, "DAILY", null));
+    var prepaid =
+        bills.payFixedBill(
+            new PayFixedBillCommand(ledger, actor, old.billId(), mar, today, 9800, null));
+    var plan = bills.listFixedBillPlans(ledger, actor, 0).entries().getFirst();
+    assertEquals(apr.atEndOfMonth(), plan.earliestFirstDueOn());
+    assertEquals(
+        feb.atDay(28),
+        bills.listFixedBillPeriods(ledger, actor, feb, false, 0).entries().getFirst().dueOn());
+    assertThrows(
+        FoundationException.class,
+        () ->
+            bills.reviseFixedBillPlan(
+                new ReviseFixedBillPlanCommand(
+                    actor,
+                    ledger,
+                    old.billId(),
+                    "不应覆盖预付",
+                    mar.atEndOfMonth(),
+                    12000,
+                    "DAILY",
+                    null)));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            bills.reviseFixedBillPlan(
+                new ReviseFixedBillPlanCommand(
+                    "outsider",
+                    ledger,
+                    old.billId(),
+                    "不可修改",
+                    apr.atEndOfMonth(),
+                    12000,
+                    "DAILY",
+                    null)));
+
+    var command =
+        new ReviseFixedBillPlanCommand(
+            actor, ledger, old.billId(), "宽带新方案", apr.atEndOfMonth(), 12000, "DAILY", null);
+    var adjusted = bills.reviseFixedBillPlan(command);
+    assertNotEquals(old.billId(), adjusted.billId());
+    assertEquals(apr.atEndOfMonth(), adjusted.dueOn());
+    assertEquals(12000, adjusted.amountCents());
+    assertEquals(
+        adjusted, bills.listFixedBillPeriods(ledger, actor, apr, false, 0).entries().getFirst());
+    assertEquals(
+        prepaid, bills.listFixedBillPeriods(ledger, actor, mar, true, 0).entries().getFirst());
+    assertEquals(
+        9900,
+        bills
+            .listFixedBillPeriods(ledger, actor, feb, false, 0)
+            .entries()
+            .getFirst()
+            .amountCents());
+    assertThrows(FoundationException.class, () -> bills.reviseFixedBillPlan(command));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            bills.payFixedBill(
+                new PayFixedBillCommand(ledger, actor, old.billId(), apr, today, 9900, null)));
+
+    var june = apr.plusMonths(2);
+    var later =
+        bills.reviseFixedBillPlan(
+            new ReviseFixedBillPlanCommand(
+                actor, ledger, adjusted.billId(), "再调整", june.atDay(3), 12500, "DAILY", null));
+    assertEquals(
+        later, bills.listFixedBillPeriods(ledger, actor, june, false, 0).entries().getFirst());
+    assertEquals(
+        12000,
+        bills
+            .listFixedBillPeriods(ledger, actor, apr.plusMonths(1), false, 0)
+            .entries()
+            .getFirst()
+            .amountCents());
+    assertEquals(1, bills.listFixedBillPlans(ledger, actor, 0).totalCount());
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "select count(*) from ledger_transactions where ledger_id = ?", Integer.class, ledger));
   }
 }
