@@ -19,16 +19,19 @@ class LedgerAccountPersistenceAdapter implements LedgerAccountRepository {
   private final LedgerTransactionJpaRepository transactions;
   private final LedgerAccountPersistenceMapper mapper;
   private final LedgerRefundJpaRepository refunds;
+  private final RentalDepositJpaRepository rentalDeposits;
 
   LedgerAccountPersistenceAdapter(
       LedgerAccountJpaRepository accounts,
       LedgerTransactionJpaRepository transactions,
       LedgerAccountPersistenceMapper mapper,
-      LedgerRefundJpaRepository refunds) {
+      LedgerRefundJpaRepository refunds,
+      RentalDepositJpaRepository rentalDeposits) {
     this.accounts = accounts;
     this.transactions = transactions;
     this.mapper = mapper;
     this.refunds = refunds;
+    this.rentalDeposits = rentalDeposits;
   }
 
   @Override
@@ -52,6 +55,9 @@ class LedgerAccountPersistenceAdapter implements LedgerAccountRepository {
         .forEach(row -> balances.put(row.getAccountId(), row.getBalanceCents()));
     refunds
         .findAccountCredits(ledgerId)
+        .forEach(row -> balances.merge(row.getAccountId(), row.getBalanceCents(), Long::sum));
+    rentalDeposits
+        .findAccountMovements(ledgerId)
         .forEach(row -> balances.merge(row.getAccountId(), row.getBalanceCents(), Long::sum));
     return Map.copyOf(balances);
   }

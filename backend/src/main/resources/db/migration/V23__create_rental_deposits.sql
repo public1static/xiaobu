@@ -1,0 +1,22 @@
+CREATE TABLE rental_deposits (
+    id VARCHAR(48) NOT NULL,
+    ledger_id VARCHAR(48) NOT NULL,
+    contract_id VARCHAR(48) NOT NULL,
+    kind VARCHAR(12) NOT NULL,
+    amount_cents BIGINT NOT NULL,
+    booked_on DATE NOT NULL,
+    account_id VARCHAR(48),
+    note VARCHAR(100) NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_by VARCHAR(48) NOT NULL,
+    updated_by VARCHAR(48) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    deleted BIT(1) NOT NULL DEFAULT b'0',
+    PRIMARY KEY (id),
+    KEY ix_rental_deposit_contract (ledger_id, contract_id, deleted, booked_on, id),
+    KEY ix_rental_deposit_account (ledger_id, account_id, deleted, booked_on, id),
+    CONSTRAINT fk_rental_deposit_ledger FOREIGN KEY (ledger_id) REFERENCES personal_ledgers (id),
+    CONSTRAINT fk_rental_deposit_contract FOREIGN KEY (contract_id) REFERENCES rental_contracts (id),
+    CONSTRAINT fk_rental_deposit_account FOREIGN KEY (account_id) REFERENCES ledger_accounts (id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;

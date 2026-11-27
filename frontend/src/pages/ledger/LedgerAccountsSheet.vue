@@ -292,7 +292,15 @@ function accountName(id: string) {
   return accounts.value.find((a) => a.id === id)?.name || '';
 }
 // 原型中退款冲减原分类支出，转账单列。
+function isDeposit(row: AccountHistoryEntry) {
+  return row.kind === 'DEPOSIT_PAY' || row.kind === 'DEPOSIT_REFUND';
+}
 function rowTitle(row: AccountHistoryEntry) {
+  if (isDeposit(row)) {
+    return [row.kind === 'DEPOSIT_PAY' ? '交付押金' : '退回押金', row.relatedName]
+      .filter(Boolean)
+      .join(' · ');
+  }
   if (row.kind === 'TRANSFER')
     return row.sourceAccountId === selected.value
       ? '转至 ' + accountName(row.targetAccountId)
@@ -305,7 +313,10 @@ function rowTitle(row: AccountHistoryEntry) {
 }
 // 账本管理者和创建人可在详情编辑转账。
 function canOpen(row: AccountHistoryEntry) {
-  return row.kind !== 'TRANSFER' || (props.allowTransfer && (props.allowCreate || !!row.ownRecord));
+  return (
+    !isDeposit(row) &&
+    (row.kind !== 'TRANSFER' || (props.allowTransfer && (props.allowCreate || !!row.ownRecord)))
+  );
 }
 // 打开原流水或已有转账。
 function openRow(row: AccountHistoryEntry) {
@@ -482,15 +493,25 @@ function confirmCancel() {
         <template v-if="!busy && !loadFailed">
           <text class="group-title">账户流水 · {{ history.length }} 笔</text>
           <view class="rows">
-            <button v-for="row in history" :key="row.id" class="account-row" @click="openRow(row)">
+            <button
+              v-for="row in history"
+              :key="row.id"
+              class="account-row"
+              :aria-disabled="canOpen(row) ? undefined : 'true'"
+              @click="openRow(row)"
+            >
               <view class="item-name">
                 {{ rowTitle(row) }}
                 <text class="muted">{{ row.bookedOn }}</text>
               </view>
               <text>
-                {{ row.kind === 'EXPENSE' || row.sourceAccountId === selected ? '−' : '＋' }}¥{{
-                  formatCents(row.amountCents)
-                }}
+                {{
+                  row.kind === 'EXPENSE' ||
+                  row.kind === 'DEPOSIT_PAY' ||
+                  row.sourceAccountId === selected
+                    ? '−'
+                    : '＋'
+                }}¥{{ formatCents(row.amountCents) }}
               </text>
               <text v-if="canOpen(row)">›</text>
             </button>
