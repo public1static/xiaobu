@@ -144,6 +144,17 @@ public class FixedBillApplicationService {
     return bills.listPeriods(ledgerId, month, paid, page, billId);
   }
 
+  @Transactional(readOnly = true)
+  public FixedBillPeriodResult getFixedBillPeriod(
+      String ledgerId, String actorId, String billId, YearMonth month) {
+    ledgers.requireReadAccess(ledgerId, actorId);
+    requirePeriod(month);
+    var bill = bills.findBill(ledgerId, billId).orElseThrow(() -> invalid("找不到该账期"));
+    var payment = bills.findPayment(bill.id(), month);
+    if (payment.isEmpty() && !bill.covers(month)) throw invalid("找不到该账期");
+    return FixedBillPeriodResult.from(bill, month, payment.orElse(null));
+  }
+
   @Transactional
   public FixedBillPeriodResult payFixedBill(PayFixedBillCommand command) {
     // 和记账、成员权限变更共用账本锁，同时串行化同一账期的确认。

@@ -10,8 +10,9 @@ import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerFixedBills from './LedgerFixedBills.vue';
 import LedgerMonthlyBudget from './LedgerMonthlyBudget.vue';
 import LedgerRentalWorkspace from './LedgerRentalWorkspace.vue';
-import LedgerRentalReminders from './LedgerRentalReminders.vue';
-import { countRentalExpiryReminders } from '../../api/rentals';
+import LedgerTodoWorkspace from './LedgerTodoWorkspace.vue';
+import { countPendingLedgerTodos, type LedgerTodo } from '../../api/ledger-todos';
+import { openLedgerTodo } from './ledger-todo-sources';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerCategoriesSheet from './LedgerCategoriesSheet.vue';
 import LedgerGiftWorkspace from './LedgerGiftWorkspace.vue';
@@ -160,6 +161,7 @@ const account = ref<Pick<LedgerAccount, 'id' | 'name'> | null>(null);
 const accountView = ref<'manage' | 'select' | null>(null);
 const ledgerHubOpen = ref(false);
 const fixedBillsOpen = ref(false);
+const reminderBillTarget = ref<{ billId: string; month: string }>();
 const budgetOpen = ref(false);
 const rentalsOpen = ref(false);
 const remindersOpen = ref(false);
@@ -177,6 +179,19 @@ function closeRentalWorkspace() {
   rentalsOpen.value = false;
   reminderContractId.value = '';
 }
+function closeFixedBills() {
+  fixedBillsOpen.value = false;
+  reminderBillTarget.value = undefined;
+}
+function openTodo(item: LedgerTodo) {
+  openLedgerTodo(item, {
+    openContract: openRentalWorkspace,
+    openFixedBill: (billId, month) => {
+      reminderBillTarget.value = { billId, month };
+      fixedBillsOpen.value = true;
+    },
+  });
+}
 async function refreshReminderCount() {
   const book = ledgerId.value;
   const sequence = ++reminderSequence;
@@ -185,14 +200,14 @@ async function refreshReminderCount() {
     return;
   }
   try {
-    const result = await countRentalExpiryReminders(book);
+    const result = await countPendingLedgerTodos(book);
     if (sequence === reminderSequence && ledgerId.value === book)
       reminderCount.value = result.pendingCount;
   } catch {
     // The agenda can retry visibly; do not show an error badge on the ledger.
   }
 }
-function refreshExpiryReminders() {
+function refreshLedgerTodos() {
   reminderRevision.value++;
   void refreshReminderCount();
 }
@@ -204,11 +219,11 @@ function refreshReminderDay() {
   const next = ledgerToday();
   if (next === reminderDay.value) return;
   reminderDay.value = next;
-  refreshExpiryReminders();
+  refreshLedgerTodos();
 }
 onShow(() => {
   reminderDay.value = ledgerToday();
-  refreshExpiryReminders();
+  refreshLedgerTodos();
   stopReminderTimer();
   reminderTimer = setInterval(refreshReminderDay, 60000);
 });
@@ -257,10 +272,12 @@ onUnmounted(() => uni.$off('assistant-expense-saved', assistantExpenseSaved));
 function onFixedBillUnlinked() {
   transactionDetailId.value = '';
   fixedBillRevision.value++;
+  refreshLedgerTodos();
 }
 
 function refreshAfterTransactionChange() {
   giftRevision.value++;
+  refreshLedgerTodos();
   void refresh();
 }
 
@@ -293,6 +310,9 @@ const sharedLedger = ref<JoinedLedger | null>(null);
 const joinedLedgers = ref<JoinedLedger[]>([]);
 const ledgerId = computed(() => sharedLedger.value?.ledgerId ?? session.value?.ledgerId);
 watch(ledgerId, async (target) => {
+  closeFixedBills();
+  closeRentalWorkspace();
+  remindersOpen.value = false;
   reminderCount.value = 0;
   void refreshReminderCount();
   categoryCatalog.value = null;
@@ -493,7 +513,7 @@ async function copyInvitation() {
 function resetSession(next: LocalSession | null) {
   ++generation;
   ++membershipGeneration;
-  fixedBillsOpen.value = false;
+  closeFixedBills();
   closeRentalWorkspace();
   remindersOpen.value = false;
   ledgerHubOpen.value = false;
@@ -1721,18 +1741,20 @@ const entryDateLabel = computed(() => {
       :writable="!readOnly"
       :revision="fixedBillRevision"
       :covered="Boolean(open || transactionDetailId)"
-      @close="fixedBillsOpen = false"
+      :initial-period="reminderBillTarget"
+      @close="closeFixedBills"
       @saved="refreshAfterTransactionChange"
+      @changed="refreshLedgerTodos"
       @detail="transactionDetailId = $event"
     />
-    <LedgerRentalReminders
+    <LedgerTodoWorkspace
       v-if="remindersOpen && ledgerId"
-      v-show="!rentalsOpen"
+      v-show="!rentalsOpen && !fixedBillsOpen"
       :key="ledgerId"
       :ledger-id="ledgerId"
       :revision="reminderRevision"
       @close="remindersOpen = false"
-      @select="openRentalWorkspace"
+      @select="openTodo"
       @count="reminderCount = $event"
     />
     <LedgerRentalWorkspace
@@ -1745,7 +1767,7 @@ const entryDateLabel = computed(() => {
       :initial-contract-id="reminderContractId"
       :reminder-day="reminderDay"
       @close="closeRentalWorkspace"
-      @reminder-changed="refreshExpiryReminders"
+      @reminder-changed="refreshLedgerTodos"
       @saved="refreshAfterTransactionChange"
       @detail="transactionDetailId = $event"
     />
