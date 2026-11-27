@@ -54,7 +54,9 @@ public record ListLedgerTransactionsQuery(
 
   // 所有入口共用日期、筛选及分页边界。
   public ListLedgerTransactionsQuery {
-    if (filter == null) filter = LedgerStatementFilter.ALL;
+    if (filter == null) {
+      filter = LedgerStatementFilter.ALL;
+    }
     if (page < 0
         || pageSize < 1
         || pageSize > MAX_PAGE_SIZE

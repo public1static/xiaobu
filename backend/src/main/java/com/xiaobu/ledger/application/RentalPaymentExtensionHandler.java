@@ -52,7 +52,9 @@ class RentalPaymentExtensionHandler implements TransactionExtensionHandler<Renta
 
   @Override
   public Optional<RentalPaymentDetail> read(TransactionExtensionContext context) {
-    if (capability(context.direction(), context.categoryCode()).isEmpty()) return Optional.empty();
+    if (capability(context.direction(), context.categoryCode()).isEmpty()) {
+      return Optional.empty();
+    }
     return readRentalPayment(context);
   }
 
@@ -101,7 +103,9 @@ class RentalPaymentExtensionHandler implements TransactionExtensionHandler<Renta
     if (bills.findPayment(bill.id(), draft.month()).isPresent()) {
       throw conflict("该房租账期已付，请重新选择");
     }
-    if (current != null) bills.unlinkPayment(current.id(), context.actorId());
+    if (current != null) {
+      bills.unlinkPayment(current.id(), context.actorId());
+    }
     lifecycle.recordPayment(
         bill.id(),
         draft.month(),

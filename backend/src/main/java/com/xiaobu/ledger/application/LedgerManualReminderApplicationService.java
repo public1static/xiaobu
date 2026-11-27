@@ -82,7 +82,9 @@ public class LedgerManualReminderApplicationService {
       reminders.recordCompletedOccurrence(current, actorId);
       return reminders.updateReminder(ledgerId, actorId, current.advance());
     }
-    if (!canUndo(current, revision)) throw changed();
+    if (!canUndo(current, revision)) {
+      throw changed();
+    }
     var occurrence =
         reminders.findCompletedOccurrence(reminderId, revision).orElseThrow(this::changed);
     reminders.revertCompletedOccurrence(reminderId, revision, actorId);

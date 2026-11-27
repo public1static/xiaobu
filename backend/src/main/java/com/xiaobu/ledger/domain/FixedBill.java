@@ -58,7 +58,9 @@ public record FixedBill(
     var anchor = YearMonth.from(firstDueOn);
     var offset = Math.max(0, ChronoUnit.MONTHS.between(anchor, YearMonth.from(start)));
     var next = anchor.plusMonths(((offset + cycleMonths - 1) / cycleMonths) * cycleMonths);
-    if (dueOn(next).isBefore(start)) next = next.plusMonths(cycleMonths);
+    if (dueOn(next).isBefore(start)) {
+      next = next.plusMonths(cycleMonths);
+    }
     return dueOn(next);
   }
 
@@ -79,7 +81,9 @@ public record FixedBill(
 
   public LocalDate earliestRevision(YearMonth currentMonth, LocalDate latestProtected) {
     var boundary = latestProtected == null ? currentMonth : YearMonth.from(latestProtected);
-    if (boundary.isBefore(currentMonth)) boundary = currentMonth;
+    if (boundary.isBefore(currentMonth)) {
+      boundary = currentMonth;
+    }
     var openingMonth = YearMonth.from(firstDueOn);
     return dueOn(openingMonth.isAfter(boundary) ? openingMonth : boundary.plusMonths(1));
   }

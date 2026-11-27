@@ -73,7 +73,9 @@ public class AssistantConversationApplicationService {
   public List<AssistantConversationRepository.Conversation> listConversations(
       String ledger, String actor, int offset) {
     ledgers.requireReadAccess(ledger, actor);
-    if (offset < 0) throw invalid("历史页码无效");
+    if (offset < 0) {
+      throw invalid("历史页码无效");
+    }
     return conversations.list(ledger, actor, offset);
   }
 
@@ -100,7 +102,9 @@ public class AssistantConversationApplicationService {
       }
       return message(previousRequest.get());
     }
-    if (conversation.revision() != revision) throw changed();
+    if (conversation.revision() != revision) {
+      throw changed();
+    }
     var anchor = replyTo == null ? revision : replyTo;
     Answer prior = anchor == 0 ? null : answer(id, anchor);
     Answer result = resolve(ledger, actor, question, prior);
@@ -116,7 +120,9 @@ public class AssistantConversationApplicationService {
       String ledger, String actor, String id, long sequence, int page) {
     requireConversation(ledger, actor, id);
     var card = answer(id, sequence);
-    if (card.scope() == null || card.statement() == null) throw invalid("请选择有流水来源的回答");
+    if (card.scope() == null || card.statement() == null) {
+      throw invalid("请选择有流水来源的回答");
+    }
     return statement(ledger, actor, card.scope(), page);
   }
 
@@ -176,7 +182,9 @@ public class AssistantConversationApplicationService {
               today,
               AssistantDataset.catalog(ledgers.isOwner(ledger, actor)));
     }
-    if (plan == null) return new Answer("请说明要查的数据、筛选条件或统计指标。", previous, null, null);
+    if (plan == null) {
+      return new Answer("请说明要查的数据、筛选条件或统计指标。", previous, null, null);
+    }
     return executePlan(ledger, actor, plan, previous);
   }
 

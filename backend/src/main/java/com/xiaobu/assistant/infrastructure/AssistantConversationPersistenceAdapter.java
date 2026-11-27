@@ -99,7 +99,9 @@ class AssistantConversationPersistenceAdapter implements AssistantConversationRe
                 """)
             .params(question, id, revision)
             .update();
-    if (changed == 0) return false;
+    if (changed == 0) {
+      return false;
+    }
     jdbc.sql(
             "INSERT INTO assistant_turns (conversation_id,sequence_no,client_id,question,answer_json)"
                 + " VALUES (?,?,?,?,?)")

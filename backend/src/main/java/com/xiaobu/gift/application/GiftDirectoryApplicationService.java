@@ -61,8 +61,12 @@ public class GiftDirectoryApplicationService {
         != names.size()) {
       throw invalid("已有同名事由");
     }
-    if (names.equals(current)) return current;
-    if (!current.equals(command.previous())) throw conflict("事由目录已更新，请重新选择");
+    if (names.equals(current)) {
+      return current;
+    }
+    if (!current.equals(command.previous())) {
+      throw conflict("事由目录已更新，请重新选择");
+    }
     if (!names.containsAll(current) || names.size() > current.size() + 1) {
       throw invalid("请逐项新增或调整已有事由顺序");
     }
@@ -141,7 +145,9 @@ public class GiftDirectoryApplicationService {
       throw invalid("分页参数无效");
     }
     String keyword = query.keyword() == null ? "" : query.keyword().strip();
-    if (keyword.length() > 100) throw invalid("搜索词最多 100 字");
+    if (keyword.length() > 100) {
+      throw invalid("搜索词最多 100 字");
+    }
     String activity = null;
     GiftBook daily = null;
     if (query.bookId() != null) {
@@ -152,7 +158,9 @@ public class GiftDirectoryApplicationService {
         activity = requireBook(ledgerId, query.bookId()).id();
       }
     }
-    if (query.contactId() != null) requireContact(ledgerId, query.contactId());
+    if (query.contactId() != null) {
+      requireContact(ledgerId, query.contactId());
+    }
     var filter = new GiftActivityFilter(ledgerId, activity, daily, query.contactId(), keyword);
     var totals = activities.findTotals(filter);
     long count = 0;
@@ -184,7 +192,9 @@ public class GiftDirectoryApplicationService {
 
   private static String validateText(String raw, boolean required) {
     String text = raw == null ? "" : raw.strip();
-    if ((required && text.isEmpty()) || text.length() > 60) throw invalid("请输入有效名称或说明，最多 60 字");
+    if ((required && text.isEmpty()) || text.length() > 60) {
+      throw invalid("请输入有效名称或说明，最多 60 字");
+    }
     return text;
   }
 

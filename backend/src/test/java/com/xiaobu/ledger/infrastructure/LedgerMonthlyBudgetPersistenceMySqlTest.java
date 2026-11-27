@@ -51,7 +51,9 @@ class LedgerMonthlyBudgetPersistenceMySqlTest {
     assertEquals(new LedgerMonthlyBudgetResult("2025-03", null, 0, null), read(f, MONTH));
     write(f, MONTH, 20000);
     write(f, MONTH.minusMonths(1), 30000);
-    for (int i = 0; i < 21; i++) record(f, TransactionDirection.EXPENSE, 1000, MONTH.atDay(1));
+    for (int i = 0; i < 21; i++) {
+      record(f, TransactionDirection.EXPENSE, 1000, MONTH.atDay(1));
+    }
     record(f, TransactionDirection.INCOME, 90000, MONTH.atEndOfMonth());
     var refunded =
         record(f, TransactionDirection.EXPENSE, 4500, MONTH.minusMonths(1).atEndOfMonth());

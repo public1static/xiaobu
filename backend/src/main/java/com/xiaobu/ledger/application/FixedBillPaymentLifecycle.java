@@ -55,7 +55,9 @@ class FixedBillPaymentLifecycle {
 
   void reconcileRestoredSource(String ledgerId, String transactionId, String actorId) {
     var suspended = bills.findSuspendedPaymentForTransaction(ledgerId, transactionId);
-    if (suspended.isEmpty()) return;
+    if (suspended.isEmpty()) {
+      return;
+    }
     var payment = suspended.get();
     var month = YearMonth.from(payment.period());
     if (bills.findPayment(payment.billId(), month).isEmpty()) {

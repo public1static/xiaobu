@@ -96,7 +96,9 @@ public class FixedBillApplicationService {
             command.amountCents(),
             command.categoryCode(),
             command.accountId());
-    if (replacement.firstDueOn().isBefore(earliest)) throw conflict("生效日期不能早于 " + earliest);
+    if (replacement.firstDueOn().isBefore(earliest)) {
+      throw conflict("生效日期不能早于 " + earliest);
+    }
     var effective = YearMonth.from(replacement.firstDueOn());
     bills.closePlan(previous.ledgerId(), previous.id(), effective.atDay(1), command.actorId());
     bills.addBill(replacement, command.actorId());
@@ -108,7 +110,9 @@ public class FixedBillApplicationService {
     ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
     var bill = requireOpenPlan(command.ledgerId(), command.billId());
     var stopOn = earliestPlanChange(bill);
-    if (!stopOn.equals(command.expectedStopOn())) throw conflict("停止日期已变更，请重新打开账单计划");
+    if (!stopOn.equals(command.expectedStopOn())) {
+      throw conflict("停止日期已变更，请重新打开账单计划");
+    }
     bills.closePlan(bill.ledgerId(), bill.id(), YearMonth.from(stopOn).atDay(1), command.actorId());
   }
 
@@ -154,7 +158,9 @@ public class FixedBillApplicationService {
     requirePeriod(month);
     var bill = bills.findBill(ledgerId, billId).orElseThrow(() -> invalid("找不到该账期"));
     var payment = bills.findPayment(bill.id(), month);
-    if (payment.isEmpty() && !bill.covers(month)) throw invalid("找不到该账期");
+    if (payment.isEmpty() && !bill.covers(month)) {
+      throw invalid("找不到该账期");
+    }
     return FixedBillPeriodResult.from(bill, month, payment.orElse(null));
   }
 
@@ -167,7 +173,9 @@ public class FixedBillApplicationService {
     if (existing.isPresent()) {
       return FixedBillPeriodResult.from(bill, command.month(), existing.get());
     }
-    if (command.paidOn().isAfter(LocalDate.now(clock))) throw invalid("付款日期不能晚于今天");
+    if (command.paidOn().isAfter(LocalDate.now(clock))) {
+      throw invalid("付款日期不能晚于今天");
+    }
     var transaction =
         transactions.recordLedgerTransaction(
             new RecordLedgerTransactionCommand(
@@ -193,7 +201,9 @@ public class FixedBillApplicationService {
   public FixedBillCandidatePageResult listFixedBillCandidates(ListFixedBillCandidatesQuery query) {
     ledgers.requireReadAccess(query.ledgerId(), query.actorId());
     var bill = requireBillPeriod(query.ledgerId(), query.billId(), query.month());
-    if (bills.findPayment(bill.id(), query.month()).isPresent()) throw conflict("本期账单已付");
+    if (bills.findPayment(bill.id(), query.month()).isPresent()) {
+      throw conflict("本期账单已付");
+    }
     String term = query.keyword().strip().toLowerCase(Locale.ROOT);
     var matchingCategories =
         categories.listLedgerCategories(query.ledgerId(), query.actorId()).stream()
@@ -286,7 +296,9 @@ public class FixedBillApplicationService {
   }
 
   private static Long toSearchCents(String term) {
-    if (!term.matches("[0-9]{1,8}(?:[.][0-9]{1,2})?")) return null;
+    if (!term.matches("[0-9]{1,8}(?:[.][0-9]{1,2})?")) {
+      return null;
+    }
     return new BigDecimal(term).movePointRight(2).longValueExact();
   }
 
@@ -299,7 +311,9 @@ public class FixedBillApplicationService {
   }
 
   private static void requirePeriod(YearMonth month) {
-    if (month == null || month.getYear() < 1900 || month.getYear() > 9999) throw invalid("请选择有效账期");
+    if (month == null || month.getYear() < 1900 || month.getYear() > 9999) {
+      throw invalid("请选择有效账期");
+    }
   }
 
   private static FoundationException invalid(String message) {

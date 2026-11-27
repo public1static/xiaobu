@@ -256,7 +256,9 @@ public class LedgerTransactionApplicationService {
             !deleted);
     repository.changeDeletion(
         command.ledgerId(), command.transactionId(), command.actorId(), deleted);
-    if (entry.details().direction() != TransactionDirection.EXPENSE) return;
+    if (entry.details().direction() != TransactionDirection.EXPENSE) {
+      return;
+    }
     // Same ledger lock/transaction: the source state and bill status cannot diverge.
     if (deleted) {
       fixedBillPayments.suspendForDeletedSource(command.ledgerId(), entry.id(), command.actorId());

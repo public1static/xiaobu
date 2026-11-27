@@ -79,7 +79,9 @@ public class AssistantExpenseDraftApplicationService {
       Fields values) {
     ledgers.requireWriteAccess(ledger, actor);
     var conversation = owned(ledger, actor, chat);
-    if (conversation.revision() != revision) throw changed();
+    if (conversation.revision() != revision) {
+      throw changed();
+    }
     var fields = validate(ledger, actor, values);
     Draft draft;
     if (id == null) {
@@ -123,8 +125,12 @@ public class AssistantExpenseDraftApplicationService {
     var conversation = owned(ledger, actor, chat);
     var draft = drafts.find(chat, id).orElseThrow(this::missing);
     boolean confirm = target == Status.CONFIRMED;
-    if (draft.status() == target) return draft;
-    if (draft.status() != Status.PENDING || draft.version() != version) throw changed();
+    if (draft.status() == target) {
+      return draft;
+    }
+    if (draft.status() != Status.PENDING || draft.version() != version) {
+      throw changed();
+    }
     String source = null;
     if (confirm) {
       var f = validate(ledger, actor, draft.fields());
@@ -158,7 +164,9 @@ public class AssistantExpenseDraftApplicationService {
       throw invalid("金额应在 0.01 至 99,999,999.99 元之间");
     }
     String note = f.note() == null ? "" : f.note().strip();
-    if (note.length() > 100) throw invalid("备注最多 100 个字符");
+    if (note.length() > 100) {
+      throw invalid("备注最多 100 个字符");
+    }
     if (f.categoryCode() != null
         && (categories.listLedgerCategories(ledger, actor).stream()
                 .noneMatch(c ->

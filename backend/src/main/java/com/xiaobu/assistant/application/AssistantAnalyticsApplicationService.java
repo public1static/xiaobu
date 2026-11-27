@@ -127,16 +127,24 @@ public class AssistantAnalyticsApplicationService {
     if (rank ? (a.groupBy() == null || !d.groupBy().contains(a.groupBy())) : a.groupBy() != null) {
       return false;
     }
-    if (a.limit() != null && ((!rank && !list) || a.limit() < 1 || a.limit() > 50)) return false;
+    if (a.limit() != null && ((!rank && !list) || a.limit() < 1 || a.limit() > 50)) {
+      return false;
+    }
     if (compare
         ? (a.baselineFrom() == null || a.baselineThrough() == null)
         : (a.baselineFrom() != null || a.baselineThrough() != null)) {
       return false;
     }
-    if (!d.dated() && (p.from() != null || p.through() != null || p.recordedByMe())) return false;
+    if (!d.dated() && (p.from() != null || p.through() != null || p.recordedByMe())) {
+      return false;
+    }
     boolean statement = "statement".equals(d.name());
-    if (!statement && (p.category() != null || p.account() != null)) return false;
-    if (p.direction() != null && !statement && !"giftActivities".equals(d.name())) return false;
+    if (!statement && (p.category() != null || p.account() != null)) {
+      return false;
+    }
+    if (p.direction() != null && !statement && !"giftActivities".equals(d.name())) {
+      return false;
+    }
     if (a.filters() != null
         && (statement && !a.filters().isEmpty()
             || a.filters().entrySet().stream()
@@ -158,7 +166,9 @@ public class AssistantAnalyticsApplicationService {
     var a = p.analysis();
     var data =
         AssistantDataset.findVisible(a.dataset(), ledgers.isOwner(ledger, actor)).orElse(null);
-    if (data == null || !valid(data.definition(), p)) return Optional.empty();
+    if (data == null || !valid(data.definition(), p)) {
+      return Optional.empty();
+    }
     if (data.definition().dated()
         && (!ListLedgerTransactionsQuery.isValidDateRange(p.from(), p.through())
             || ("compare".equals(a.operation())
@@ -183,12 +193,24 @@ public class AssistantAnalyticsApplicationService {
     conditions.add(def.description());
     conditions.add(METRICS.get(a.metric()));
     conditions.add(def.dated() ? p.from() + " 至 " + p.through() : "当前快照");
-    if (p.category() != null) conditions.add(p.category());
-    if (p.account() != null) conditions.add(p.account());
-    if (p.direction() != null) conditions.add(p.direction().name());
-    if (p.recordedByMe()) conditions.add("我登记的");
-    if (p.keyword() != null && !p.keyword().isBlank()) conditions.add("关键词 " + p.keyword());
-    if (a.filters() != null) a.filters().forEach((k, v) -> conditions.add(k + "=" + v));
+    if (p.category() != null) {
+      conditions.add(p.category());
+    }
+    if (p.account() != null) {
+      conditions.add(p.account());
+    }
+    if (p.direction() != null) {
+      conditions.add(p.direction().name());
+    }
+    if (p.recordedByMe()) {
+      conditions.add("我登记的");
+    }
+    if (p.keyword() != null && !p.keyword().isBlank()) {
+      conditions.add("关键词 " + p.keyword());
+    }
+    if (a.filters() != null) {
+      a.filters().forEach((k, v) -> conditions.add(k + "=" + v));
+    }
     String title = String.join(" · ", conditions);
     List<Value> rows;
     if (def.dated()) {
@@ -221,8 +243,12 @@ public class AssistantAnalyticsApplicationService {
           + "，差额（本期减基期）"
           + display(current.value().subtract(base.value()), a.metric());
     }
-    if (rows.isEmpty() || rows.getFirst().count() == 0) return title + "\n没有匹配记录。";
-    if ("total".equals(a.operation())) return title + "\n" + amount(rows.getFirst(), a.metric());
+    if (rows.isEmpty() || rows.getFirst().count() == 0) {
+      return title + "\n没有匹配记录。";
+    }
+    if ("total".equals(a.operation())) {
+      return title + "\n" + amount(rows.getFirst(), a.metric());
+    }
     Map<String, String> labels = new HashMap<>();
     if (data == AssistantDataset.STATEMENT && "CATEGORY".equals(a.groupBy())) {
       categories.listLedgerCategories(ledger, actor).forEach(c -> labels.put(c.code(), c.name()));

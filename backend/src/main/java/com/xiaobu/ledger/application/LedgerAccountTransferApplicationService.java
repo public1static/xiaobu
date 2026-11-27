@@ -97,7 +97,9 @@ public class LedgerAccountTransferApplicationService {
             .findByLedgerAndId(ledgerId, id)
             .orElseThrow(
                 () -> new FoundationException(new ErrorCode("XIAOBU_TRANSFER_MISSING"), "转账记录不存在"));
-    if (!actorId.equals(previous.createdBy())) ledgers.requireOwnership(ledgerId, actorId);
+    if (!actorId.equals(previous.createdBy())) {
+      ledgers.requireOwnership(ledgerId, actorId);
+    }
     return previous;
   }
 }

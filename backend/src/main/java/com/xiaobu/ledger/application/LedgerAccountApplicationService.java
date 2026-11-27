@@ -92,7 +92,9 @@ public class LedgerAccountApplicationService {
   }
 
   String findAccountName(String ledgerId, String accountId) {
-    if (accountId == null) return null;
+    if (accountId == null) {
+      return null;
+    }
     return accounts.findByLedgerAndId(ledgerId, accountId).map(LedgerAccount::name).orElse(null);
   }
 

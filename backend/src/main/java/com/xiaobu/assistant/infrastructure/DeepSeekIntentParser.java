@@ -101,7 +101,9 @@ class DeepSeekIntentParser implements AssistantIntentParser {
       AssistantQueryPlan previous,
       LocalDate today,
       List<AssistantDataset.Definition> catalog) {
-    if (model == null) throw unavailable("尚未配置文字模型，可以使用页面上的快捷问法");
+    if (model == null) {
+      throw unavailable("尚未配置文字模型，可以使用页面上的快捷问法");
+    }
     var input = json.writeValueAsString(new Input(today, previous, question, catalog));
     String output;
     try {
@@ -121,7 +123,9 @@ class DeepSeekIntentParser implements AssistantIntentParser {
         throw unavailable("模型返回的查询协议无效");
       }
       var fields = node.get("plan");
-      if (fields.isNull()) return null;
+      if (fields.isNull()) {
+        return null;
+      }
       var allowed =
           Set.of("from", "through", "category", "account", "direction", "recordedByMe", "keyword");
       if (fields.has("analysis")) {

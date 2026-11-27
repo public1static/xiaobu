@@ -227,7 +227,9 @@ public class LedgerTransactionController {
   private static long parseVersion(String value) {
     try {
       long version = Long.parseLong(value);
-      if (version >= 0) return version;
+      if (version >= 0) {
+        return version;
+      }
     } catch (NumberFormatException ignored) {
       // Send the same request error for missing and malformed versions.
     }

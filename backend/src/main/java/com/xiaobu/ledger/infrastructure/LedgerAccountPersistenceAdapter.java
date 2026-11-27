@@ -75,7 +75,9 @@ class LedgerAccountPersistenceAdapter implements LedgerAccountRepository {
   // 账本写锁由调用方持有，重名检查与修改处于同一事务。
   public void update(LedgerAccount account) {
     var entity = accounts.findByLedgerIdAndId(account.ledgerId(), account.id()).orElseThrow();
-    if (!account.name().equals(entity.getName())) requireUniqueName(account);
+    if (!account.name().equals(entity.getName())) {
+      requireUniqueName(account);
+    }
     entity.revise(account);
   }
 

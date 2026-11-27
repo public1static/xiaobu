@@ -24,7 +24,9 @@ public record LedgerAccount(
   // 旧客户端没有显式类型时沿用名称推断。
   public LedgerAccount {
     type = type == null && name != null && TYPES.contains(name.strip()) ? name.strip() : type;
-    if (type == null) type = "其他";
+    if (type == null) {
+      type = "其他";
+    }
     if (!TYPES.contains(type)) {
       throw new FoundationException(new ErrorCode("XIAOBU_ACCOUNT_TYPE_INVALID"), "请选择有效账户类型");
     }
