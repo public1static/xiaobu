@@ -20,21 +20,23 @@ import org.springframework.transaction.annotation.Transactional;
 @Profile("local-expense | wechat-preview")
 public class GiftDirectoryApplicationService {
   private static final IdPrefix BOOK = new IdPrefix("giftbook");
-  private static final IdPrefix CONTACT = new IdPrefix("friend");
   private final PersonalLedgerApplicationService ledgers;
   private final GiftDirectoryRepository directory;
   private final GiftActivityQueryRepository activities;
   private final EntityIdGenerator ids;
+  private final LedgerContactApplicationService contacts;
 
   GiftDirectoryApplicationService(
       PersonalLedgerApplicationService ledgers,
       GiftDirectoryRepository directory,
       GiftActivityQueryRepository activities,
-      EntityIdGenerator ids) {
+      EntityIdGenerator ids,
+      LedgerContactApplicationService contacts) {
     this.ledgers = ledgers;
     this.directory = directory;
     this.activities = activities;
     this.ids = ids;
+    this.contacts = contacts;
   }
 
   // 未自定义账本使用原型中的常用事由顺序。
@@ -117,30 +119,12 @@ public class GiftDirectoryApplicationService {
   @Transactional(readOnly = true)
   public List<GiftContactResult> listGiftContacts(String ledgerId, String actorId) {
     ledgers.requireReadAccess(ledgerId, actorId);
-    return directory.findContacts(ledgerId).stream().map(GiftContactResult::from).toList();
+    return directory.findGiftContacts(ledgerId).stream().map(GiftContactResult::from).toList();
   }
 
   @Transactional
   public GiftContactResult createGiftContact(CreateGiftContactCommand command) {
-    return GiftContactResult.from(registerContact(command));
-  }
-
-  // Inline registration runs in the already-open transaction of the main ledger write.
-  GiftContact registerContact(CreateGiftContactCommand command) {
-    String ledgerId = command.ledgerId();
-    String actorId = command.actorId();
-    ledgers.requireWriteAccess(ledgerId, actorId);
-    String name = validateText(command.name(), true);
-    String distinction = validateText(command.distinction(), false);
-    for (var row : directory.findContacts(ledgerId)) {
-      if (!row.name().equalsIgnoreCase(name)) continue;
-      if (distinction.isEmpty() || row.distinction().equalsIgnoreCase(distinction)) {
-        throw conflict("请填写未被同名亲友使用的称呼或关系");
-      }
-    }
-    var contact = new GiftContact(ids.next(CONTACT), name, distinction);
-    directory.saveContact(ledgerId, actorId, contact);
-    return contact;
+    return GiftContactResult.from(contacts.registerGiftContact(command));
   }
 
   @Transactional(readOnly = true)

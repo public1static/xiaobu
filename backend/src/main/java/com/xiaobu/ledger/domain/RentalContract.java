@@ -18,7 +18,9 @@ public record RentalContract(
     String note,
     int remindDays,
     LocalDate handledEnd,
-    String previousContractId) {
+    String previousContractId,
+    String landlordContactId,
+    String landlordDistinction) {
   private static final long MAX_CENTS = 9_999_999_999L;
 
   public RentalContract {
@@ -26,7 +28,7 @@ public record RentalContract(
     landlordName = landlordName == null ? "" : landlordName.strip();
     note = note == null ? "" : note.strip();
     if (landlordName.isEmpty()
-        || landlordName.length() > 40
+        || landlordName.length() > 60
         || note.length() > 100
         || startsOn == null
         || endsOn == null
@@ -61,7 +63,9 @@ public record RentalContract(
         note,
         remindDays,
         handledEnd,
-        previousContractId);
+        previousContractId,
+        landlordContactId,
+        landlordDistinction);
   }
 
   public FixedBill createRentBill(String homeName, LocalDate firstDueOn) {

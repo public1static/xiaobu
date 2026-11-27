@@ -10,7 +10,7 @@ import java.time.LocalDate;
 
 public record CreateRentalContractRequest(
     @NotBlank @Size(max = 48) String homeId,
-    @NotBlank @Size(max = 40) String landlordName,
+    @NotBlank @Size(max = 60) String landlordName,
     @NotNull LocalDate startsOn,
     @NotNull LocalDate endsOn,
     @Positive long monthlyRentCents,
@@ -19,4 +19,6 @@ public record CreateRentalContractRequest(
     LocalDate firstDueOn,
     @Size(max = 100) String note,
     @Size(max = 48) String existingBillId,
-    Integer remindDays) {}
+    Integer remindDays,
+    @Size(max = 48) String landlordContactId,
+    @Size(max = 60) String landlordDistinction) {}

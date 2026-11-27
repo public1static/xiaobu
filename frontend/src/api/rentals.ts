@@ -19,6 +19,8 @@ export interface RentalHome extends RentalHomeInput {
 interface RentalContractInput {
   homeId: string;
   landlordName: string;
+  landlordContactId?: string | null;
+  landlordDistinction?: string | null;
   startsOn: string;
   endsOn: string;
   monthlyRentCents: number;

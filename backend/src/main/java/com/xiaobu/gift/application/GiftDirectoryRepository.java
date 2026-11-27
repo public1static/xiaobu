@@ -20,7 +20,13 @@ public interface GiftDirectoryRepository {
 
   void changeBookArchive(String ledgerId, String actorId, String id, boolean archived);
 
-  List<GiftContact> findContacts(String ledgerId);
+  List<GiftContact> findGiftContacts(String ledgerId);
+
+  List<GiftContact> findContactsByName(String ledgerId, String name);
+
+  LedgerContactPageResult listContactMatches(String ledgerId, String name, int page);
+
+  void markGiftMember(String ledgerId, String contactId, String actorId);
 
   Optional<GiftContact> findContact(String ledgerId, String id);
 

@@ -1,10 +1,13 @@
 package com.xiaobu.gift.infrastructure;
 
+import com.xiaobu.gift.application.GiftContactResult;
 import com.xiaobu.gift.application.GiftDirectoryRepository;
+import com.xiaobu.gift.application.LedgerContactPageResult;
 import com.xiaobu.gift.domain.GiftActivityBook;
 import com.xiaobu.gift.domain.GiftContact;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -60,10 +63,34 @@ class GiftDirectoryPersistenceAdapter implements GiftDirectoryRepository {
   }
 
   @Override
-  public List<GiftContact> findContacts(String ledgerId) {
-    return contacts.findByLedgerIdOrderByNameAscDistinctionAsc(ledgerId).stream()
+  public List<GiftContact> findGiftContacts(String ledgerId) {
+    return contacts.findByLedgerIdAndGiftMemberTrueOrderByNameAscDistinctionAsc(ledgerId).stream()
         .map(GiftContactEntity::toDomain)
         .toList();
+  }
+
+  @Override
+  public List<GiftContact> findContactsByName(String ledgerId, String name) {
+    return contacts.findByLedgerIdAndNameIgnoreCase(ledgerId, name).stream()
+        .map(GiftContactEntity::toDomain)
+        .toList();
+  }
+
+  @Override
+  public LedgerContactPageResult listContactMatches(String ledgerId, String name, int page) {
+    var rows =
+        contacts.findByLedgerIdAndNameIgnoreCaseOrderByDistinctionAscIdAsc(
+            ledgerId, name, PageRequest.of(page, 20));
+    return new LedgerContactPageResult(
+        rows.map(row -> GiftContactResult.from(row.toDomain())).getContent(),
+        rows.getTotalElements(),
+        rows.getNumber(),
+        rows.getSize());
+  }
+
+  @Override
+  public void markGiftMember(String ledgerId, String contactId, String actorId) {
+    contacts.findByLedgerIdAndId(ledgerId, contactId).orElseThrow().markGiftMember(actorId);
   }
 
   @Override
