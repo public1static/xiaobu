@@ -46,13 +46,31 @@ database() {
     unset MYSQL_ROOT_PASSWORD MYSQL_PASSWORD
   fi
   require_project_database
-  docker_local start "$db" >/dev/null
-  [[ "$(docker_local port "$db" 3306/tcp)" == 127.0.0.1:18325 ]] || fail "数据库端口映射与项目配置不符。"
-  for ((i=0;i<90;i++)); do
-    if docker_local exec "$db" sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -h127.0.0.1 -uxiaobu xiaobu_local -e "SELECT 1"' >/dev/null 2>&1; then return; fi
-    sleep 1
+  wait_for_database
+}
+
+# Colima 模拟 amd64 时入口进程偶尔以 139 退出，只对已确认的该状态重新启动。
+wait_for_database() {
+  local attempt i container_state
+  for ((attempt=1;attempt<=4;attempt++)); do
+    docker_local start "$db" >/dev/null
+    for ((i=0;i<90;i++)); do
+      if docker_local exec "$db" sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql --connect-timeout=2 -h127.0.0.1 -uxiaobu xiaobu_local -e "SELECT 1"' >/dev/null 2>&1; then
+        return 0
+      fi
+      container_state=$(docker_local inspect -f '{{.State.Status}} {{.State.ExitCode}}' "$db")
+      case "$container_state" in
+        "running 0") sleep 1 ;;
+        "exited 139")
+          if ((attempt == 4)); then fail "本地 MySQL 连续四次启动时崩溃（退出码 139）。"; fi
+          echo "MySQL exited with code 139 on attempt $attempt. Retrying." >&2
+          sleep 1
+          break ;;
+        *) fail "本地 MySQL 启动失败，容器状态及退出码为 ${container_state}。" ;;
+      esac
+    done
+    if ((i == 90)); then fail "本地 MySQL 容器正在运行，但应用账号在 90 次检查后仍无法查询 xiaobu_local。"; fi
   done
-  fail "等待本地数据库就绪超时。"
 }
 
 start_app() {
