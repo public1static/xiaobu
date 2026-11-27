@@ -4,6 +4,8 @@ import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
+import java.util.Set;
 
 public record FixedBill(
     String id,
@@ -13,7 +15,9 @@ public record FixedBill(
     long amountCents,
     String categoryCode,
     String accountId,
-    LocalDate stopMonth) {
+    LocalDate stopMonth,
+    int cycleMonths,
+    LocalDate lastDueOn) {
   public FixedBill {
     name = name == null ? "" : name.strip();
     if (name.isEmpty()
@@ -21,6 +25,8 @@ public record FixedBill(
         || firstDueOn == null
         || firstDueOn.getYear() < 1900
         || firstDueOn.getYear() > 9999
+        || !Set.of(1, 3, 6, 12).contains(cycleMonths)
+        || (lastDueOn != null && lastDueOn.isBefore(firstDueOn))
         || amountCents < 1
         || amountCents > 9_999_999_999L) {
       throw new FoundationException(new ErrorCode("XIAOBU_FIXED_BILL_INVALID"), "请检查账单名称、金额和首次到期日");
@@ -35,12 +41,15 @@ public record FixedBill(
       long amountCents,
       String categoryCode,
       String accountId) {
-    this(id, ledgerId, name, firstDueOn, amountCents, categoryCode, accountId, null);
+    this(id, ledgerId, name, firstDueOn, amountCents, categoryCode, accountId, null, 1, null);
   }
 
   public boolean covers(YearMonth month) {
-    return !firstDueOn.isAfter(month.atEndOfMonth())
-        && (stopMonth == null || month.atDay(1).isBefore(stopMonth));
+    long offset = ChronoUnit.MONTHS.between(YearMonth.from(firstDueOn), month);
+    return offset >= 0
+        && offset % cycleMonths == 0
+        && (stopMonth == null || month.atDay(1).isBefore(stopMonth))
+        && (lastDueOn == null || !dueOn(month).isAfter(lastDueOn));
   }
 
   public LocalDate earliestRevision(YearMonth currentMonth, LocalDate latestProtected) {

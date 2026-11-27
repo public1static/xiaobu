@@ -8,6 +8,7 @@ import { closeWechatSession, getWechatSession, openWechatSession } from '../../a
 import { setWechatSessionToken, wechatPreviewApiBase } from '../../api/preview-transport';
 import LedgerMembersSheet from './LedgerMembersSheet.vue';
 import LedgerFixedBills from './LedgerFixedBills.vue';
+import LedgerRentalWorkspace from './LedgerRentalWorkspace.vue';
 import LedgerAccountsSheet from './LedgerAccountsSheet.vue';
 import LedgerCategoriesSheet from './LedgerCategoriesSheet.vue';
 import LedgerGiftWorkspace from './LedgerGiftWorkspace.vue';
@@ -138,6 +139,7 @@ const account = ref<Pick<LedgerAccount, 'id' | 'name'> | null>(null);
 const accountView = ref<'manage' | 'select' | null>(null);
 const ledgerHubOpen = ref(false);
 const fixedBillsOpen = ref(false);
+const rentalsOpen = ref(false);
 const fixedBillRevision = ref(0);
 const giftWorkspaceOpen = ref(false);
 const giftRevision = ref(0);
@@ -416,6 +418,7 @@ function resetSession(next: LocalSession | null) {
   ++generation;
   ++membershipGeneration;
   fixedBillsOpen.value = false;
+  rentalsOpen.value = false;
   ledgerHubOpen.value = false;
   giftWorkspaceOpen.value = false;
   sharedLedger.value = null;
@@ -1148,6 +1151,11 @@ const entryDateLabel = computed(() => {
             ><text>固定账单</text><text class="preview-label">周期付款与流水关联</text></view
           ><text>›</text>
         </button>
+        <button class="hub-link" @click="rentalsOpen = true">
+          <LedgerIcon class="page-icon" src="/static/ledger/vant/HOUSING.svg" /><view
+            ><text>租房</text><text class="preview-label">房屋 · 合同 · 房租账期</text></view
+          ><text>›</text>
+        </button>
         <button class="hub-link" @click="accountView = 'manage'">
           <LedgerIcon class="page-icon" src="/static/ledger/vant/SALARY.svg" /><view
             ><text>账户管理</text><text class="preview-label">支付账户与收支流水</text></view
@@ -1596,6 +1604,17 @@ const entryDateLabel = computed(() => {
       :revision="fixedBillRevision"
       :covered="Boolean(open || transactionDetailId)"
       @close="fixedBillsOpen = false"
+      @saved="refreshAfterTransactionChange"
+      @detail="transactionDetailId = $event"
+    />
+    <LedgerRentalWorkspace
+      v-if="rentalsOpen && ledgerId"
+      :key="ledgerId"
+      :ledger-id="ledgerId"
+      :writable="!readOnly"
+      :revision="fixedBillRevision"
+      :covered="Boolean(open || transactionDetailId)"
+      @close="rentalsOpen = false"
       @saved="refreshAfterTransactionChange"
       @detail="transactionDetailId = $event"
     />

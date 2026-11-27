@@ -1,0 +1,109 @@
+package com.xiaobu.ledger.interfaces;
+
+import com.aegisid.foundation.web.api.ApiResponse;
+import com.xiaobu.identity.interfaces.LedgerSessionContext;
+import com.xiaobu.ledger.application.RentalApplicationService;
+import com.xiaobu.ledger.application.RentalPageResult;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+import java.util.function.Function;
+import org.springframework.context.annotation.Profile;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@Profile("local-expense | wechat-preview")
+@RequestMapping("/api/v1/ledgers/{ledgerId}/rentals")
+class RentalController {
+  private final RentalApplicationService rentals;
+  private final RentalWebMapper mapper;
+
+  RentalController(RentalApplicationService rentals, RentalWebMapper mapper) {
+    this.rentals = rentals;
+    this.mapper = mapper;
+  }
+
+  @GetMapping("/homes")
+  public ApiResponse<RentalPageResponse<RentalHomeResponse>> listRentalHomes(
+      @PathVariable String ledgerId,
+      @RequestParam(defaultValue = "0") @Min(0) @Max(1_000_000) int page,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        toPage(rentals.listRentalHomes(ledgerId, actor.actorId(), page), mapper::toResponse));
+  }
+
+  @PostMapping("/homes")
+  public ApiResponse<RentalHomeResponse> createRentalHome(
+      @PathVariable String ledgerId,
+      @Valid @RequestBody SaveRentalHomeRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            rentals.saveRentalHome(mapper.toCommand(ledgerId, actor.actorId(), null, body))));
+  }
+
+  @PutMapping("/homes/{homeId}")
+  public ApiResponse<RentalHomeResponse> updateRentalHome(
+      @PathVariable String ledgerId,
+      @PathVariable String homeId,
+      @Valid @RequestBody SaveRentalHomeRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            rentals.saveRentalHome(mapper.toCommand(ledgerId, actor.actorId(), homeId, body))));
+  }
+
+  @GetMapping("/contracts")
+  public ApiResponse<RentalPageResponse<RentalContractResponse>> listRentalContracts(
+      @PathVariable String ledgerId,
+      @RequestParam(required = false) @Size(max = 48) String homeId,
+      @RequestParam(defaultValue = "0") @Min(0) @Max(1_000_000) int page,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        toPage(
+            rentals.listRentalContracts(ledgerId, actor.actorId(), homeId, page),
+            mapper::toResponse));
+  }
+
+  @PostMapping("/contracts")
+  public ApiResponse<RentalContractResponse> createRentalContract(
+      @PathVariable String ledgerId,
+      @Valid @RequestBody CreateRentalContractRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            rentals.createRentalContract(mapper.toCommand(ledgerId, actor.actorId(), body))));
+  }
+
+  @PutMapping("/contracts/{contractId}/bill")
+  public ApiResponse<RentalContractResponse> generateRentalBill(
+      @PathVariable String ledgerId,
+      @PathVariable String contractId,
+      @Valid @RequestBody GenerateRentalBillRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            rentals.generateRentalBill(
+                mapper.toCommand(ledgerId, actor.actorId(), contractId, body))));
+  }
+
+  private static <T, R> RentalPageResponse<R> toPage(RentalPageResult<T> page, Function<T, R> map) {
+    return new RentalPageResponse<>(
+        page.entries().stream().map(map).toList(), page.totalCount(), page.page(), page.pageSize());
+  }
+}

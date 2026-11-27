@@ -19,20 +19,32 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
       from FixedBillEntity b left join FixedBillPaymentEntity p
           on p.billId = b.id and p.period = :period and p.deleted = false
       where b.ledgerId = :ledgerId and b.deleted = false and b.firstDueOn <= :monthEnd
+          and (:billId is null or b.id = :billId)
           and (b.stopMonth is null or b.stopMonth > :period)
+          and mod((year(:period) - year(b.firstDueOn)) * 12 + month(:period) - month(b.firstDueOn), b.cycleMonths) = 0
+          and (b.lastDueOn is null or b.lastDueOn >= :monthEnd
+              or (b.lastDueOn >= :period and day(b.lastDueOn) >= day(b.firstDueOn)))
           and ((:paid = true and p.id is not null) or (:paid = false and p.id is null))
       """;
 
   @Query(
-      value = "select b as bill, p as payment " + PERIODS + " order by day(b.firstDueOn), b.id",
+      value =
+          "select b as bill, p as payment "
+              + PERIODS
+              + " order by least(day(b.firstDueOn), day(:monthEnd)), b.id",
       countQuery = "select count(b.id) " + PERIODS)
   Page<PeriodRow> listPeriods(
-      String ledgerId, LocalDate period, LocalDate monthEnd, boolean paid, Pageable pageable);
+      String ledgerId,
+      String billId,
+      LocalDate period,
+      LocalDate monthEnd,
+      boolean paid,
+      Pageable pageable);
 
   String OPEN_PLANS =
       """
       from FixedBillEntity b
-      where b.ledgerId = :ledgerId and b.deleted = false and b.stopMonth is null
+      where b.ledgerId = :ledgerId and b.deleted = false and b.stopMonth is null and b.lastDueOn is null
       """;
 
   @Query(

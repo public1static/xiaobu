@@ -148,10 +148,16 @@ class FixedBillPersistenceAdapter implements FixedBillRepository {
   }
 
   @Override
-  public FixedBillPageResult listPeriods(String ledgerId, YearMonth month, boolean paid, int page) {
+  public FixedBillPageResult listPeriods(
+      String ledgerId, YearMonth month, boolean paid, int page, String billId) {
     var rows =
         bills.listPeriods(
-            ledgerId, month.atDay(1), month.atEndOfMonth(), paid, PageRequest.of(page, PAGE_SIZE));
+            ledgerId,
+            billId,
+            month.atDay(1),
+            month.atEndOfMonth(),
+            paid,
+            PageRequest.of(page, PAGE_SIZE));
     return new FixedBillPageResult(
         rows.map(
                 row -> {

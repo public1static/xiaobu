@@ -112,7 +112,7 @@ public class FixedBillApplicationService {
   private FixedBill requireOpenPlan(String ledgerId, String billId) {
     return bills
         .findBill(ledgerId, billId)
-        .filter(bill -> bill.stopMonth() == null)
+        .filter(bill -> bill.stopMonth() == null && bill.lastDueOn() == null)
         .orElseThrow(() -> conflict("计划已变更，请重新打开"));
   }
 
@@ -133,9 +133,15 @@ public class FixedBillApplicationService {
   @Transactional(readOnly = true)
   public FixedBillPageResult listFixedBillPeriods(
       String ledgerId, String actorId, YearMonth month, boolean paid, int page) {
+    return listFixedBillPeriods(ledgerId, actorId, month, paid, page, null);
+  }
+
+  @Transactional(readOnly = true)
+  public FixedBillPageResult listFixedBillPeriods(
+      String ledgerId, String actorId, YearMonth month, boolean paid, int page, String billId) {
     ledgers.requireReadAccess(ledgerId, actorId);
     requirePeriod(month);
-    return bills.listPeriods(ledgerId, month, paid, page);
+    return bills.listPeriods(ledgerId, month, paid, page, billId);
   }
 
   @Transactional

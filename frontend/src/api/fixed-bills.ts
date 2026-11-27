@@ -5,6 +5,7 @@ export interface FixedBillPeriod {
   name: string;
   dueOn: string;
   amountCents: number;
+  cycleMonths: number;
   categoryCode: string;
   accountId?: string | null;
   transactionId?: string | null;
@@ -35,8 +36,19 @@ interface BillPlan {
 
 const path = (ledgerId: string) => '/ledgers/' + encodeURIComponent(ledgerId) + '/fixed-bills';
 
-export function listFixedBillPeriods(ledgerId: string, month: string, paid: boolean, page: number) {
-  return request<FixedBillPage>(path(ledgerId), 'GET', { month, paid, page });
+export function listFixedBillPeriods(
+  ledgerId: string,
+  month: string,
+  paid: boolean,
+  page: number,
+  billId?: string,
+) {
+  return request<FixedBillPage>(path(ledgerId), 'GET', {
+    month,
+    paid,
+    page,
+    ...(billId ? { billId } : {}),
+  });
 }
 
 export function createFixedBill(ledgerId: string, plan: BillPlan) {

@@ -47,5 +47,6 @@ public interface FixedBillRepository {
 
   void addPayment(FixedBillPayment payment, String actorId);
 
-  FixedBillPageResult listPeriods(String ledgerId, YearMonth month, boolean paid, int page);
+  FixedBillPageResult listPeriods(
+      String ledgerId, YearMonth month, boolean paid, int page, String billId);
 }
