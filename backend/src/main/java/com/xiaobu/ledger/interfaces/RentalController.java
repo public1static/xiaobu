@@ -2,15 +2,19 @@ package com.xiaobu.ledger.interfaces;
 
 import com.aegisid.foundation.web.api.ApiResponse;
 import com.xiaobu.identity.interfaces.LedgerSessionContext;
+import com.xiaobu.ledger.application.ListRentalBillPlansQuery;
 import com.xiaobu.ledger.application.RentalApplicationService;
 import com.xiaobu.ledger.application.RentalPageResult;
+import com.xiaobu.ledger.domain.RentalPaymentCycle;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.function.Function;
 import org.springframework.context.annotation.Profile;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -100,6 +104,35 @@ class RentalController {
         mapper.toResponse(
             rentals.generateRentalBill(
                 mapper.toCommand(ledgerId, actor.actorId(), contractId, body))));
+  }
+
+  @GetMapping("/bill-candidates")
+  public ApiResponse<RentalPageResponse<RentalBillPlanResponse>> listRentalBillPlans(
+      @PathVariable String ledgerId,
+      @RequestParam RentalPaymentCycle cycle,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startsOn,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endsOn,
+      @RequestParam(defaultValue = "0") @Min(0) @Max(1_000_000) int page,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        toPage(
+            rentals.listRentalBillPlans(
+                new ListRentalBillPlansQuery(
+                    ledgerId, actor.actorId(), cycle, startsOn, endsOn, page)),
+            mapper::toResponse));
+  }
+
+  @PutMapping("/contracts/{contractId}/bill-link")
+  public ApiResponse<RentalContractResponse> linkRentalBill(
+      @PathVariable String ledgerId,
+      @PathVariable String contractId,
+      @Valid @RequestBody LinkRentalBillRequest body,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return ApiResponse.success(
+        mapper.toResponse(
+            rentals.linkRentalBill(mapper.toCommand(ledgerId, actor.actorId(), contractId, body))));
   }
 
   private static <T, R> RentalPageResponse<R> toPage(RentalPageResult<T> page, Function<T, R> map) {

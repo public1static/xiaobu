@@ -25,12 +25,14 @@ interface RentalContractInput {
   cycle: RentalCycle;
   firstDueOn: string | null;
   note: string;
+  existingBillId?: string;
 }
 
 export interface RentalContract extends RentalContractInput {
   id: string;
   homeName: string;
   billId: string | null;
+  dueDayOfMonth: number | null;
   periodAmountCents: number;
 }
 
@@ -71,5 +73,33 @@ export function generateRentalBill(ledgerId: string, contractId: string, firstDu
     path(ledgerId) + '/contracts/' + encodeURIComponent(contractId) + '/bill',
     'PUT',
     { firstDueOn },
+  );
+}
+
+export interface RentalBillPlan {
+  billId: string;
+  name: string;
+  firstDueOn: string;
+  amountCents: number;
+}
+
+export function listRentalBillPlans(
+  ledgerId: string,
+  window: { cycle: RentalCycle; startsOn: string; endsOn: string },
+  page: number,
+) {
+  return request<RentalPage<RentalBillPlan>>(path(ledgerId) + '/bill-candidates', 'GET', {
+    cycle: window.cycle,
+    startsOn: window.startsOn,
+    endsOn: window.endsOn,
+    page,
+  });
+}
+
+export function linkRentalBill(ledgerId: string, contractId: string, billId: string) {
+  return request<RentalContract>(
+    path(ledgerId) + '/contracts/' + encodeURIComponent(contractId) + '/bill-link',
+    'PUT',
+    { billId },
   );
 }

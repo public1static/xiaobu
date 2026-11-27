@@ -5,6 +5,8 @@ import com.aegisid.foundation.data.id.IdPrefix;
 import com.aegisid.foundation.shared.error.ErrorCategory;
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
+import com.xiaobu.ledger.domain.FixedBill;
+import com.xiaobu.ledger.domain.LedgerCategoryDefaults;
 import com.xiaobu.ledger.domain.RentalContract;
 import com.xiaobu.ledger.domain.RentalHome;
 import com.xiaobu.ledger.domain.TransactionDirection;
@@ -76,6 +78,13 @@ public class RentalApplicationService {
   public RentalContractResult createRentalContract(CreateRentalContractCommand command) {
     ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
     var home = requireHome(command.ledgerId(), command.homeId());
+    if (command.existingBillId() != null && command.firstDueOn() != null) {
+      throw new FoundationException(new ErrorCode("XIAOBU_RENTAL_BILL_INVALID"), "请选择生成或关联账单");
+    }
+    var billId =
+        command.existingBillId() != null
+            ? command.existingBillId()
+            : command.firstDueOn() == null ? null : ids.next(BILL_PREFIX);
     var contract =
         new RentalContract(
             ids.next(CONTRACT_PREFIX),
@@ -87,12 +96,16 @@ public class RentalApplicationService {
             command.monthlyRentCents(),
             command.depositCents(),
             command.cycle(),
-            command.firstDueOn() == null ? null : ids.next(BILL_PREFIX),
+            billId,
             command.note());
-    if (contract.billId() != null)
-      addRentBill(contract, home, command.firstDueOn(), command.actorId());
+    FixedBill bill = null;
+    if (command.existingBillId() != null) {
+      bill = adoptRentBill(contract, command.actorId());
+    } else if (billId != null) {
+      bill = addRentBill(contract, home, command.firstDueOn(), command.actorId());
+    }
     rentals.addContract(contract, command.actorId());
-    return RentalContractResult.from(contract, home.name(), command.firstDueOn());
+    return RentalContractResult.from(contract, home.name(), bill);
   }
 
   @Transactional
@@ -107,7 +120,7 @@ public class RentalApplicationService {
     if (existing.billId() != null) {
       var bill = bills.findBill(existing.ledgerId(), existing.billId()).orElseThrow();
       if (bill.firstDueOn().equals(command.firstDueOn())) {
-        return RentalContractResult.from(existing, home.name(), bill.firstDueOn());
+        return RentalContractResult.from(existing, home.name(), bill);
       }
       throw new FoundationException(
           new ErrorCode("XIAOBU_RENTAL_BILL_EXISTS"),
@@ -116,17 +129,96 @@ public class RentalApplicationService {
           Map.of());
     }
     var contract = existing.withBill(ids.next(BILL_PREFIX));
-    addRentBill(contract, home, command.firstDueOn(), command.actorId());
+    var bill = addRentBill(contract, home, command.firstDueOn(), command.actorId());
     rentals.linkBill(contract.ledgerId(), contract.id(), contract.billId(), command.actorId());
-    return RentalContractResult.from(contract, home.name(), command.firstDueOn());
+    return RentalContractResult.from(contract, home.name(), bill);
   }
 
-  private void addRentBill(
+  @Transactional(readOnly = true)
+  public RentalPageResult<RentalBillPlanResult> listRentalBillPlans(
+      ListRentalBillPlansQuery query) {
+    ledgers.requireReadAccess(query.ledgerId(), query.actorId());
+    if (query.cycle() == null
+        || query.startsOn() == null
+        || query.endsOn() == null
+        || query.startsOn().getYear() < 1900
+        || query.endsOn().getYear() > 2100
+        || query.endsOn().isBefore(query.startsOn())) {
+      throw new FoundationException(new ErrorCode("XIAOBU_RENTAL_BILL_INVALID"), "请先填写有效租期");
+    }
+    return bills.listRentalPlanCandidates(
+        query.ledgerId(), query.cycle().months(), query.startsOn(), query.endsOn(), query.page());
+  }
+
+  @Transactional
+  public RentalContractResult linkRentalBill(LinkRentalBillCommand command) {
+    ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
+    var existing =
+        rentals
+            .findContract(command.ledgerId(), command.contractId())
+            .orElseThrow(() -> planConflict("找不到该合同"));
+    var home = requireHome(existing.ledgerId(), existing.homeId());
+    if (existing.billId() != null) {
+      if (!existing.billId().equals(command.billId())) throw planConflict("该合同已设置房租账单");
+      var bill = bills.findBill(existing.ledgerId(), existing.billId()).orElseThrow();
+      return RentalContractResult.from(existing, home.name(), bill);
+    }
+    var contract = existing.withBill(command.billId());
+    var bill = adoptRentBill(contract, command.actorId());
+    rentals.linkBill(contract.ledgerId(), contract.id(), contract.billId(), command.actorId());
+    return RentalContractResult.from(contract, home.name(), bill);
+  }
+
+  private FixedBill adoptRentBill(RentalContract contract, String actorId) {
+    requireNoOverlappingPlan(contract);
+    var bill =
+        bills
+            .findBill(contract.ledgerId(), contract.billId())
+            .filter(row ->
+                row.stopMonth() == null
+                    && row.lastDueOn() == null
+                    && LedgerCategoryDefaults.HOUSING.name().equals(row.categoryCode())
+                    && row.cycleMonths() == contract.cycle().months())
+            .orElseThrow(() -> planConflict("请选择同周期且仍在使用的住房账单"));
+    if (rentals.hasContractForBill(bill.id())) throw planConflict("该账单已关联其它合同");
+    var firstDueOn = bill.firstDueOnOrAfter(contract.startsOn());
+    if (firstDueOn.isAfter(contract.endsOn())) throw planConflict("账单与租期没有重叠");
+    categories.requireActiveCategory(
+        contract.ledgerId(), TransactionDirection.EXPENSE, bill.categoryCode());
+    var adopted =
+        bill.adoptForRental(contract.startsOn(), contract.endsOn(), contract.periodAmountCents());
+    bills.adoptForRental(adopted, actorId);
+    return adopted;
+  }
+
+  private void requireNoOverlappingPlan(RentalContract contract) {
+    if (rentals.hasOverlappingRentalBill(
+        contract.ledgerId(),
+        contract.homeId(),
+        contract.id(),
+        contract.startsOn(),
+        contract.endsOn())) {
+      throw new FoundationException(
+          new ErrorCode("XIAOBU_RENTAL_HOME_ALREADY_BILLED"),
+          ErrorCategory.CONFLICT,
+          "这套房屋在该租期内已有房租账单",
+          Map.of());
+    }
+  }
+
+  private static FoundationException planConflict(String message) {
+    return new FoundationException(
+        new ErrorCode("XIAOBU_RENTAL_PLAN_CONFLICT"), ErrorCategory.CONFLICT, message, Map.of());
+  }
+
+  private FixedBill addRentBill(
       RentalContract contract, RentalHome home, LocalDate firstDueOn, String actorId) {
+    requireNoOverlappingPlan(contract);
     var bill = contract.createRentBill(home.name(), firstDueOn);
     categories.requireActiveCategory(
         home.ledgerId(), TransactionDirection.EXPENSE, bill.categoryCode());
     bills.addBill(bill, actorId);
+    return bill;
   }
 
   private RentalHome requireHome(String ledgerId, String homeId) {

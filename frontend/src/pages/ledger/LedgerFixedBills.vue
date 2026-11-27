@@ -18,6 +18,7 @@ import LedgerCategoryGrid from './LedgerCategoryGrid.vue';
 import LedgerFixedBillLink from './LedgerFixedBillLink.vue';
 import {
   FIRST_LEDGER_MONTH,
+  clampLedgerDueOn,
   formatCents,
   formatCentsForInput,
   ledgerToday,
@@ -35,7 +36,13 @@ const props = defineProps<{
   writable: boolean;
   covered: boolean;
   revision: number;
-  rental?: { billId: string; firstDueOn: string; endsOn: string; cycleMonths: number };
+  rental?: {
+    billId: string;
+    firstDueOn: string;
+    endsOn: string;
+    cycleMonths: number;
+    dueDayOfMonth: number;
+  };
 }>();
 const emit = defineEmits<{ close: []; saved: []; detail: [id: string] }>();
 const today = ledgerToday();
@@ -61,10 +68,7 @@ function isRentalPeriod(candidate: string) {
   if (!props.rental) return candidate >= FIRST_LEDGER_MONTH && candidate <= '2100-12';
   const first = props.rental.firstDueOn;
   if (candidate < first.slice(0, 7) || candidate > props.rental.endsOn.slice(0, 7)) return false;
-  const [year, number] = candidate.split('-').map(Number);
-  const last = new Date(Date.UTC(year, number, 0)).getUTCDate();
-  const due = Math.min(last, Number(first.slice(8)));
-  return candidate + '-' + String(due).padStart(2, '0') <= props.rental.endsOn;
+  return clampLedgerDueOn(candidate, props.rental.dueDayOfMonth) <= props.rental.endsOn;
 }
 const previousPeriod = computed(() =>
   shiftLedgerMonth(month.value, -(props.rental?.cycleMonths ?? 1)),

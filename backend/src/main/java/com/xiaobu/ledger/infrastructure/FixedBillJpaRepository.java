@@ -14,6 +14,7 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
 
   Optional<FixedBillEntity> findByLedgerIdAndIdAndDeletedFalse(String ledgerId, String id);
 
+  // A ledger-wide paid view preserves original payments even outside an adopted rental window.
   String PERIODS =
       """
       from FixedBillEntity b left join FixedBillPaymentEntity p
@@ -22,8 +23,12 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
           and (:billId is null or b.id = :billId)
           and (b.stopMonth is null or b.stopMonth > :period)
           and mod((year(:period) - year(b.firstDueOn)) * 12 + month(:period) - month(b.firstDueOn), b.cycleMonths) = 0
-          and (b.lastDueOn is null or b.lastDueOn >= :monthEnd
-              or (b.lastDueOn >= :period and day(b.lastDueOn) >= day(b.firstDueOn)))
+          and ((:billId is null and p.id is not null) or (
+              (b.lastDueOn is null or b.lastDueOn >= :monthEnd
+                  or (b.lastDueOn >= :period and day(b.lastDueOn) >= day(b.firstDueOn)))
+              and (b.rentalStartsOn is null or b.rentalStartsOn <= :period
+                  or (b.rentalStartsOn <= :monthEnd
+                      and day(b.rentalStartsOn) <= least(day(b.firstDueOn), day(:monthEnd))))))
           and ((:paid = true and p.id is not null) or (:paid = false and p.id is null))
       """;
 
@@ -57,6 +62,46 @@ interface FixedBillJpaRepository extends Repository<FixedBillEntity, String> {
               + " order by b.id",
       countQuery = "select count(b.id) " + OPEN_PLANS)
   Page<PlanRow> listPlans(String ledgerId, Pageable pageable);
+
+  // Anchor offsets describe the first and last admissible months after day clamping.
+  String ANCHOR = "(year(b.firstDueOn) * 12 + month(b.firstDueOn))";
+  String FIRST_OFFSET =
+      "(:startMonth - "
+          + ANCHOR
+          + " + case when least(day(b.firstDueOn), :startMonthDays) < :startDay then 1 else 0 end)";
+  String LAST_OFFSET =
+      "(:endMonth - "
+          + ANCHOR
+          + " - case when least(day(b.firstDueOn), :endMonthDays) > :endDay then 1 else 0 end)";
+  String RENTAL_PLANS =
+      OPEN_PLANS
+          + " and b.categoryCode = :housingCategory and b.cycleMonths = :cycleMonths"
+          + " and not exists (select c.id from RentalContractEntity c where c.billId = b.id)"
+          + " and "
+          + LAST_OFFSET
+          + " >= 0"
+          + " and "
+          + FIRST_OFFSET
+          + " <= "
+          + LAST_OFFSET
+          + " - mod("
+          + LAST_OFFSET
+          + ", b.cycleMonths)";
+
+  @Query(
+      value = "select b " + RENTAL_PLANS + " order by b.name, b.id",
+      countQuery = "select count(b.id) " + RENTAL_PLANS)
+  Page<FixedBillEntity> listRentalPlanCandidates(
+      String ledgerId,
+      String housingCategory,
+      int cycleMonths,
+      int startMonth,
+      int startMonthDays,
+      int startDay,
+      int endMonth,
+      int endMonthDays,
+      int endDay,
+      Pageable pageable);
 
   interface PlanRow {
     FixedBillEntity getBill();

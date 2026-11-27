@@ -6,6 +6,7 @@ import com.xiaobu.ledger.application.RentalPageResult;
 import com.xiaobu.ledger.application.RentalRepository;
 import com.xiaobu.ledger.domain.RentalContract;
 import com.xiaobu.ledger.domain.RentalHome;
+import java.time.LocalDate;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -68,7 +69,9 @@ class RentalPersistenceAdapter implements RentalRepository {
             .listContracts(ledgerId, homeId, PageRequest.of(page, PAGE_SIZE))
             .map(row ->
                 RentalContractResult.from(
-                    row.getContract().toDomain(), row.getHomeName(), row.getFirstDueOn())));
+                    row.getContract().toDomain(),
+                    row.getHomeName(),
+                    row.getBill() == null ? null : row.getBill().toDomain())));
   }
 
   @Override
@@ -84,6 +87,18 @@ class RentalPersistenceAdapter implements RentalRepository {
         .findByLedgerIdAndIdAndDeletedFalse(ledgerId, contractId)
         .orElseThrow()
         .linkBill(billId, actorId);
+  }
+
+  @Override
+  public boolean hasOverlappingRentalBill(
+      String ledgerId, String homeId, String contractId, LocalDate startsOn, LocalDate endsOn) {
+    return contracts.countOverlappingRentalBills(ledgerId, homeId, contractId, startsOn, endsOn)
+        > 0;
+  }
+
+  @Override
+  public boolean hasContractForBill(String billId) {
+    return contracts.existsByBillId(billId);
   }
 
   @Override

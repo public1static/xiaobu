@@ -98,3 +98,10 @@ test('pre-filled bill amounts can be submitted without editing', async () => {
   assert.equal(formatCentsForInput(750000), '7500.00');
   assert.equal(parseCents(formatCentsForInput(750000)), 750000);
 });
+
+test('a short-month visible first period does not change the original due day', async () => {
+  const { clampLedgerDueOn } = await import('../src/pages/ledger/transaction.ts');
+  assert.equal(clampLedgerDueOn('2025-02', 31), '2025-02-28');
+  assert.equal(clampLedgerDueOn('2024-02', 31), '2024-02-29');
+  assert.equal(clampLedgerDueOn('2025-03', 31), '2025-03-31');
+});
