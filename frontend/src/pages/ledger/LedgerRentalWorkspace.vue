@@ -10,6 +10,7 @@ import {
   listRentalBillPlans,
   listRentalContracts,
   listRentalHomes,
+  renewRentalContract,
   rentalCycles,
   saveRentalHome,
   type RentalBillPlan,
@@ -22,7 +23,13 @@ import LedgerPicker from '../../components/LedgerPicker.vue';
 import LedgerIcon from '../../components/LedgerIcon.vue';
 import LedgerFixedBills from './LedgerFixedBills.vue';
 import LedgerRentalDeposits from './LedgerRentalDeposits.vue';
-import { formatCents, ledgerToday, parseCents } from './transaction';
+import {
+  formatCents,
+  formatCentsForInput,
+  ledgerToday,
+  nextLedgerDay,
+  parseCents,
+} from './transaction';
 import {
   DEFAULT_RENTAL_EXPIRY_DAYS,
   isRentalExpiryPending,
@@ -64,12 +71,18 @@ type Screen =
   | 'periods';
 const screen = ref<Screen>(props.initialContractId ? 'contract' : 'homes');
 const initialLoadError = ref(false);
+const requestedContractId = ref(props.initialContractId || '');
 const initialLoading = ref(false);
 const reminderLabels = rentalExpiryOptions.map((item) => item.name);
 const contractOrigin = ref<'home' | 'contracts'>('contracts');
 const home = ref<RentalHome>();
 const contract = ref<RentalContract>();
-const formHome = ref<RentalHome>();
+const formHome = ref<Pick<RentalHome, 'id' | 'name'>>();
+const renewalSource = ref<RentalContract>();
+const renewalEarliest = computed(() =>
+  renewalSource.value ? nextLedgerDay(renewalSource.value.endsOn) : undefined,
+);
+
 const formHomeEdit = ref(false);
 const depositTitle = ref('');
 const depositBusy = ref(false);
@@ -114,7 +127,7 @@ const title = computed(
       contracts: '租房',
       home: home.value?.name,
       homeForm: formHomeEdit.value ? '编辑房屋' : '新增房屋',
-      contractForm: '新增合同',
+      contractForm: renewalSource.value ? '续租' : '新增合同',
       chooseHome: '选择房屋',
       contract: '租房合同',
       configureBill: '设置房租账单',
@@ -127,6 +140,13 @@ const topAction = computed(() => {
   if (!props.writable) return '';
   if (screen.value === 'homes' || screen.value === 'contracts') return '新增';
   if (screen.value === 'home') return '编辑';
+  if (
+    screen.value === 'contract' &&
+    contract.value &&
+    !contract.value.nextContractId &&
+    contract.value.endsOn < '2100-12-31'
+  )
+    return '续租';
   return '';
 });
 const isForm = computed(() => screen.value === 'homeForm' || screen.value === 'contractForm');
@@ -202,11 +222,11 @@ if (props.initialContractId) void loadInitialContract();
 else void load();
 
 async function loadInitialContract() {
-  if (!props.initialContractId) return;
+  if (!requestedContractId.value) return;
   initialLoading.value = true;
   initialLoadError.value = false;
   try {
-    contract.value = await getRentalContract(props.ledgerId, props.initialContractId);
+    contract.value = await getRentalContract(props.ledgerId, requestedContractId.value);
   } catch {
     initialLoadError.value = true;
   } finally {
@@ -276,10 +296,35 @@ function showHomeForm(edit = false) {
   go('homeForm');
 }
 function showContractForm() {
+  renewalSource.value = undefined;
   contractOrigin.value = screen.value === 'home' ? 'home' : 'contracts';
   formHome.value = contractOrigin.value === 'home' ? home.value : undefined;
   selectedBill.value = undefined;
   contractDraft.value = emptyContract();
+  go('contractForm');
+}
+function openContractLink(contractId: string) {
+  requestedContractId.value = contractId;
+  contract.value = undefined;
+  go('contract');
+  void loadInitialContract();
+}
+function startRenewal() {
+  const row = contract.value;
+  if (!row || row.nextContractId) return;
+  const startsOn = nextLedgerDay(row.endsOn);
+  renewalSource.value = row;
+  formHome.value = { id: row.homeId, name: row.homeName };
+  selectedBill.value = undefined;
+  contractDraft.value = {
+    ...emptyContract(),
+    landlordName: row.landlordName,
+    startsOn,
+    firstDueOn: startsOn,
+    rent: formatCentsForInput(row.monthlyRentCents),
+    cycle: row.cycle,
+    remindDays: row.remindDays,
+  };
   go('contractForm');
 }
 function chooseHome(row: RentalHome) {
@@ -287,7 +332,9 @@ function chooseHome(row: RentalHome) {
   go('contractForm');
 }
 function runTopAction() {
-  if (screen.value === 'home') showHomeForm(true);
+  if (saving.value) return;
+  if (screen.value === 'contract') startRenewal();
+  else if (screen.value === 'home') showHomeForm(true);
   else if (screen.value === 'homes') showHomeForm();
   else showContractForm();
 }
@@ -296,7 +343,11 @@ function back() {
   if (screen.value === 'home') go('homes');
   else if (screen.value === 'homeForm') go(formHomeEdit.value ? 'home' : 'homes');
   else if (screen.value === 'contract' && props.initialContractId) emit('close');
-  else if (screen.value === 'contractForm' || screen.value === 'contract') go(contractOrigin.value);
+  else if (screen.value === 'contractForm' && renewalSource.value) {
+    renewalSource.value = undefined;
+    go('contract');
+  } else if (screen.value === 'contractForm' || screen.value === 'contract')
+    go(contractOrigin.value);
   else if (screen.value === 'chooseHome') go('contractForm');
   else if (screen.value === 'configureBill' || screen.value === 'depositForm') go('contract');
   else if (screen.value === 'chooseBill') go(billPickerOrigin.value);
@@ -498,6 +549,8 @@ async function save() {
       : parseCents(row.deposit);
   if (!formHome.value) return fail('home', '请选择房屋');
   if (!row.landlordName.trim()) return fail('landlord', '请输入出租方');
+  if (renewalEarliest.value && row.startsOn < renewalEarliest.value)
+    return fail('start', '续租须在原合同到期后开始。');
   if (!row.endsOn || row.endsOn < row.startsOn) return fail('end', '请选择不早于起租日的到期日');
   if (!monthlyRentCents || periodAmount.value > 9_999_999_999)
     return fail('rent', '请输入有效的月租，最多两位小数');
@@ -510,8 +563,7 @@ async function save() {
   saving.value = true;
   try {
     if (row.billMode === 1 && !(await confirmSeparateBill(row, 'contractForm'))) return;
-    contract.value = await createRentalContract(props.ledgerId, {
-      homeId: formHome.value.id,
+    const terms = {
       landlordName: row.landlordName,
       startsOn: row.startsOn,
       endsOn: row.endsOn,
@@ -524,11 +576,21 @@ async function save() {
         ? { existingBillId: selectedBill.value.billId }
         : {}),
       note: row.note,
-    });
+    };
+    const source = renewalSource.value;
+    contract.value = source
+      ? await renewRentalContract(props.ledgerId, source.id, source.endsOn, terms)
+      : await createRentalContract(props.ledgerId, { homeId: formHome.value.id, ...terms });
+    renewalSource.value = undefined;
     go('contract');
     emit('reminderChanged');
   } catch (error) {
-    if (row.billMode) saveBillFailure(error);
+    const code = error instanceof ApiRequestError ? error.code : undefined;
+    if (code === 'XIAOBU_RENTAL_RENEWAL_START') fail('start', '续租须在原合同到期后开始。');
+    else if (code === 'XIAOBU_RENTAL_RENEWAL_OVERLAP') fail('end', '与该房屋已有合同的租期重叠。');
+    else if (code === 'XIAOBU_RENTAL_ALREADY_RENEWED' || code === 'XIAOBU_RENTAL_RENEWAL_CHANGED')
+      fail('', '原合同已变更或已续租，请重新打开合同核对。');
+    else if (row.billMode) saveBillFailure(error);
     else fail('', '未确认合同保存，请返回合同列表核对。');
   } finally {
     saving.value = false;
@@ -554,7 +616,9 @@ async function save() {
         ‹
       </button>
       <text class="rental-title">{{ title }}</text>
-      <button v-if="topAction" class="rental-action" @click="runTopAction">{{ topAction }}</button>
+      <button v-if="topAction" class="rental-action" :disabled="saving" @click="runTopAction">
+        {{ topAction }}
+      </button>
       <view v-else class="rental-space" />
     </view>
     <view class="rental-content">
@@ -706,6 +770,20 @@ async function save() {
           <text v-if="issue?.field === 'reminder'" class="rental-error" role="alert">{{
             issue.message
           }}</text>
+          <button
+            v-if="contract.previousContractId"
+            class="rental-row renewal-previous"
+            @click="openContractLink(contract.previousContractId)"
+          >
+            <text>查看原合同</text><text class="rental-arrow">›</text>
+          </button>
+          <button
+            v-if="contract.nextContractId"
+            class="rental-row renewal-next"
+            @click="openContractLink(contract.nextContractId)"
+          >
+            <text>查看续租合同</text><text class="rental-arrow">›</text>
+          </button>
           <view v-if="contract.note" class="rental-row"
             ><text>备注</text><text>{{ contract.note }}</text></view
           >
@@ -850,7 +928,14 @@ async function save() {
           /></view>
         </view>
         <view v-else class="rental-card">
-          <button class="rental-field" @click="go('chooseHome')">
+          <view v-if="renewalSource" class="renewal-hint">
+            <text>原合同 {{ renewalSource.endsOn }} 到期</text>
+            <text>旧合同、付款和押金记录保留，不转入新合同。</text>
+          </view>
+          <view v-if="renewalSource" class="rental-field"
+            ><text>房屋</text><text>{{ formHome?.name }}</text></view
+          >
+          <button v-else class="rental-field" @click="go('chooseHome')">
             <text>房屋<text class="rental-star">*</text></text
             ><text :class="{ 'rental-secondary': !formHome }">{{
               formHome?.name || '选择房屋'
@@ -871,6 +956,7 @@ async function save() {
             mode="date"
             label="起租日"
             :value="contractDraft.startsOn"
+            :start="renewalEarliest"
             @change="setStart($event.detail.value)"
           >
             <view class="rental-field"
@@ -879,6 +965,7 @@ async function save() {
               ><text class="rental-arrow">›</text></view
             >
           </LedgerPicker>
+          <text v-if="issue?.field === 'start'" class="rental-error">{{ issue.message }}</text>
           <LedgerPicker
             mode="date"
             label="到期日"
@@ -994,7 +1081,15 @@ async function save() {
         </view>
         <text v-if="issue?.field === ''" class="rental-error">{{ issue.message }}</text>
         <button class="rental-save" :disabled="saving" @click="save">
-          {{ saving ? '保存中…' : screen === 'homeForm' ? '保存' : '保存合同' }}
+          {{
+            saving
+              ? '保存中…'
+              : screen === 'homeForm'
+                ? '保存'
+                : renewalSource
+                  ? '保存续租合同'
+                  : '保存合同'
+          }}
         </button>
       </template>
     </view>
@@ -1048,6 +1143,11 @@ async function save() {
   width: 42px;
   min-height: 44px;
   font-size: 28px;
+}
+.rental-workspace .rental-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .rental-workspace .rental-action,
 .rental-heading button,
@@ -1106,6 +1206,20 @@ async function save() {
 .rental-heading,
 .rental-row {
   justify-content: space-between;
+}
+.renewal-hint {
+  border-radius: 12px 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 13px;
+  background: #eaf2ee;
+  color: #315951;
+  font-size: 13px;
+}
+.rental-workspace .renewal-previous,
+.rental-workspace .renewal-next {
+  color: #176a57;
 }
 .rental-reminder-value {
   display: flex;

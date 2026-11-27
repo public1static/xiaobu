@@ -3,6 +3,7 @@ package com.xiaobu.ledger.interfaces;
 import com.xiaobu.ledger.application.CreateRentalContractCommand;
 import com.xiaobu.ledger.application.GenerateRentalBillCommand;
 import com.xiaobu.ledger.application.LinkRentalBillCommand;
+import com.xiaobu.ledger.application.RenewRentalContractCommand;
 import com.xiaobu.ledger.application.RentalBillPlanResult;
 import com.xiaobu.ledger.application.RentalContractResult;
 import com.xiaobu.ledger.application.RentalHomeResult;
@@ -23,6 +24,9 @@ interface RentalWebMapper {
 
   LinkRentalBillCommand toCommand(
       String ledgerId, String actorId, String contractId, LinkRentalBillRequest body);
+
+  RenewRentalContractCommand toCommand(
+      String ledgerId, String actorId, String contractId, RenewRentalContractRequest body);
 
   RentalBillPlanResponse toResponse(RentalBillPlanResult result);
 

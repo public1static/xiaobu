@@ -68,6 +68,9 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
   @Column(name = "handled_end")
   private LocalDate handledEnd;
 
+  @Column(name = "previous_contract_id", length = 48, updatable = false)
+  private String previousContractId;
+
   @Transient private boolean newEntity = true;
 
   protected RentalContractEntity() {}
@@ -86,6 +89,7 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
     note = row.note();
     remindDays = row.remindDays();
     handledEnd = row.handledEnd();
+    previousContractId = row.previousContractId();
     createdBy = actorId;
     updatedBy = actorId;
   }
@@ -119,7 +123,8 @@ public class RentalContractEntity extends AuditableEntity implements Persistable
         billId,
         note,
         remindDays,
-        handledEnd);
+        handledEnd,
+        previousContractId);
   }
 
   @Override

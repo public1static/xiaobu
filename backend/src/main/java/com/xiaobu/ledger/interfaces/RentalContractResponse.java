@@ -19,4 +19,6 @@ public record RentalContractResponse(
     long periodAmountCents,
     String note,
     int remindDays,
-    LocalDate handledEnd) {}
+    LocalDate handledEnd,
+    String previousContractId,
+    String nextContractId) {}

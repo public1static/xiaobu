@@ -126,3 +126,10 @@ test('contract reminders use natural days, including disabled advance notices an
   assert.equal(isRentalExpiryPending('2025-01-08', '2025-01-08', 30, '2025-01-08'), false);
   assert.equal(isRentalExpiryPending('2025-01-09', '2025-01-08', 7, '2025-01-08'), true);
 });
+
+test('renewal starts on the next calendar day, including year-end and leap day', async () => {
+  const { nextLedgerDay } = await import('../src/pages/ledger/transaction.ts');
+  assert.equal(nextLedgerDay('2025-12-31'), '2026-01-01');
+  assert.equal(nextLedgerDay('2024-02-28'), '2024-02-29');
+  assert.equal(nextLedgerDay('2025-02-28'), '2025-03-01');
+});

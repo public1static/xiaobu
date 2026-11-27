@@ -21,9 +21,11 @@ public record RentalContractResult(
     long periodAmountCents,
     String note,
     int remindDays,
-    LocalDate handledEnd) {
+    LocalDate handledEnd,
+    String previousContractId,
+    String nextContractId) {
   public static RentalContractResult from(
-      RentalContract contract, String homeName, FixedBill bill) {
+      RentalContract contract, String homeName, FixedBill bill, String nextContractId) {
     return new RentalContractResult(
         contract.id(),
         contract.homeId(),
@@ -40,6 +42,8 @@ public record RentalContractResult(
         contract.periodAmountCents(),
         contract.note(),
         contract.remindDays(),
-        contract.handledEnd());
+        contract.handledEnd(),
+        contract.previousContractId(),
+        nextContractId);
   }
 }

@@ -105,6 +105,18 @@ class RentalPersistenceAdapter implements RentalRepository {
   }
 
   @Override
+  public boolean hasRenewal(String ledgerId, String contractId) {
+    return contracts.existsByLedgerIdAndPreviousContractId(ledgerId, contractId);
+  }
+
+  @Override
+  public boolean hasOverlappingContract(
+      String ledgerId, String homeId, LocalDate startsOn, LocalDate endsOn, boolean renewalsOnly) {
+    return contracts.countOverlappingContracts(ledgerId, homeId, startsOn, endsOn, renewalsOnly)
+        > 0;
+  }
+
+  @Override
   public Optional<RentalContractResult> findContractDetails(String ledgerId, String contractId) {
     return contracts
         .findContractDetails(ledgerId, contractId)
@@ -146,7 +158,10 @@ class RentalPersistenceAdapter implements RentalRepository {
       RentalContractJpaRepository.ContractRow row) {
     var bill = row.getBill();
     return RentalContractResult.from(
-        row.getContract().toDomain(), row.getHomeName(), bill == null ? null : bill.toDomain());
+        row.getContract().toDomain(),
+        row.getHomeName(),
+        bill == null ? null : bill.toDomain(),
+        row.getNextContractId());
   }
 
   private static <T> RentalPageResult<T> toResult(Page<T> page) {
