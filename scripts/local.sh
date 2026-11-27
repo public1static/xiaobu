@@ -74,11 +74,18 @@ start_app() {
   fail "等待 $name 超时，请查看 $state/$name.log"
 }
 
-start() {
-  local java_bin
+# 在停止服务前准备启动产物，缺失的 JAR 使用后端项目配置打包。
+prepare_start() {
   java_bin=$(resolve_java)
-  [[ -x "$java_bin" && -f "$jar" ]] || fail "请准备 JDK 27 和已构建的后端 JAR，见本地继续开发文档。"
+  if [[ ! -f "$jar" ]]; then
+    command -v mvn >/dev/null || fail "缺少后端 JAR，请安装 Maven 后重试。"
+    JAVA_HOME="${java_bin%/bin/java}" mvn -f "$root/backend/pom.xml" -DskipTests clean package
+    [[ -f "$jar" ]] || fail "后端打包结束，但未找到 $jar。"
+  fi
   [[ -x "$uni" ]] || npm ci --prefix "$root/frontend"
+}
+
+start() {
   database
   XIAOBU_DEV_DB_PASSWORD=$(docker_local exec "$db" printenv MYSQL_PASSWORD)
   export XIAOBU_DEV_DB_PASSWORD XIAOBU_DEV_DB_USER=xiaobu
@@ -147,6 +154,7 @@ case "${1:-status}" in
   start|restart|stop)
     mkdir "$state/lock" 2>/dev/null || fail "已有管理操作正在执行，请稍后重试。"
     trap 'rmdir "$state/lock"' EXIT
+    if [[ "$1" != stop ]]; then prepare_start; fi
     case "$1" in start) start ;; restart) stop; start ;; stop) stop ;; esac ;;
   status) status ;;
   logs) tail -n 60 -F "$state/backend.log" "$state/frontend.log" ;;
