@@ -15,7 +15,37 @@ public record CreateRentalContractCommand(
     RentalPaymentCycle cycle,
     LocalDate firstDueOn,
     String note,
-    String existingBillId) {
+    String existingBillId,
+    Integer remindDays) {
+  public CreateRentalContractCommand(
+      String ledgerId,
+      String actorId,
+      String homeId,
+      String landlordName,
+      LocalDate startsOn,
+      LocalDate endsOn,
+      long monthlyRentCents,
+      long depositCents,
+      RentalPaymentCycle cycle,
+      LocalDate firstDueOn,
+      String note,
+      String existingBillId) {
+    this(
+        ledgerId,
+        actorId,
+        homeId,
+        landlordName,
+        startsOn,
+        endsOn,
+        monthlyRentCents,
+        depositCents,
+        cycle,
+        firstDueOn,
+        note,
+        existingBillId,
+        null);
+  }
+
   public CreateRentalContractCommand(
       String ledgerId,
       String actorId,

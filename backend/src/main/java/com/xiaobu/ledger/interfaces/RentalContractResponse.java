@@ -17,4 +17,6 @@ public record RentalContractResponse(
     LocalDate firstDueOn,
     Integer dueDayOfMonth,
     long periodAmountCents,
-    String note) {}
+    String note,
+    int remindDays,
+    LocalDate handledEnd) {}

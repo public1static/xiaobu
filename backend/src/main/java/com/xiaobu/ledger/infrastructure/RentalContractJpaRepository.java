@@ -1,5 +1,6 @@
 package com.xiaobu.ledger.infrastructure;
 
+import com.xiaobu.ledger.application.RentalExpiryReminderResult;
 import java.time.LocalDate;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -31,16 +32,60 @@ interface RentalContractJpaRepository extends Repository<RentalContractEntity, S
       from RentalContractEntity c
       join RentalHomeEntity h on h.id = c.homeId and h.ledgerId = c.ledgerId and h.deleted = false
       left join FixedBillEntity b on b.id = c.billId and b.ledgerId = c.ledgerId and b.deleted = false
-      where c.ledgerId = :ledgerId and c.deleted = false and (:homeId is null or c.homeId = :homeId)
+      where c.ledgerId = :ledgerId and c.deleted = false
       """;
+
+  String CONTRACT_DETAILS = "select c as contract, h.name as homeName, b as bill ";
+
+  @Query(CONTRACT_DETAILS + CONTRACTS + " and c.id = :contractId")
+  Optional<ContractRow> findContractDetails(String ledgerId, String contractId);
+
+  String CONTRACT_LIST = CONTRACTS + " and (:homeId is null or c.homeId = :homeId)";
+
+  @Query(
+      value = CONTRACT_DETAILS + CONTRACT_LIST + " order by c.startsOn desc, c.id desc",
+      countQuery = "select count(c.id) " + CONTRACT_LIST)
+  Page<ContractRow> listContracts(String ledgerId, String homeId, Pageable pageable);
+
+  String UNHANDLED = "(c.handledEnd is null or c.handledEnd <> c.endsOn)";
+  String TRIGGERED = "(timestampadd(day, -c.remindDays, c.endsOn) <= :today)";
+  String EXPIRIES =
+      """
+      from RentalContractEntity c
+      join RentalHomeEntity h on h.id = c.homeId and h.ledgerId = c.ledgerId and h.deleted = false
+      where c.ledgerId = :ledgerId and c.deleted = false
+      """;
+  String REMINDER_FILTER =
+      EXPIRIES
+          + " and ((:completed = true and c.handledEnd = c.endsOn)"
+          + " or (:completed = false and "
+          + UNHANDLED
+          + "))";
 
   @Query(
       value =
-          "select c as contract, h.name as homeName, b as bill "
-              + CONTRACTS
-              + " order by c.startsOn desc, c.id desc",
-      countQuery = "select count(c.id) " + CONTRACTS)
-  Page<ContractRow> listContracts(String ledgerId, String homeId, Pageable pageable);
+          """
+          select new com.xiaobu.ledger.application.RentalExpiryReminderResult(
+              c.id, h.name, c.landlordName, c.endsOn, c.remindDays, c.handledEnd)
+          """
+              + REMINDER_FILTER
+              + " order by case when :completed = false and "
+              + TRIGGERED
+              + " then 0 else 1 end,"
+              + " case when :completed = false then c.endsOn else null end asc,"
+              + " case when :completed = true then c.endsOn else null end desc, c.id",
+      countQuery = "select count(c.id) " + REMINDER_FILTER)
+  Page<RentalExpiryReminderResult> listExpiryReminders(
+      String ledgerId, LocalDate today, boolean completed, Pageable pageable);
+
+  @Query(
+      "select count(c.id) "
+          + EXPIRIES
+          + " and c.endsOn <= :latestDueOn and "
+          + UNHANDLED
+          + " and "
+          + TRIGGERED)
+  long countPendingExpiryReminders(String ledgerId, LocalDate today, LocalDate latestDueOn);
 
   interface ContractRow {
     RentalContractEntity getContract();

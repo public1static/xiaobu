@@ -116,3 +116,13 @@ test('rental payment draft is optional and only sends the bill and period', asyn
     { billId: 'bill_1', month: '2025-02' },
   );
 });
+
+test('contract reminders use natural days, including disabled advance notices and handled occurrences', async () => {
+  const { isRentalExpiryPending } = await import('../src/pages/ledger/rental-expiry.ts');
+  assert.equal(isRentalExpiryPending('2025-01-07', null, 7, '2024-12-31'), true);
+  assert.equal(isRentalExpiryPending('2025-01-08', null, 7, '2024-12-31'), false);
+  assert.equal(isRentalExpiryPending('2025-01-08', null, 0, '2025-01-07'), false);
+  assert.equal(isRentalExpiryPending('2025-01-08', null, 0, '2025-01-08'), true);
+  assert.equal(isRentalExpiryPending('2025-01-08', '2025-01-08', 30, '2025-01-08'), false);
+  assert.equal(isRentalExpiryPending('2025-01-09', '2025-01-08', 7, '2025-01-08'), true);
+});

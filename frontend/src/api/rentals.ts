@@ -27,11 +27,14 @@ interface RentalContractInput {
   firstDueOn: string | null;
   note: string;
   existingBillId?: string;
+  remindDays?: number;
 }
 
 export interface RentalContract extends RentalContractInput {
   id: string;
   homeName: string;
+  remindDays: number;
+  handledEnd: string | null;
   billId: string | null;
   dueDayOfMonth: number | null;
   periodAmountCents: number;
@@ -158,4 +161,55 @@ export function editRentalDeposit(
       expectedVersion: entry.version,
     },
   );
+}
+
+export interface RentalExpiryReminder {
+  contractId: string;
+  homeName: string;
+  landlordName: string;
+  endsOn: string;
+  remindDays: number;
+  handledEnd: string | null;
+  pending: boolean;
+}
+
+export function getRentalContract(ledgerId: string, contractId: string) {
+  return request<RentalContract>(
+    path(ledgerId) + '/contracts/' + encodeURIComponent(contractId),
+    'GET',
+  );
+}
+
+export function listRentalExpiryReminders(ledgerId: string, completed: boolean, page = 0) {
+  return request<RentalPage<RentalExpiryReminder> & { pendingCount: number; today: string }>(
+    path(ledgerId) + '/expiry-reminders',
+    'GET',
+    { completed, page },
+  );
+}
+
+export function countRentalExpiryReminders(ledgerId: string) {
+  return request<{ pendingCount: number }>(path(ledgerId) + '/expiry-reminders/count', 'GET');
+}
+
+function expiryPath(ledgerId: string, contractId: string) {
+  return path(ledgerId) + '/contracts/' + encodeURIComponent(contractId) + '/expiry-reminder';
+}
+
+export function configureRentalExpiryReminder(
+  ledgerId: string,
+  contractId: string,
+  remindDays: number,
+) {
+  return request<RentalContract>(expiryPath(ledgerId, contractId), 'PUT', { remindDays });
+}
+
+export function completeRentalExpiryReminder(
+  ledgerId: string,
+  contractId: string,
+  expectedEndsOn: string,
+) {
+  return request<RentalContract>(expiryPath(ledgerId, contractId) + '/complete', 'PUT', {
+    expectedEndsOn,
+  });
 }
