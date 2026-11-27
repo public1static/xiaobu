@@ -138,6 +138,7 @@ const account = ref<Pick<LedgerAccount, 'id' | 'name'> | null>(null);
 const accountView = ref<'manage' | 'select' | null>(null);
 const ledgerHubOpen = ref(false);
 const fixedBillsOpen = ref(false);
+const fixedBillRevision = ref(0);
 const giftWorkspaceOpen = ref(false);
 const giftRevision = ref(0);
 const entryPreset = ref<TransactionEntryPreset | null>(null);
@@ -177,6 +178,11 @@ function assistantExpenseSaved(book: string) {
 }
 onMounted(() => uni.$on('assistant-expense-saved', assistantExpenseSaved));
 onUnmounted(() => uni.$off('assistant-expense-saved', assistantExpenseSaved));
+function onFixedBillUnlinked() {
+  transactionDetailId.value = '';
+  fixedBillRevision.value++;
+}
+
 function refreshAfterTransactionChange() {
   giftRevision.value++;
   void refresh();
@@ -1559,6 +1565,7 @@ const entryDateLabel = computed(() => {
       v-if="transactionDetailId && (ledgerId || selectedExample)"
       :example="selectedExample"
       :browse-only="!!selectedExample"
+      :allow-bill-unlink="!readOnly"
       :key="transactionDetailId"
       :ledger-id="ledgerId"
       :transaction-id="transactionDetailId"
@@ -1567,6 +1574,7 @@ const entryDateLabel = computed(() => {
       @edit="startEditing"
       @deleted="onTransactionDeleted"
       @refunded="refreshAfterTransactionChange"
+      @bill-unlinked="onFixedBillUnlinked"
     />
     <LedgerRecycleSheet
       v-if="recycleOpen && ledgerId"
@@ -1580,6 +1588,7 @@ const entryDateLabel = computed(() => {
       :key="ledgerId"
       :ledger-id="ledgerId"
       :writable="!readOnly"
+      :revision="fixedBillRevision"
       :covered="Boolean(transactionDetailId)"
       @close="fixedBillsOpen = false"
       @saved="refreshAfterTransactionChange"

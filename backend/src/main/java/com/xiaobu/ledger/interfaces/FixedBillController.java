@@ -4,6 +4,7 @@ import com.aegisid.foundation.web.api.ApiResponse;
 import com.xiaobu.identity.interfaces.LedgerSessionContext;
 import com.xiaobu.ledger.application.FixedBillApplicationService;
 import com.xiaobu.ledger.application.ListFixedBillCandidatesQuery;
+import com.xiaobu.ledger.application.UnlinkFixedBillPaymentCommand;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -12,12 +13,16 @@ import jakarta.validation.constraints.Size;
 import java.time.YearMonth;
 import org.springframework.context.annotation.Profile;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -97,5 +102,31 @@ class FixedBillController {
         mapper.toResponse(
             bills.linkFixedBillPayment(
                 mapper.toCommand(ledgerId, actor.actorId(), billId, month, body))));
+  }
+
+  @GetMapping("/payment-references/{transactionId}")
+  public ResponseEntity<ApiResponse<FixedBillPaymentReferenceResponse>>
+      findFixedBillPaymentReference(
+          @PathVariable String ledgerId,
+          @PathVariable String transactionId,
+          HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    return bills
+        .findFixedBillPaymentReference(ledgerId, actor.actorId(), transactionId)
+        .map(mapper::toResponse)
+        .map(response -> ResponseEntity.ok(ApiResponse.success(response)))
+        .orElseGet(() -> ResponseEntity.noContent().build());
+  }
+
+  @DeleteMapping("/payment-references/{transactionId}/{paymentId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void unlinkFixedBillPayment(
+      @PathVariable String ledgerId,
+      @PathVariable String transactionId,
+      @PathVariable String paymentId,
+      HttpServletRequest request) {
+    var actor = LedgerSessionContext.require(request);
+    bills.unlinkFixedBillPayment(
+        new UnlinkFixedBillPaymentCommand(ledgerId, actor.actorId(), transactionId, paymentId));
   }
 }

@@ -15,6 +15,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -160,6 +161,24 @@ public class FixedBillApplicationService {
         transaction.details().bookedOn(),
         transaction.details().amountCents(),
         command.actorId());
+  }
+
+  @Transactional(readOnly = true)
+  public Optional<FixedBillPaymentReferenceResult> findFixedBillPaymentReference(
+      String ledgerId, String actorId, String transactionId) {
+    ledgers.requireReadAccess(ledgerId, actorId);
+    return bills.findPaymentReference(ledgerId, transactionId);
+  }
+
+  @Transactional
+  public void unlinkFixedBillPayment(UnlinkFixedBillPaymentCommand command) {
+    ledgers.requireWriteAccess(command.ledgerId(), command.actorId());
+    var payment =
+        bills
+            .findPaymentReference(command.ledgerId(), command.transactionId())
+            .filter(reference -> reference.paymentId().equals(command.paymentId()))
+            .orElseThrow(() -> conflict("账期关联已变更，请重新查看"));
+    bills.unlinkPayment(payment.paymentId(), command.actorId());
   }
 
   private FixedBillPeriodResult recordPayment(

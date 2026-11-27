@@ -4,6 +4,7 @@ import com.xiaobu.ledger.application.CreateFixedBillCommand;
 import com.xiaobu.ledger.application.FixedBillCandidatePageResult;
 import com.xiaobu.ledger.application.FixedBillCandidateResult;
 import com.xiaobu.ledger.application.FixedBillPageResult;
+import com.xiaobu.ledger.application.FixedBillPaymentReferenceResult;
 import com.xiaobu.ledger.application.FixedBillPeriodResult;
 import com.xiaobu.ledger.application.LinkFixedBillPaymentCommand;
 import com.xiaobu.ledger.application.PayFixedBillCommand;
@@ -31,6 +32,8 @@ interface FixedBillWebMapper {
   FixedBillCandidateResponse toResponse(FixedBillCandidateResult result);
 
   FixedBillCandidatePageResponse toResponse(FixedBillCandidatePageResult result);
+
+  FixedBillPaymentReferenceResponse toResponse(FixedBillPaymentReferenceResult result);
 
   FixedBillPeriodResponse toResponse(FixedBillPeriodResult result);
 

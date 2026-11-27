@@ -40,6 +40,9 @@ public class FixedBillPaymentEntity extends AuditableEntity implements Persistab
   @Column(name = "updated_by", nullable = false, length = 48)
   private String updatedBy;
 
+  @Column(nullable = false)
+  private boolean deleted;
+
   @Transient private boolean newEntity = true;
 
   protected FixedBillPaymentEntity() {}
@@ -57,6 +60,11 @@ public class FixedBillPaymentEntity extends AuditableEntity implements Persistab
 
   FixedBillPayment toDomain() {
     return new FixedBillPayment(id, billId, period, transactionId, paidOn, amountCents);
+  }
+
+  void markUnlinked(String actorId) {
+    deleted = true;
+    updatedBy = actorId;
   }
 
   @Override

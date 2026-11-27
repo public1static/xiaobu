@@ -19,7 +19,12 @@ import {
   shiftLedgerMonth,
 } from './transaction';
 
-const props = defineProps<{ ledgerId: string; writable: boolean; covered: boolean }>();
+const props = defineProps<{
+  ledgerId: string;
+  writable: boolean;
+  covered: boolean;
+  revision: number;
+}>();
 const emit = defineEmits<{ close: []; saved: []; detail: [id: string] }>();
 const today = ledgerToday();
 const workspaceStyle: Record<string, string> = {};
@@ -133,6 +138,16 @@ async function loadCatalog() {
 }
 
 watch([month, paid], () => void load(), { immediate: true });
+watch(
+  () => props.revision,
+  () => {
+    view.value = 'list';
+    selected.value = undefined;
+    if (!paid.value) void load();
+    else paid.value = false;
+  },
+);
+
 void loadCatalog();
 
 function shiftMonth(direction: -1 | 1) {
