@@ -1,9 +1,11 @@
 package com.xiaobu.ledger.infrastructure;
 
 import com.xiaobu.ledger.application.LedgerTodoPageResult;
+import com.xiaobu.ledger.application.LedgerTodoQuery;
 import com.xiaobu.ledger.application.LedgerTodoQueryRepository;
 import com.xiaobu.ledger.application.LedgerTodoResult;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -32,9 +34,8 @@ class LedgerTodoQueryPersistenceAdapter implements LedgerTodoQueryRepository {
   }
 
   @Override
-  public LedgerTodoPageResult listLedgerTodos(
-      String ledgerId, LocalDate today, boolean completed, int page) {
-    var parameters = parameters(ledgerId, today, false);
+  public LedgerTodoPageResult listLedgerTodos(LedgerTodoQuery query, boolean completed, int page) {
+    var parameters = parameters(query, false);
     String from = " FROM (" + (completed ? completedItems : openItems) + ") items";
     var counts =
         jdbc.queryForObject(
@@ -42,10 +43,10 @@ class LedgerTodoQueryPersistenceAdapter implements LedgerTodoQueryRepository {
             parameters,
             (row, index) -> new Counts(row.getLong("total"), row.getLong("pending")));
     long total = counts.total();
-    long pending = completed ? countPendingLedgerTodos(ledgerId, today) : counts.pending();
+    long pending = completed ? countPendingLedgerTodos(query) : counts.pending();
     int offset = page * PAGE_SIZE;
     if (offset >= total)
-      return new LedgerTodoPageResult(List.of(), total, pending, page, PAGE_SIZE, today);
+      return new LedgerTodoPageResult(List.of(), total, pending, page, PAGE_SIZE, query.today());
 
     String order =
         completed
@@ -66,14 +67,14 @@ class LedgerTodoQueryPersistenceAdapter implements LedgerTodoQueryRepository {
                     row.getString("title"),
                     row.getString("subtitle"),
                     row.getObject("amount_cents", Long.class)));
-    return new LedgerTodoPageResult(entries, total, pending, page, PAGE_SIZE, today);
+    return new LedgerTodoPageResult(entries, total, pending, page, PAGE_SIZE, query.today());
   }
 
   @Override
-  public long countPendingLedgerTodos(String ledgerId, LocalDate today) {
+  public long countPendingLedgerTodos(LedgerTodoQuery query) {
     return count(
         "SELECT COUNT(*) FROM (" + openItems + ") items WHERE todo_status = 'PENDING'",
-        parameters(ledgerId, today, true));
+        parameters(query, true));
   }
 
   private record Counts(long total, long pending) {}
@@ -82,9 +83,11 @@ class LedgerTodoQueryPersistenceAdapter implements LedgerTodoQueryRepository {
     return jdbc.queryForObject(sql, parameters, Long.class);
   }
 
-  private MapSqlParameterSource parameters(String ledgerId, LocalDate today, boolean pendingOnly) {
-    return new MapSqlParameterSource("ledgerId", ledgerId)
-        .addValue("today", today)
+  private MapSqlParameterSource parameters(LedgerTodoQuery query, boolean pendingOnly) {
+    return new MapSqlParameterSource("ledgerId", query.ledgerId())
+        .addValue("today", query.today())
+        .addValue("actorId", query.actorId())
+        .addValue("now", query.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))
         .addValue("pendingOnly", pendingOnly ? 1 : 0);
   }
 }

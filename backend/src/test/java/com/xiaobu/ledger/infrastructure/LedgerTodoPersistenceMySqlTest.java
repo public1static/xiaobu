@@ -10,14 +10,18 @@ import com.xiaobu.boot.XiaobuApplication;
 import com.xiaobu.ledger.application.CreateFixedBillCommand;
 import com.xiaobu.ledger.application.CreateRentalContractCommand;
 import com.xiaobu.ledger.application.FixedBillApplicationService;
+import com.xiaobu.ledger.application.LedgerManualReminderApplicationService;
 import com.xiaobu.ledger.application.LedgerTodoApplicationService;
+import com.xiaobu.ledger.application.LedgerTodoQuery;
 import com.xiaobu.ledger.application.LedgerTodoQueryRepository;
 import com.xiaobu.ledger.application.LedgerTodoResult;
 import com.xiaobu.ledger.application.PayFixedBillCommand;
 import com.xiaobu.ledger.application.RentalApplicationService;
+import com.xiaobu.ledger.application.SaveLedgerManualReminderCommand;
 import com.xiaobu.ledger.application.SaveRentalHomeCommand;
 import com.xiaobu.ledger.domain.RentalPaymentCycle;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.HashSet;
 import java.util.List;
@@ -42,6 +46,7 @@ class LedgerTodoPersistenceMySqlTest {
   @Autowired private LedgerTodoQueryRepository repository;
   @Autowired private LedgerTodoApplicationService todos;
   @Autowired private FixedBillApplicationService bills;
+  @Autowired private LedgerManualReminderApplicationService reminders;
   @Autowired private RentalApplicationService rentals;
 
   @Test
@@ -68,9 +73,9 @@ class LedgerTodoPersistenceMySqlTest {
                 RentalPaymentCycle.MONTHLY,
                 TODAY,
                 ""));
-    var rows = repository.listLedgerTodos(f.ledger(), TODAY, false, 0);
+    var rows = repository.listLedgerTodos(query(f), false, 0);
     assertEquals(4, rows.pendingCount());
-    assertEquals(4, repository.countPendingLedgerTodos(f.ledger(), TODAY));
+    assertEquals(4, repository.countPendingLedgerTodos(query(f)));
     assertEquals(
         List.of("2025-01", "2025-02", "2025-02", "2025-02-28", "2025-03"),
         rows.entries().stream().map(LedgerTodoResult::occurrence).toList());
@@ -90,8 +95,8 @@ class LedgerTodoPersistenceMySqlTest {
         bills.payFixedBill(
             new PayFixedBillCommand(
                 f.ledger(), f.actor(), bill.billId(), YearMonth.from(TODAY), TODAY, 9000, null));
-    assertEquals(3, repository.countPendingLedgerTodos(f.ledger(), TODAY));
-    var complete = repository.listLedgerTodos(f.ledger(), TODAY, true, 0);
+    assertEquals(3, repository.countPendingLedgerTodos(query(f)));
+    var complete = repository.listLedgerTodos(query(f), true, 0);
     assertEquals(1, complete.totalCount());
     assertEquals(9000, complete.entries().getFirst().amountCents());
     assertEquals(
@@ -111,8 +116,8 @@ class LedgerTodoPersistenceMySqlTest {
           new CreateFixedBillCommand(
               f.ledger(), f.actor(), "水电 " + i, TODAY, 1000 + i, "DAILY", null));
     }
-    var first = repository.listLedgerTodos(f.ledger(), TODAY, false, 0);
-    var second = repository.listLedgerTodos(f.ledger(), TODAY, false, 1);
+    var first = repository.listLedgerTodos(query(f), false, 0);
+    var second = repository.listLedgerTodos(query(f), false, 1);
     assertEquals(42, first.totalCount());
     assertEquals(21, first.pendingCount());
     assertEquals(20, first.entries().size());
@@ -120,9 +125,99 @@ class LedgerTodoPersistenceMySqlTest {
     assertEquals("PENDING", second.entries().getFirst().status());
     assertEquals("PLANNED", second.entries().getLast().status());
     assertFalse(new HashSet<>(first.entries()).removeAll(second.entries()));
-    assertEquals(2, repository.listLedgerTodos(f.ledger(), TODAY, false, 2).entries().size());
+    assertEquals(2, repository.listLedgerTodos(query(f), false, 2).entries().size());
     jdbc.update("UPDATE fixed_bills SET stop_month = '2025-03-01' WHERE ledger_id = ?", f.ledger());
-    assertEquals(21, repository.listLedgerTodos(f.ledger(), TODAY, false, 0).totalCount());
+    assertEquals(21, repository.listLedgerTodos(query(f), false, 0).totalCount());
+  }
+
+  @Test
+  void activatesAtTheScheduledBeijingMinuteAndMovesBetweenQueuesWithoutCreatingTransactions() {
+    var f = fixture();
+    var due = TODAY.plusDays(3);
+    var time = LocalTime.of(9, 30);
+    var reminder =
+        reminders.saveLedgerManualReminder(
+            new SaveLedgerManualReminderCommand(f.ledger(), f.actor(), null, "联系房东", due, time, 3));
+    assertEquals(TODAY.atTime(time), reminder.remindAt());
+    assertEquals(
+        "2025-02-28 09:30:00",
+        jdbc.queryForObject(
+            "SELECT CAST(remind_at AS CHAR) FROM ledger_manual_reminders WHERE id = ?",
+            String.class,
+            reminder.id()));
+    assertEquals(reminder, reminders.getLedgerManualReminder(f.ledger(), f.actor(), reminder.id()));
+    var before = new LedgerTodoQuery(f.ledger(), f.actor(), reminder.remindAt().minusSeconds(1));
+    var at = new LedgerTodoQuery(f.ledger(), f.actor(), reminder.remindAt());
+    var planned = repository.listLedgerTodos(before, false, 0);
+    assertEquals(1, planned.totalCount());
+    assertEquals(0, planned.pendingCount());
+    assertEquals("PLANNED", planned.entries().getFirst().status());
+    assertEquals(0, repository.countPendingLedgerTodos(before));
+    assertEquals(1, repository.countPendingLedgerTodos(at));
+    assertEquals("PENDING", repository.listLedgerTodos(at, false, 0).entries().getFirst().status());
+
+    reminders.setLedgerManualReminderCompletion(f.ledger(), f.actor(), reminder.id(), true);
+    reminders.setLedgerManualReminderCompletion(f.ledger(), f.actor(), reminder.id(), true);
+    assertEquals(0, repository.listLedgerTodos(at, false, 0).totalCount());
+    assertEquals(
+        "COMPLETED", repository.listLedgerTodos(at, true, 0).entries().getFirst().status());
+    assertThrows(
+        FoundationException.class,
+        () ->
+            reminders.saveLedgerManualReminder(
+                new SaveLedgerManualReminderCommand(
+                    f.ledger(), f.actor(), reminder.id(), "修改", due, time, 0)));
+    reminders.setLedgerManualReminderCompletion(f.ledger(), f.actor(), reminder.id(), false);
+    assertEquals(1, repository.countPendingLedgerTodos(at));
+    var revised =
+        reminders.saveLedgerManualReminder(
+            new SaveLedgerManualReminderCommand(
+                f.ledger(), f.actor(), reminder.id(), " 更新 ", due, time, 1));
+    assertEquals(reminder.id(), revised.id());
+    assertEquals("更新", revised.title());
+    assertEquals(0, repository.countPendingLedgerTodos(at));
+    assertEquals(0, repository.listLedgerTodos(at, true, 0).totalCount());
+    assertEquals(
+        0L,
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM ledger_transactions WHERE ledger_id = ?",
+            Long.class,
+            f.ledger()));
+  }
+
+  @Test
+  void isolatesManualRemindersInsideSharedLedgerAndValidatesSchedule() {
+    var f = fixture();
+    var other = fixture();
+    var reminder =
+        reminders.saveLedgerManualReminder(
+            new SaveLedgerManualReminderCommand(
+                f.ledger(), f.actor(), null, "本人提醒", TODAY, LocalTime.MIDNIGHT, 0));
+    var otherActorOnSameLedger =
+        new LedgerTodoQuery(f.ledger(), other.actor(), TODAY.atStartOfDay());
+    assertEquals(0, repository.listLedgerTodos(otherActorOnSameLedger, false, 0).totalCount());
+    assertEquals(0, repository.countPendingLedgerTodos(otherActorOnSameLedger));
+    assertThrows(
+        FoundationException.class,
+        () -> reminders.getLedgerManualReminder(other.ledger(), other.actor(), reminder.id()));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            reminders.setLedgerManualReminderCompletion(
+                f.ledger(), other.actor(), reminder.id(), true));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            reminders.saveLedgerManualReminder(
+                new SaveLedgerManualReminderCommand(
+                    f.ledger(), f.actor(), null, "提前 2 天", TODAY, LocalTime.NOON, 2)));
+    assertThrows(
+        FoundationException.class,
+        () ->
+            reminders.saveLedgerManualReminder(
+                new SaveLedgerManualReminderCommand(
+                    f.ledger(), f.actor(), null, "秒数", TODAY, LocalTime.of(10, 0, 1), 0)));
+    assertEquals(1, repository.listLedgerTodos(query(f), false, 0).totalCount());
   }
 
   private Fixture fixture() {
@@ -130,6 +225,10 @@ class LedgerTodoPersistenceMySqlTest {
     String ledger = "book_" + UUID.randomUUID();
     jdbc.update("INSERT INTO personal_ledgers (id, owner_id) VALUES (?, ?)", ledger, actor);
     return new Fixture(ledger, actor);
+  }
+
+  private LedgerTodoQuery query(Fixture fixture) {
+    return new LedgerTodoQuery(fixture.ledger(), fixture.actor(), TODAY.atStartOfDay());
   }
 
   private record Fixture(String ledger, String actor) {}

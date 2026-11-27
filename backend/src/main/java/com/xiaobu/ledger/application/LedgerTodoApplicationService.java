@@ -2,7 +2,7 @@ package com.xiaobu.ledger.application;
 
 import com.aegisid.foundation.shared.error.ErrorCode;
 import com.aegisid.foundation.shared.error.FoundationException;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -29,12 +29,14 @@ public class LedgerTodoApplicationService {
     if (page < 0 || page > 1_000_000) {
       throw new FoundationException(new ErrorCode("XIAOBU_INVALID_PAGE"), "请选择有效的分页参数");
     }
-    return todos.listLedgerTodos(ledgerId, LocalDate.now(LEDGER_ZONE), completed, page);
+    return todos.listLedgerTodos(
+        new LedgerTodoQuery(ledgerId, actorId, LocalDateTime.now(LEDGER_ZONE)), completed, page);
   }
 
   @Transactional(readOnly = true)
   public long countPendingLedgerTodos(String ledgerId, String actorId) {
     ledgers.requireReadAccess(ledgerId, actorId);
-    return todos.countPendingLedgerTodos(ledgerId, LocalDate.now(LEDGER_ZONE));
+    return todos.countPendingLedgerTodos(
+        new LedgerTodoQuery(ledgerId, actorId, LocalDateTime.now(LEDGER_ZONE)));
   }
 }
